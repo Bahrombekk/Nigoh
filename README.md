@@ -56,11 +56,14 @@ Hudud nomi bir xil yozilgan kameralar bitta guruh hisoblanadi.
 
 ```
 Kamera (RTSP)
-   ↓  MediaMTX chaqiradi: stream_launcher.py <kamera>
-   ↓  Launcher bazadan IP/login/parolni oladi
-   ↓  FFmpeg: H.264 bo'lsa shunchaki uzatadi, H.265 bo'lsa o'giradi
+   ↓  MediaMTX to'g'ridan-to'g'ri tortadi (FFmpeg yo'q)
+   ↓  Yo'l API orqali ro'yxatga olinadi — faylga yozilmaydi
    ↓  MediaMTX WebRTC va HLS'da tarqatadi
-Brauzer — avval WebRTC, ishlamasa HLS
+Brauzer — WebRTC (H.265 ni ham o'qiydi), ishlamasa HLS
+
+   Faqat ikki holatda FFmpeg qo'shiladi:
+     · brauzer H.265 ni uddalay olmasa
+     · "tez ochilsin" belgilangan bo'lsa (qisqa GOP uchun)
 ```
 
 ### Kameralar soni cheklanmagan
@@ -130,25 +133,44 @@ shuning uchun ochilishi ~1 soniya sekinroq. Tezlik muhim bo'lgan kameralarda
 "doim tayyor" ni yoqing yoki NVR'da H.264 ga o'ting — u holda WebRTC ham,
 o'girishsiz uzatish ham birga ishlaydi.
 
-### Tezlik
+### Tezlik nimaga bog'liq
 
-| Holat | Ochilish |
-|---|---|
-| "Doim tayyor" yoqilgan | darhol |
-| Yaqinda ko'rilgan (60 s ichida) | ~15 ms |
-| Sovuq start | ~5 s |
+Ochilish vaqtining asosiy qismi — **kameradan keyframe kutish**. WebRTC ham,
+HLS ham tasvirni faqat keyframe'dan boshlay oladi, kameralarda esa u odatda
+har 2–4 soniyada bir marta yuboriladi.
 
-Sovuq startdagi 5 soniyaning katta qismi — **kameradan keyframe kutish**.
-Bu bizning tarafda emas: o'girishsiz oddiy uzatishda ham xuddi shuncha
-ketadi. Qisqartirish uchun NVR'da I-frame oralig'ini kamaytiring
-(`I Frame Interval: 25`).
+8 ta real kamerada o'lchangan (WebRTC orqali):
 
-Sayt buni yashirish uchun kamera nomiga sichqoncha kelganda oqimni
-jimgina oldindan boshlaydi — bosgungizcha tayyor bo'ladi.
+| Kamera | Keyframe orasi | Ochilish |
+|---|---|---|
+| Chorsu | 4,0 s | 0,65 s |
+| Amir Temur (tez rejim) | 1,2 s | 1,03 s |
+| A3 | 2,0 s | 1,08 s |
+| Labi Hovuz (tez rejim) | 1,2 s | 1,47 s |
+| A2 | 2,0 s | 1,96 s |
+| Registon | 4,0 s | 2,48 s |
+| A1 (uzoq tarmoq) | — | 10,5 s |
 
-**"Doim tayyor tursin"** belgisi standart holda **o'chiq**: yoqilsa kamera
-doimo ulanib turadi va resurs egallaydi. Faqat eng ko'p ishlatiladigan bir
-necha kamerada yoqing.
+Xom oqimda vaqt tasodifiy: keyframe siklining qayeriga tushishingizga
+bog'liq. O'girilgan oqimda GOP 1,2 s bo'lgani uchun barqaror.
+
+**Tezlashtirishning uchta yo'li** — samaradorlik bo'yicha:
+
+1. **Registratorda `I Frame Interval` ni kamaytiring** (25 fps uchun 25;
+   odatda 100 qo'yilgan). Bepul va hamma kameraga ta'sir qiladi.
+2. **"Tez ochilsin"** belgisi — oqim doim tayyor turadi va qisqa GOP bilan
+   tayyorlanadi. ~2,5 s o'rniga ~1 s. Narxi: ~200 MB va bir oz GPU.
+3. Sayt kamera nomiga sichqoncha kelganda oqimni jimgina oldindan boshlaydi.
+
+### Tarmoq — eng katta chegara
+
+Lokal kameralar (1 ms) va uzoq kameralar (47–50 ms) o'rtasidagi farq
+o'lchovda yaqqol ko'rindi: uzoqdagilarda RTP paketlar yo'qolib, ochilish
+10 soniyagacha cho'zildi.
+
+Kameralar bir necha manzilda bo'lsa, **har bir joyga alohida MediaMTX
+qo'ying** va sayt kerakli tugunga yo'naltirsin. Kamera trafigi lokal
+tarmoqda qoladi, magistralga faqat ko'rilayotgan oqim chiqadi.
 
 ## Fayllar
 

@@ -30,6 +30,8 @@ import urllib.request
 from functools import lru_cache
 from pathlib import Path
 
+from rtsp_probe import build_rtsp_url
+
 import yaml
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -118,6 +120,9 @@ def transcode_args(src_url: str, dst_url: str, gpu: bool = True,
 
 # ---------- yo'llar ----------
 
+TRANSCODE_SUFFIX = "_h264"
+
+
 def _launcher(slug_expr: str) -> str:
     """`stream_launcher.py` ni chaqiruvchi buyruq."""
     python = sys.executable or "python"
@@ -125,33 +130,45 @@ def _launcher(slug_expr: str) -> str:
     return f'"{python}" "{script}" {slug_expr}'
 
 
+def source_path(cam: dict) -> dict:
+    """Kamerani MediaMTX o'zi tortadigan yo'l.
+
+    FFmpeg ishlatilmaydi: MediaMTX RTSP'ni to'g'ridan-to'g'ri oladi. Bu ham
+    tezroq (jarayon ishga tushirilmaydi), ham yengilroq (~220 MB o'rniga
+    bir necha MB), ham ishonchliroq — FFmpeg nusxalashda B-kadrli H.264
+    oqimni buzib yuborardi.
+    """
+    conf = {
+        "source": build_rtsp_url(
+            cam["ip"], cam["port"], cam.get("rtsp_path") or "/",
+            cam.get("username") or "", cam.get("password") or "",
+        ),
+        # UDP'da paketlar yo'qoladi va tasvir buziladi — TCP majburiy.
+        "rtspTransport": "tcp",
+        "sourceOnDemand": not cam.get("always_on"),
+    }
+    if conf["sourceOnDemand"]:
+        conf["sourceOnDemandStartTimeout"] = "20s"
+        conf["sourceOnDemandCloseAfter"] = "60s"
+    return conf
+
+
 def camera_paths(cameras: list[dict]) -> dict:
     """MediaMTX `paths` bo'limi.
 
-    Kameralar ro'yxati bu yerga yozilmaydi — bitta shablon yo'l barchasiga
-    xizmat qiladi va kerakli ma'lumot bazadan olinadi. Faqat "doim tayyor"
-    deb belgilangan kameralar alohida yoziladi, chunki ular sayt ochilishini
-    kutmasdan ishga tushishi kerak.
+    Kameralar bu yerga yozilmaydi — ular ishlab turgan MediaMTX'ga API
+    orqali qo'shiladi (`ensure_path`). Faylda faqat o'girish uchun shablon
+    qoladi, shuning uchun 1000 kamerada ham hajmi o'zgarmaydi va parollar
+    diskka tushmaydi.
     """
-    paths: dict[str, dict] = {}
-
-    for cam in cameras:
-        if not cam.get("ip") or not cam.get("enabled") or not cam.get("always_on"):
-            continue
-        paths[cam["slug"]] = {
-            "runOnInit": _launcher(cam["slug"]),
-            "runOnInitRestart": True,
+    return {
+        f"~^[a-z0-9_]+{TRANSCODE_SUFFIX}$": {
+            "runOnDemand": _launcher("$MTX_PATH"),
+            "runOnDemandRestart": True,
+            "runOnDemandStartTimeout": "20s",
+            "runOnDemandCloseAfter": "60s",
         }
-
-    # Qolgan hamma kamera shu shablonga tushadi: kimdir ko'rmoqchi bo'lganda
-    # ochiladi, oxirgi tomoshabin ketgach bir daqiqadan so'ng yopiladi.
-    paths["~^[a-z0-9_]+$"] = {
-        "runOnDemand": _launcher("$MTX_PATH"),
-        "runOnDemandRestart": True,
-        "runOnDemandStartTimeout": "20s",
-        "runOnDemandCloseAfter": "60s",
     }
-    return paths
 
 
 def build_config(cameras: list[dict]) -> str:
@@ -218,6 +235,74 @@ def api_available() -> bool:
         return True
     except (urllib.error.URLError, OSError, ValueError):
         return False
+
+
+def ensure_path(cam: dict) -> bool:
+    """Kamera yo'li MediaMTX'da borligiga ishonch hosil qiladi.
+
+    Ko'rish so'ralganda chaqiriladi. Yo'l yo'q bo'lsa qo'shiladi, borligi
+    boshqacha bo'lsa yangilanadi. Shu sababli MediaMTX qayta ishga tushsa
+    ham hech narsani qo'lda tiklash kerak emas.
+    """
+    if not cam.get("ip"):
+        return False
+    slug, wanted = cam["slug"], source_path(cam)
+    try:
+        current = _api("GET", f"/v3/config/paths/get/{slug}")
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            return False
+        current = None
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+    try:
+        if current is None:
+            _api("POST", f"/v3/config/paths/add/{slug}", wanted)
+        elif any(current.get(k) != v for k, v in wanted.items()):
+            _api("PATCH", f"/v3/config/paths/patch/{slug}", wanted)
+        return True
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+        return False
+
+
+def ensure_transcode_path(cam: dict) -> bool:
+    """"Tez ochilsin" kameralari uchun o'girilgan oqim doim tayyor tursin.
+
+    Shablon yo'l o'girishni faqat so'ralganda boshlaydi; bu yerda esa uni
+    doimiy ishlatib qo'yamiz, aks holda "tez" degani birinchi ochilishda
+    ishlamaydi.
+    """
+    if not (cam.get("transcode") and cam.get("always_on") and cam.get("enabled")):
+        return False
+    name = cam["slug"] + TRANSCODE_SUFFIX
+    wanted = {"runOnInit": _launcher(name), "runOnInitRestart": True}
+    try:
+        try:
+            current = _api("GET", f"/v3/config/paths/get/{name}")
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                return False
+            current = None
+        if current is None:
+            _api("POST", f"/v3/config/paths/add/{name}", wanted)
+        elif current.get("runOnInit") != wanted["runOnInit"]:
+            _api("PATCH", f"/v3/config/paths/patch/{name}", wanted)
+        return True
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
+        return False
+
+
+def ensure_paths(cameras: list[dict]) -> int:
+    """Bir nechta kamerani birdaniga ro'yxatga oladi (ishga tushishda)."""
+    count = 0
+    for cam in cameras:
+        if not cam.get("enabled"):
+            continue
+        if ensure_path(cam):
+            count += 1
+        ensure_transcode_path(cam)
+    return count
 
 
 def push_to_api(cameras: list[dict]) -> dict:

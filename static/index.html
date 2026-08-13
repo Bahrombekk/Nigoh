@@ -385,12 +385,15 @@
       </label>
       <label style="display:flex;align-items:center;gap:9px;color:var(--text);font-size:13.5px">
         <input type="checkbox" id="f-always" style="width:auto;margin:0">
-        Doim tayyor tursin — bir zumda ochiladi
+        Tez ochilsin
       </label>
-      <div class="hint">Standart holda o'chiq: kamera faqat kimdir ko'rganda
-        ulanadi (birinchi ochilish 3-5 soniya). Yoqilsa bir zumda ochiladi,
-        lekin kamera doimo ulanib turadi va resurs egallaydi — faqat eng
-        muhim bir necha kamerada yoqing.</div>
+      <div class="hint">Yoqilsa kamera doim ulangan turadi va oqim qisqa
+        keyframe oralig'i bilan tayyorlanadi — ochilish ~2,5 s o'rniga ~1 s.
+        Buning evaziga kamera doimo resurs egallaydi (~200 MB va bir oz GPU),
+        shuning uchun faqat eng muhim kameralarda yoqing.
+        <br><br>Hamma kamerani tezlashtirishning bepul yo'li — registratorda
+        <b>I Frame Interval</b> ni kadr tezligiga tenglashtirish (masalan 25),
+        u odatda 100 ga qo'yilgan bo'ladi.</div>
     </div>
 
     <div class="modal-actions">
@@ -527,6 +530,13 @@ const state = {
    ishlatilmaydi. Chrome/Edge (Windows, apparatli dekodlash bilan) va
    Safari uddalaydi; Firefox hozircha yo'q. */
 const HEVC_OK = (() => {
+  // WebRTC yo'li — asosiysi, shuning uchun avval shuni tekshiramiz.
+  try {
+    const caps = RTCRtpReceiver.getCapabilities("video");
+    if (caps && caps.codecs.some((c) => /H265|hevc/i.test(c.mimeType))) return true;
+  } catch (e) { /* WebRTC yo'q */ }
+
+  // HLS yo'li uchun (WebRTC ishlamasa zaxira sifatida ishlatiladi).
   const type = 'video/mp4; codecs="hvc1.1.6.L93.B0"';
   try {
     if (window.MediaSource && MediaSource.isTypeSupported(type)) return true;

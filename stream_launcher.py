@@ -23,9 +23,9 @@ from mediamtx_sync import (RTSP_PORT, ffmpeg_path,  # noqa: E402
 from rtsp_probe import build_rtsp_url            # noqa: E402
 
 
-# Brauzer H.265 ni o'zi o'qiy olsa, shu qo'shimcha bilan so'raladi va
-# video umuman o'girilmaydi.
-RAW_SUFFIX = "_raw"
+# Xom oqimni MediaMTX o'zi tortadi (FFmpeg kerak emas). Bu skript faqat
+# o'girish uchun chaqiriladi: `<kamera>_h264` so'ralganda.
+TRANSCODE_SUFFIX = "_h264"
 
 
 def load_camera(slug: str):
@@ -44,9 +44,10 @@ def main() -> int:
         print("Kamera nomi berilmadi", file=sys.stderr)
         return 2
 
-    # `<kamera>_raw` — brauzer kodekni o'zi uddalaydi, o'girish shart emas.
-    raw_only = slug.endswith(RAW_SUFFIX)
-    lookup = slug[: -len(RAW_SUFFIX)] if raw_only else slug
+    if not slug.endswith(TRANSCODE_SUFFIX):
+        print(f"Bu yo'l o'girish uchun emas: {slug}", file=sys.stderr)
+        return 7
+    lookup = slug[: -len(TRANSCODE_SUFFIX)]
 
     row = load_camera(lookup)
     if row is None:
@@ -59,10 +60,9 @@ def main() -> int:
         print(f"Kamerada IP yo'q: {slug}", file=sys.stderr)
         return 5
 
-    source = build_rtsp_url(
-        row["ip"], row["port"] or 554, row["rtsp_path"] or "/",
-        row["username"] or "", security.decrypt(row["password_enc"]),
-    )
+    # Manba — kameraning o'zi emas, MediaMTX'dagi xom yo'l: kamera bilan
+    # bitta ulanish yetadi, uni ham xom, ham o'girilgan ko'rinishda beramiz.
+    source = f"rtsp://127.0.0.1:{RTSP_PORT}/{lookup}"
     destination = f"rtsp://127.0.0.1:{RTSP_PORT}/{slug}"
 
     exe = ffmpeg_path()
@@ -70,14 +70,9 @@ def main() -> int:
         print("FFmpeg topilmadi — PATH ga qo'shing", file=sys.stderr)
         return 6
 
-    if row["transcode"] and not raw_only:
-        args = transcode_args(source, destination, gpu=has_nvenc())
-        mode = "GPU" if has_nvenc() else "CPU"
-        print(f"{slug}: H.264 ga o'girilmoqda ({mode})", file=sys.stderr)
-    else:
-        args = relay_args(source, destination)
-        why = "brauzer kodekni o'zi o'qiydi" if raw_only else "kodek mos"
-        print(f"{slug}: o'girishsiz uzatilmoqda ({why})", file=sys.stderr)
+    args = transcode_args(source, destination, gpu=has_nvenc())
+    print(f"{slug}: H.264 ga o'girilmoqda ({'GPU' if has_nvenc() else 'CPU'})",
+          file=sys.stderr)
 
     # FFmpeg shu jarayonning o'rnini egallaydi — MediaMTX uni to'g'ridan
     # to'g'ri boshqaradi (to'xtatish signali ham to'g'ri yetib boradi).

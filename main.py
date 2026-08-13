@@ -142,19 +142,25 @@ def stream_urls(row, request: Request, hevc_ok: bool = False) -> dict:
         return {"stream_url": row["stream_url"] or "", "webrtc_url": "",
                 "mode": "manual"}
 
-    if row["transcode"] and hevc_ok:
-        slug = row["slug"] + "_raw"
-        return {
-            "stream_url": f"http://{host}:{HLS_PORT}/{slug}/index.m3u8",
-            "webrtc_url": "",
-            "mode": "raw",           # o'girishsiz — resurs sarflanmaydi
-        }
+    # Xom yo'l — MediaMTX kameradan to'g'ridan-to'g'ri oladi, FFmpeg yo'q.
+    #
+    # O'girish ikki holatda kerak:
+    #   1) brauzer H.265 ni uddalay olmasa;
+    #   2) "tez ochilsin" belgilangan bo'lsa — kameralarning keyframe oralig'i
+    #      2-4 soniya, o'girilgan oqimda esa 1,2 soniya, ya'ni ikki barobar
+    #      tez ochiladi. Buning narxi: doimiy FFmpeg va GPU.
+    slug = row["slug"]
+    if row["transcode"] and (not hevc_ok or row["always_on"]):
+        slug += mediamtx_sync.TRANSCODE_SUFFIX
+        mode = "transcode"
+    else:
+        mode = "raw" if row["transcode"] else "direct"
 
     return {
-        "stream_url": f"http://{host}:{HLS_PORT}/{row['slug']}/index.m3u8",
+        "stream_url": f"http://{host}:{HLS_PORT}/{slug}/index.m3u8",
         # WebRTC ancha tez ochiladi — brauzer avval shuni sinaydi.
-        "webrtc_url": f"http://{host}:{WEBRTC_PORT}/{row['slug']}/whep",
-        "mode": "transcode" if row["transcode"] else "direct",
+        "webrtc_url": f"http://{host}:{WEBRTC_PORT}/{slug}/whep",
+        "mode": mode,
     }
 
 
@@ -215,16 +221,23 @@ def require_admin(request: Request):
     return admin
 
 
+def camera_for_mediamtx(row) -> dict | None:
+    """Bitta kamerani MediaMTX tushunadigan ko'rinishga o'tkazadi."""
+    if not row["ip"]:
+        return None
+    return {
+        "slug": row["slug"], "ip": row["ip"], "port": row["port"] or 554,
+        "rtsp_path": row["rtsp_path"] or "/", "username": row["username"] or "",
+        "password": security.decrypt(row["password_enc"]),
+        "enabled": bool(row["enabled"]),
+        "transcode": bool(row["transcode"]),
+        "always_on": bool(row["always_on"]),
+    }
+
+
 def cameras_for_mediamtx(db) -> list[dict]:
     rows = db.execute("SELECT * FROM cameras WHERE ip IS NOT NULL AND ip != ''").fetchall()
-    return [{
-        "slug": r["slug"], "ip": r["ip"], "port": r["port"] or 554,
-        "rtsp_path": r["rtsp_path"] or "/", "username": r["username"] or "",
-        "password": security.decrypt(r["password_enc"]),
-        "enabled": bool(r["enabled"]),
-        "transcode": bool(r["transcode"]),
-        "always_on": bool(r["always_on"]),
-    } for r in rows]
+    return [c for c in (camera_for_mediamtx(r) for r in rows) if c]
 
 
 def detect_codec(cam: "CameraIn", password: str) -> tuple[str, bool]:
@@ -341,12 +354,17 @@ def camera_stream(camera_id: int, request: Request, hevc: int = 0):
     """
     with get_db() as db:
         row = db.execute(
-            "SELECT slug, ip, stream_url, transcode FROM cameras "
-            "WHERE id = ? AND enabled = 1",
-            (camera_id,),
+            "SELECT * FROM cameras WHERE id = ? AND enabled = 1", (camera_id,)
         ).fetchone()
-    if row is None:
-        raise HTTPException(404, "Kamera topilmadi")
+        if row is None:
+            raise HTTPException(404, "Kamera topilmadi")
+        camera = camera_for_mediamtx(row)
+
+    # Yo'l MediaMTX'da borligiga ishonch hosil qilamiz — u qayta ishga
+    # tushgan bo'lsa ham ko'rish shu yerda tiklanadi.
+    if camera:
+        mediamtx_sync.ensure_path(camera)
+        mediamtx_sync.ensure_transcode_path(camera)
     return stream_urls(row, request, hevc_ok=bool(hevc))
 
 
@@ -635,6 +653,13 @@ def bootstrap() -> None:
         with get_db() as db:
             mediamtx_sync.write_config(cameras_for_mediamtx(db))
         print(f"mediamtx.yml yaratildi: {mediamtx_sync.CONFIG_PATH}")
+
+    # Kamera yo'llarini ishlab turgan MediaMTX'ga bildiramiz. Ishlamayotgan
+    # bo'lsa muammo emas — har bir ko'rish so'rovida qayta urinib ko'riladi.
+    with get_db() as db:
+        cameras = cameras_for_mediamtx(db)
+    if mediamtx_sync.api_available():
+        print(f"MediaMTX'ga {mediamtx_sync.ensure_paths(cameras)} ta kamera bildirildi")
 
     with get_db() as db:
         generated = security.ensure_admin(db)
