@@ -222,6 +222,11 @@ def build_config(cameras: list[dict], auth_url: str | None = None,
         "api": True,
         "apiAddress": ":9997" if remote else "127.0.0.1:9997",
 
+        # Prometheus metrikalari (oqimlar, tomoshabinlar, baytlar) —
+        # keyinchalik Grafana ulash uchun tayyor turadi.
+        "metrics": True,
+        "metricsAddress": ":9998" if remote else "127.0.0.1:9998",
+
         # Kirish nazorati: har bir o'qish so'rovini backend tekshiradi —
         # saytdan berilgan chiptasiz oqim ochilmaydi. Backend ishlamayotgan
         # bo'lsa MediaMTX hamma so'rovni rad etadi (yopiq holatda xavfsiz).
