@@ -1,26 +1,18 @@
 """Nigoh — birinchi ishga tushirish tayyorgarligi."""
 import os
-import threading
 
 from core import health, security
 from core.db import get_db, init_db
+from media import reconciler
 from media import sync as mediamtx_sync
 
 from .helpers import cameras_for_mediamtx
 
 
-def _sync_mediamtx_paths() -> None:
-    """Kamera yo'llarini ishlab turgan MediaMTX bilan kelishtiradi.
-
-    Fonda ishlaydi: 5000 kamerada bu bir necha soniya olishi mumkin, sayt
-    ochilishini kutdirmasin. MediaMTX ishlamayotgan bo'lsa muammo emas —
-    har bir ko'rish so'rovida qayta urinib ko'riladi.
-    """
+def _load_cameras() -> list[dict]:
+    """Reconciler uchun: kameralarning MediaMTX ko'rinishi, har safar bazadan."""
     with get_db() as db:
-        cameras = cameras_for_mediamtx(db)
-    if mediamtx_sync.api_available():
-        result = mediamtx_sync.push_to_api(cameras)
-        print(f"MediaMTX: {result['message']}")
+        return cameras_for_mediamtx(db)
 
 
 def bootstrap() -> None:
@@ -37,8 +29,10 @@ def bootstrap() -> None:
             mediamtx_sync.write_config(cameras_for_mediamtx(db))
         print(f"mediamtx.yml yaratildi: {mediamtx_sync.CONFIG_PATH}")
 
-    # Kamera yo'llarini ishlab turgan MediaMTX'ga fonda bildiramiz.
-    threading.Thread(target=_sync_mediamtx_paths, daemon=True).start()
+    # MediaMTX'ni fonda kuzatib turamiz: yiqilsa qayta ishga tushiriladi,
+    # yo'llar (kamera qo'shildi/o'chirildi, MediaMTX qayta ko'tarildi)
+    # o'z-o'zidan kelishtiriladi. Sayt ochilishini kutdirmaydi.
+    reconciler.start(_load_cameras)
 
     with get_db() as db:
         generated = security.ensure_admin(db)
