@@ -10,7 +10,7 @@ Tekshiruv arzon bo'lishi uchun:
     portga javob beryaptimi). Bu bir necha millisekund va trafik deyarli nol.
   * Takrorlanuvchi manzillar birlashtiriladi: 2000 kamera 40 ta NVR'da
     bo'lsa, 2000 emas, 40 ta tekshiruv ketadi.
-  * Hammasi parallel (32 oqim), har 60 soniyada bir marta.
+  * Hammasi parallel (manzillar soniga moslashadi), har 60 soniyada bir marta.
 """
 import socket
 import threading
@@ -18,12 +18,18 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
+from . import stats
 from .db import get_db
 
 CHECK_INTERVAL = 60.0   # soniya — har qancha kamerada ham yetarli
-TIMEOUT = 2.0
+TIMEOUT = 1.5
+# Ishchilar soni manzillar soniga moslashadi: 5000 kamera minglab alohida
+# manzil bo'lsa ham sweep intervalga sig'adi (eng yomon holat — hammasi
+# o'chiq: 3000 manzil / 256 ishchi × 1,5 s ≈ 18 s).
+MAX_WORKERS = 256
 
 _statuses: dict[tuple[str, int], bool] = {}
+_stats = {"checked": 0, "online": 0, "duration_ms": 0, "at": ""}
 _lock = threading.Lock()
 _started = False
 
@@ -38,6 +44,7 @@ def _tcp_ok(pair: tuple[str, int]) -> bool:
 
 
 def _sweep() -> None:
+    started = time.monotonic()
     with get_db() as db:
         rows = db.execute(
             "SELECT DISTINCT ip, port FROM cameras "
@@ -49,7 +56,8 @@ def _sweep() -> None:
             _statuses.clear()
         return
 
-    with ThreadPoolExecutor(max_workers=32) as pool:
+    workers = min(MAX_WORKERS, max(8, len(pairs)))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         results = list(pool.map(_tcp_ok, pairs))
 
     fresh = dict(zip(pairs, results))
@@ -65,9 +73,32 @@ def _sweep() -> None:
                 [(now_iso, ip, port) for ip, port in alive],
             )
 
+    # Dashboard tarixiga yoziladi: hudud kesimidagi suratlar va
+    # uzildi/ulandi hodisalari. Yozilmasa ham kuzatuv to'xtamaydi.
+    try:
+        stats.record_sweep(fresh)
+    except Exception:
+        pass
+
     with _lock:
         _statuses.clear()               # o'chirilgan manzillar chiqib ketadi
         _statuses.update(fresh)
+        _stats.update(
+            checked=len(pairs), online=sum(results),
+            duration_ms=int((time.monotonic() - started) * 1000),
+            at=datetime.now(timezone.utc).isoformat(),
+        )
+
+
+def sweep_stats() -> dict:
+    """Oxirgi sweep haqida: nechta manzil, nechtasi tirik, qancha vaqt oldi.
+
+    5000 kamerada sweep intervalga sig'ayotganini kuzatish uchun —
+    `duration_ms` CHECK_INTERVAL'ga yaqinlashsa, MAX_WORKERS'ni oshirish
+    yoki intervalni kengaytirish kerak.
+    """
+    with _lock:
+        return dict(_stats)
 
 
 def _loop() -> None:

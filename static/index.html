@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nigoh — kamera xaritasi</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z' fill='none' stroke='%231668d6' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='2.8' fill='%231668d6'/%3E%3C/svg%3E">
 <script>
   // Mavzu birinchi chizishdan oldin qo'yiladi — miltillamasin.
   document.documentElement.dataset.theme =
@@ -180,6 +181,13 @@
           <div class="vrow"><span class="v" id="m-down" style="color:var(--danger)">0</span><span class="u">ta</span></div>
           <div class="note" id="m-down-note"></div></div>
       </div>
+      <div class="card" id="card-line">
+        <div class="c-head">Onlayn darajasi <span class="c-sub">so'nggi 24 soat · 5 daqiqalik o'lchovlar</span></div>
+        <div class="ch-wrap tall">
+          <svg id="ch-timeline"></svg>
+          <div class="ch-empty" id="ch-timeline-empty"></div>
+        </div>
+      </div>
       <div id="dash-grid">
         <div class="card">
           <div class="c-head">Holat taqsimoti</div>
@@ -193,8 +201,22 @@
           <div id="region-rows"></div>
         </div>
         <div class="card">
-          <div class="c-head">Hodisalar</div>
+          <div class="c-head">Hodisalar <span class="c-sub">uzilishlar tarixda saqlanadi</span></div>
           <div id="events-list"></div>
+        </div>
+      </div>
+      <div id="dash-daily">
+        <div class="card">
+          <div class="c-head">Kunlik onlayn darajasi <span class="c-sub">7 kun · o'rtacha %</span></div>
+          <div class="ch-wrap"><svg id="ch-daily-up"></svg><div class="ch-empty" id="ch-daily-up-empty"></div></div>
+        </div>
+        <div class="card">
+          <div class="c-head">Kunlik uzilishlar <span class="c-sub">7 kun · hodisalar soni</span></div>
+          <div class="ch-wrap"><svg id="ch-daily-ev"></svg><div class="ch-empty" id="ch-daily-ev-empty"></div></div>
+        </div>
+        <div class="card">
+          <div class="c-head">Bugungi uzilishlar <span class="c-sub">soat kesimida</span></div>
+          <div class="ch-wrap"><svg id="ch-hourly"></svg><div class="ch-empty" id="ch-hourly-empty"></div></div>
         </div>
       </div>
       <div id="dash-grid2">
@@ -492,6 +514,8 @@
 </div>
 
 <div id="cam-tip"><img alt=""><div class="cap"></div></div>
+
+<div id="chart-tip"><div class="v"></div><div class="l"></div></div>
 
 <div id="toast"></div>
 

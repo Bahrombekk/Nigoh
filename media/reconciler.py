@@ -11,6 +11,9 @@ Har 30 soniyada ikki ish qilinadi:
      yerda o'z-o'zidan tiklanadi. Farq bo'lmasa hech narsa yuborilmaydi,
      ya'ni tinch holatda bu bir necha o'n millisekundlik tekshiruv xolos.
 
+  3. Faol oqimlarning bayt hisobi kuzatiladi — ikki tekshiruv orasida
+     qo'zg'almagan tayyor oqim "muzlagan" deb belgilanadi (hodisa + alert).
+
 Natijada qo'lda aralashish kerak emas: kamera qo'shildi/o'chirildi yoki
 MediaMTX yiqildi — 30 soniya ichida tizim o'zini kerakli holatga keltiradi.
 """
@@ -19,6 +22,9 @@ import subprocess
 import threading
 import time
 from typing import Callable
+
+from core import alerts, events
+from core.db import get_db
 
 from . import sync
 
@@ -34,6 +40,15 @@ _started = False
 _lock = threading.Lock()
 _process: subprocess.Popen | None = None
 _last_spawn = 0.0
+
+_prev_bytes: dict[str, int] = {}   # yo'l -> oxirgi ko'rilgan bytesReceived
+_stalled: set[str] = set()         # hozir muzlab turgan yo'llar
+
+
+def stalled_paths() -> set[str]:
+    """Ayni damda muzlagan (bayt kelmayotgan) faol yo'llar."""
+    with _lock:
+        return set(_stalled)
 
 
 def _autostart_allowed() -> bool:
@@ -63,6 +78,12 @@ def _spawn() -> bool:
         print(f"MediaMTX'ni ishga tushirib bo'lmadi: {exc}", flush=True)
         return False
     print(f"MediaMTX qayta ishga tushirildi (log: {LOG_PATH.name})", flush=True)
+    try:
+        with get_db() as db:
+            events.add(db, "mediamtx", detail="MediaMTX qayta ishga tushirildi")
+    except Exception:
+        pass
+    alerts.send_async("⚠️ MediaMTX yiqilgan edi — qayta ishga tushirildi")
     # API ko'tarilishini qisqa kutamiz — yo'llar shu tickning o'zida tiklansin.
     deadline = time.monotonic() + STARTUP_WAIT
     while time.monotonic() < deadline:
@@ -70,6 +91,48 @@ def _spawn() -> bool:
             return True
         time.sleep(0.5)
     return False
+
+
+def _check_stalls() -> None:
+    """Faol oqimlarning bayt hisobi ikki tick orasida qo'zg'almasa — muzlagan.
+
+    TCP tekshiruv (health) buni ko'rmaydi: registrator portga javob
+    beraveradi, lekin kanal tasvir bermay qolishi mumkin. bytesReceived
+    esa yolg'on gapirmaydi — 30 soniyada bitta bayt ham kelmagan tayyor
+    oqim aniq muzlagan.
+    """
+    active = sync.list_active_paths()
+    if active is None:
+        return
+    changes: list[tuple[str, str]] = []
+    with _lock:
+        for name, item in active.items():
+            if not item.get("ready"):
+                continue                      # hali ulanmagan — muzlash emas
+            got = int(item.get("bytesReceived") or 0)
+            prev = _prev_bytes.get(name)
+            if prev is not None and got == prev:
+                if name not in _stalled:
+                    _stalled.add(name)
+                    changes.append((name, "stalled"))
+            elif name in _stalled:
+                _stalled.discard(name)
+                changes.append((name, "resumed"))
+        for name in list(_stalled):
+            if name not in active:            # oqim yopildi — muzlash tugadi
+                _stalled.discard(name)
+        _prev_bytes.clear()
+        _prev_bytes.update(
+            {n: int(i.get("bytesReceived") or 0) for n, i in active.items()})
+    if not changes:
+        return
+    with get_db() as db:
+        for name, kind in changes:
+            events.add(db, kind, slug=name,
+                       detail="oqim muzladi" if kind == "stalled" else "oqim tiklandi")
+    alerts.send_async("\n".join(
+        f"{'🧊 muzladi' if kind == 'stalled' else '🟢 tiklandi'}: {name}"
+        for name, kind in changes))
 
 
 def _tick(load_cameras: Callable[[], list[dict]], announce: bool) -> bool:
@@ -81,6 +144,7 @@ def _tick(load_cameras: Callable[[], list[dict]], announce: bool) -> bool:
     changed = result["added"] + result["updated"] + result["removed"]
     if announce or changed or not result["ok"]:
         print(f"MediaMTX: {result['message']}", flush=True)
+    _check_stalls()
     return result["ok"]
 
 

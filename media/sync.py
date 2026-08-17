@@ -322,8 +322,8 @@ def desired_paths(cameras: list[dict]) -> dict:
     return wanted
 
 
-def _list_all_paths() -> dict[str, dict] | None:
-    """API'dagi barcha yo'l konfiguratsiyalari — sahifalab, to'liq.
+def _paged_list(endpoint: str) -> dict[str, dict] | None:
+    """MediaMTX ro'yxatini sahifalab, to'liq o'qiydi.
 
     Bitta so'rov 1000 tagacha qaytaradi; 5000 kamerada qolgani ko'rinmay
     qolardi, shuning uchun `pageCount` tugaguncha o'qiladi.
@@ -332,9 +332,7 @@ def _list_all_paths() -> dict[str, dict] | None:
     page = 0
     while True:
         try:
-            chunk = _api(
-                "GET", f"/v3/config/paths/list?itemsPerPage=500&page={page}"
-            ) or {}
+            chunk = _api("GET", f"{endpoint}?itemsPerPage=500&page={page}") or {}
         except (urllib.error.URLError, OSError, ValueError):
             return None
         for item in chunk.get("items", []):
@@ -342,6 +340,22 @@ def _list_all_paths() -> dict[str, dict] | None:
         page += 1
         if page >= int(chunk.get("pageCount") or 1):
             return paths
+
+
+def _list_all_paths() -> dict[str, dict] | None:
+    """API orqali sozlangan barcha yo'l konfiguratsiyalari."""
+    return _paged_list("/v3/config/paths/list")
+
+
+def list_active_paths() -> dict[str, dict] | None:
+    """Ayni damda faol (runtime) yo'llar: ready, bytesReceived, o'quvchilar.
+
+    Konfiguratsiyadan farqi — bu ro'yxatda faqat hozir ishlab turgan
+    oqimlar bo'ladi. Reconciler shundan oqim muzlaganini aniqlaydi:
+    kamera portga javob bersa ham bayt hisobi joyidan qo'zg'almasa,
+    tasvir kelmayapti degani.
+    """
+    return _paged_list("/v3/paths/list")
 
 
 def push_to_api(cameras: list[dict]) -> dict:

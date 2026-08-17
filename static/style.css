@@ -290,6 +290,29 @@
   .erow .ln{flex:0 0 3px;border-radius:2px}
   .erow .tx{flex:1;font-size:12px;line-height:1.45;font-weight:500}
 
+  /* Dashboard grafiklari */
+  #card-line{margin-top:10px}
+  #dash-daily{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px}
+  .ch-wrap{position:relative;padding:12px 14px 8px}
+  .ch-wrap svg{display:block;width:100%;height:170px}
+  .ch-wrap.tall svg{height:210px}
+  .ch-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    color:var(--muted);font-size:12px;text-align:center;padding:0 22px;line-height:1.6}
+  .ch-tick{font-family:var(--mono);font-size:10px;fill:var(--faint)}
+  .ch-cap{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+  #chart-tip{position:fixed;z-index:1250;display:none;pointer-events:none;
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    box-shadow:var(--shadow-sm);padding:7px 11px}
+  #chart-tip .v{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text)}
+  #chart-tip .l{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .rrow .lb2{flex:0 0 52px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .rrow .lb2.bad{color:var(--danger)}
+  .rrow.head{padding:5px 14px}
+  .rrow.head span{font-family:var(--font);font-size:9.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--faint);font-weight:700}
+  .rrow.head .bar-h{flex:1;text-align:left}
+  .erow .tm{flex:0 0 auto;min-width:40px;white-space:nowrap}
+
   /* Boshqaruv jadvali */
   #admin-search{width:220px;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;outline:none;
     padding:8px 12px;font-size:12.5px;color:var(--text)}
@@ -380,7 +403,7 @@
   @media (max-width:900px){
     #searchpill{display:none}
     #metrics{grid-template-columns:1fr 1fr}
-    #dash-grid,#dash-grid2{grid-template-columns:1fr}
+    #dash-grid,#dash-grid2,#dash-daily{grid-template-columns:1fr}
     #donut-wrap{justify-content:center}
     #sel-panel{right:14px;left:14px;width:auto;top:auto;bottom:76px}
     #list-panel{width:min(312px,80vw)}

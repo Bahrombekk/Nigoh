@@ -42,6 +42,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cameras_enabled ON cameras(enabled)",
     "CREATE INDEX IF NOT EXISTS idx_cameras_bbox ON cameras(lat, lng)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)",
+    "CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)",
 ]
 
 
@@ -134,6 +135,44 @@ def init_db() -> None:
                 admin_id INTEGER NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 expires_at TEXT NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL DEFAULT (datetime('now')),
+                kind TEXT NOT NULL,   -- offline|online|stalled|resumed|mediamtx
+                ip TEXT,
+                port INTEGER,
+                slug TEXT,
+                detail TEXT
+            )
+            """
+        )
+
+        # Dashboard statistikasi: hudud kesimidagi 5 daqiqalik suratlar va
+        # uzilish/ulanish hodisalari (core/stats.py yozadi).
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS stats_region (
+                ts TEXT NOT NULL,
+                region TEXT NOT NULL,
+                total INTEGER NOT NULL,
+                online INTEGER NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS stats_event (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                camera_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                region TEXT NOT NULL,
+                kind TEXT NOT NULL
             )
             """
         )

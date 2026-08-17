@@ -7,6 +7,7 @@ Qatlamlar:
     app/helpers.py        umumiy tarjima qatlami (baza → brauzer/MediaMTX)
     app/routes_auth.py    /api/auth/*
     app/routes_public.py  /api/cameras/*   (kirishsiz)
+    app/routes_stats.py   /api/stats/*     (kirishsiz — dashboard tarixi)
     app/routes_admin.py   /api/admin/*     (super-admin)
 
 MediaMTX bilan aloqa alohida `media/` paketida — backend unga faqat
@@ -23,6 +24,7 @@ from .config import VENDORS
 from .routes_admin import router as admin_router
 from .routes_auth import router as auth_router
 from .routes_public import router as public_router
+from .routes_stats import router as stats_router
 
 
 def create_app() -> FastAPI:
@@ -52,6 +54,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(public_router)
+    app.include_router(stats_router)
     app.include_router(admin_router)
 
     # Qolgan static fayllar (style.css, app.js) — yuqoridagi maxsus

@@ -4,9 +4,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from core import security
+from core import health, security
 from core.db import get_db, unique_slug
 from core.rtsp_probe import probe
+from media import reconciler
 from media import sync as mediamtx_sync
 
 from .config import CHANNEL_VENDORS, VENDORS
@@ -349,6 +350,30 @@ def admin_probe(body: ProbeIn):
 
 
 # ---------- MediaMTX ----------
+
+@router.get("/status")
+def admin_status():
+    """Tizim salomatligi bir qarashda — 5000 kamerani ko'z bilan emas,
+    raqam bilan kuzatish uchun: MediaMTX tirikmi, health sweep intervalga
+    sig'ayaptimi, qaysi faol oqimlar muzlagan."""
+    return {
+        "mediamtx": mediamtx_sync.api_available(),
+        "health": health.sweep_stats(),
+        "stalled": sorted(reconciler.stalled_paths()),
+    }
+
+
+@router.get("/events")
+def admin_events(limit: int = 100):
+    """Media qatlamining so'nggi hodisalari: oqim muzladi/tiklandi,
+    MediaMTX qayta ishga tushdi. Kamera uzilish tarixi stats_event'da."""
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT ts, kind, ip, port, slug, detail FROM events "
+            "ORDER BY id DESC LIMIT ?", (max(1, min(limit, 500)),),
+        ).fetchall()
+    return {"events": [dict(r) for r in rows]}
+
 
 @router.post("/mediamtx/sync")
 def admin_sync():
