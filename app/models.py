@@ -26,6 +26,9 @@ class CameraIn(BaseModel):
     username: str = Field(default="", max_length=100)
     password: str | None = None        # None = o'zgartirilmasin
     rtsp_path: str = Field(default="/stream1", max_length=300)
+    # Past sifatli 2-oqim (video devor uchun). None — avtomatik: ishlab
+    # chiqaruvchi shablonidan hosil qilinadi va tekshiriladi.
+    sub_path: str | None = Field(default=None, max_length=300)
     vendor: str = Field(default="boshqa", max_length=40)
 
     # Tayyor oqim manzili uchun

@@ -441,7 +441,7 @@ function createPlayer(video, msgEl) {
     video.load();
   };
 
-  p.open = (cam, useHevc) => {
+  p.open = (cam, useHevc, quality) => {
     p.stop();
     const my = ++p.token;
     const stale = () => p.token !== my;
@@ -462,14 +462,18 @@ function createPlayer(video, msgEl) {
     };
     video.addEventListener("playing", opened, { once: true });
 
-    api("/api/cameras/" + cam.id + "/stream?hevc=" + (useHevc ? 1 : 0))
+    api("/api/cameras/" + cam.id + "/stream?hevc=" + (useHevc ? 1 : 0) +
+        (quality ? "&quality=" + quality : ""))
       .then((urls) => {
         if (stale()) return;
         p.mode = urls.mode;
-        // Xom H.265 amalda o'qilmasa — bir marta o'girilganiga qaytamiz.
-        const onFail = urls.mode === "raw"
-          ? () => { if (!stale()) p.open(cam, false); }
-          : () => { if (!stale()) msgEl.textContent = FAIL_MSG; };
+        // Sub oqim ishlamasa — asosiyga; xom H.265 amalda o'qilmasa —
+        // bir marta o'girilganiga qaytamiz.
+        const onFail = urls.mode === "sub"
+          ? () => { if (!stale()) p.open(cam, useHevc); }
+          : urls.mode === "raw"
+            ? () => { if (!stale()) p.open(cam, false); }
+            : () => { if (!stale()) msgEl.textContent = FAIL_MSG; };
         attach(urls, stale, onFail);
       })
       .catch((e) => { if (!stale()) msgEl.textContent = e.message; });
@@ -542,7 +546,11 @@ function createPlayer(video, msgEl) {
         });
         hls.on(Hls.Events.ERROR, (_, d) => {
           if (!d.fatal || staleFn()) return;
-          if (onFail && d.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.destroy(); onFail(); return; }
+          // Sub oqimda har qanday jiddiy xato — asosiyga qaytish sababi
+          // (sub yo'l NVR'da o'chirilgan bo'lishi mumkin).
+          if (onFail && (d.type === Hls.ErrorTypes.MEDIA_ERROR || p.mode === "sub")) {
+            hls.destroy(); onFail(); return;
+          }
           msgEl.textContent = FAIL_MSG;
         });
       } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -814,7 +822,12 @@ function buildWall() {
       const player = createPlayer(tile.querySelector("video"), tile.querySelector(".t-msg"));
       const msEl = tile.querySelector(".t-foot span:last-child");
       player.onOpen = (ms) => { msEl.textContent = (ms / 1000).toFixed(2) + "s"; };
-      player.open(cam, HEVC_OK);
+      // Setkada past sifatli 2-oqim (sub) — 16 plitka tarmoqni bo'g'masin.
+      // Sub bo'lmasa server asosiysini beradi; to'liq ekranda asosiyga o'tiladi.
+      player.open(cam, HEVC_OK, "sub");
+      tile.addEventListener("fullscreenchange", () => {
+        player.open(cam, HEVC_OK, document.fullscreenElement === tile ? "" : "sub");
+      });
       wallPlayers.push(player);
     } else {
       tile.querySelector(".t-msg").textContent = "ulanish yo'q";

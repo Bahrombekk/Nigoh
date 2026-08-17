@@ -6,13 +6,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from core import health, security
 from core.db import get_db, unique_slug
+from core.fast_start import channel_from_path
 from core.rtsp_probe import probe
 from media import reconciler
 from media import sync as mediamtx_sync
 
 from .config import CHANNEL_VENDORS, VENDORS
-from .helpers import (admin_camera, cameras_for_mediamtx, detect_codec,
-                      mask_config, require_admin)
+from .helpers import (admin_camera, cameras_for_mediamtx, channel_path,
+                      detect_codec, detect_sub_path, mask_config,
+                      require_admin)
 from .models import CameraIn, NvrIn, ProbeIn, ScanIn
 
 router = APIRouter(prefix="/api/admin", tags=["admin"],
@@ -53,13 +55,14 @@ def admin_list(request: Request, q: str = "", limit: int = 100, offset: int = 0)
 def admin_create(cam: CameraIn, request: Request):
     cam.validate_complete()
     codec, transcode = detect_codec(cam, cam.password or "")
+    sub_path = detect_sub_path(cam, cam.password or "")
     with get_db() as db:
         slug = unique_slug(db, f"{cam.region}_{cam.name}")
         db.execute(
             "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, ip, "
-            "port, username, password_enc, rtsp_path, vendor, enabled, note, "
-            "codec, transcode, always_on) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "port, username, password_enc, rtsp_path, sub_path, vendor, enabled, "
+            "note, codec, transcode, always_on) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 cam.name.strip(), cam.region.strip(), cam.lat, cam.lng,
                 cam.stream_url.strip() if cam.source_type == "manual" else "",
@@ -67,8 +70,8 @@ def admin_create(cam: CameraIn, request: Request):
                 cam.ip.strip() if cam.source_type == "rtsp" else "",
                 cam.port, cam.username.strip(),
                 security.encrypt(cam.password) if cam.password else "",
-                cam.rtsp_path.strip(), cam.vendor, int(cam.enabled), cam.note.strip(),
-                codec, int(transcode), int(cam.always_on),
+                cam.rtsp_path.strip(), sub_path, cam.vendor, int(cam.enabled),
+                cam.note.strip(), codec, int(transcode), int(cam.always_on),
             ),
         )
         row = db.execute("SELECT * FROM cameras WHERE slug = ?", (slug,)).fetchone()
@@ -96,28 +99,69 @@ def admin_update(camera_id: int, cam: CameraIn, request: Request):
             slug = unique_slug(db, f"{cam.region}_{cam.name}", exclude_id=camera_id)
 
         # Kodekni qayta aniqlaymiz — kamera sozlamasi o'zgargan bo'lishi mumkin.
-        codec, transcode = detect_codec(cam, cam.password or security.decrypt(password_enc))
-        if not codec:                       # kamera javob bermadi — eskisi qoladi
+        password = cam.password or security.decrypt(password_enc)
+        codec, transcode = detect_codec(cam, password)
+        responded = bool(codec)
+        if not responded:                   # kamera javob bermadi — eskisi qoladi
             codec, transcode = old["codec"] or "", bool(old["transcode"])
+
+        sub_path = detect_sub_path(cam, password)
+        if not sub_path and not responded:  # kamera javob bermadi — eskisi qoladi
+            sub_path = old["sub_path"] or ""
 
         db.execute(
             "UPDATE cameras SET name=?, region=?, lat=?, lng=?, stream_url=?, "
             "slug=?, ip=?, port=?, username=?, password_enc=?, rtsp_path=?, "
-            "vendor=?, enabled=?, note=?, codec=?, transcode=?, always_on=? "
-            "WHERE id=?",
+            "sub_path=?, vendor=?, enabled=?, note=?, codec=?, transcode=?, "
+            "always_on=? WHERE id=?",
             (
                 cam.name.strip(), cam.region.strip(), cam.lat, cam.lng,
                 cam.stream_url.strip() if cam.source_type == "manual" else "",
                 slug,
                 cam.ip.strip() if cam.source_type == "rtsp" else "",
                 cam.port, cam.username.strip(), password_enc,
-                cam.rtsp_path.strip(), cam.vendor, int(cam.enabled),
+                cam.rtsp_path.strip(), sub_path, cam.vendor, int(cam.enabled),
                 cam.note.strip(), codec, int(transcode), int(cam.always_on),
                 camera_id,
             ),
         )
         row = db.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
     return admin_camera(row, request)
+
+
+@router.post("/cameras/detect-sub")
+def admin_detect_sub():
+    """Sub yo'li yo'q kameralarga past sifatli 2-oqimni topib beradi.
+
+    Mavjud bazani bir bosishda to'ldirish uchun: har bir kamera uchun
+    ishlab chiqaruvchi shablonidan sub yo'l hosil qilinadi va parallel
+    tekshiriladi — faqat javob berganlari saqlanadi.
+    """
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT * FROM cameras WHERE enabled = 1 AND ip IS NOT NULL "
+            "AND ip != '' AND (sub_path IS NULL OR sub_path = '')"
+        ).fetchall()
+
+    def job(row) -> tuple[int, str]:
+        main = (row["rtsp_path"] or "").strip()
+        candidate = channel_path(row["vendor"] or "boshqa",
+                                 channel_from_path(main), "sub")
+        if candidate == main:
+            return row["id"], ""
+        result = probe(row["ip"], row["port"] or 554, candidate,
+                       row["username"] or "",
+                       security.decrypt(row["password_enc"]))
+        return row["id"], candidate if result.get("ok") else ""
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(job, rows))
+
+    found = [(sub, cam_id) for cam_id, sub in results if sub]
+    if found:
+        with get_db() as db:
+            db.executemany("UPDATE cameras SET sub_path = ? WHERE id = ?", found)
+    return {"checked": len(rows), "found": len(found)}
 
 
 @router.delete("/cameras/{camera_id}", status_code=204)
@@ -158,25 +202,6 @@ def parse_channels(spec: str, limit: int = 512) -> list[int]:
     return unique
 
 
-def channel_path(vendor: str, channel: int, stream: str) -> str:
-    """Kanal raqamidan ishlab chiqaruvchiga mos RTSP yo'lini quradi."""
-    sub = stream == "sub"
-    if vendor == "hikvision":
-        # 101 = 1-kanal asosiy, 102 = 1-kanal qo'shimcha oqim
-        return f"/Streaming/Channels/{channel}0{2 if sub else 1}"
-    if vendor in ("dahua", "amcrest"):
-        return f"/cam/realmonitor?channel={channel}&subtype={1 if sub else 0}"
-    if vendor == "uniview":
-        return f"/unicast/c{channel}/s{2 if sub else 1}/live"
-    if vendor == "reolink":
-        return f"/h264Preview_{channel:02d}_{'sub' if sub else 'main'}"
-    if vendor == "axis":
-        return f"/axis-media/media.amp?camera={channel}"
-    if vendor == "holowits":
-        return f"/LiveMedia/ch{channel}/Media{2 if sub else 1}"
-    return f"/stream{2 if sub else 1}"
-
-
 def spread_point(lat: float, lng: float, index: int, spread_m: int) -> tuple[float, float]:
     """Nuqtalarni spiral bo'ylab tarqatadi — markerlar ustma-ust tushmasin."""
     if spread_m <= 0 or index == 0:
@@ -201,28 +226,40 @@ def admin_nvr_import(body: NvrIn):
             "channel": channel,
             "name": f"{prefix} {channel}-kanal",
             "rtsp_path": channel_path(body.vendor, channel, body.stream),
+            # Video devor uchun past sifatli 2-oqim — faqat tekshiruvdan
+            # o'tsa saqlanadi (ba'zi NVR kanallarida sub yo'q bo'ladi).
+            "sub_path": (channel_path(body.vendor, channel, "sub")
+                         if body.stream == "main" else ""),
             "lat": lat, "lng": lng,
         })
 
     # Tekshirish parallel ketadi — 64 ta kanalni ketma-ket tekshirish
-    # bir necha daqiqa oladi, parallel esa bir necha soniya.
-    results: dict[int, dict] = {}
+    # bir necha daqiqa oladi, parallel esa bir necha soniya. Asosiy va
+    # sub oqimlar bitta hovuzda birga tekshiriladi.
+    results: dict[tuple[int, str], dict] = {}
     if body.probe:
+        jobs = [(item["channel"], "main", item["rtsp_path"]) for item in planned]
+        jobs += [(item["channel"], "sub", item["sub_path"])
+                 for item in planned if item["sub_path"]]
         with ThreadPoolExecutor(max_workers=16) as pool:
             futures = {
-                pool.submit(probe, body.ip, body.port, item["rtsp_path"],
-                            body.username, body.password): item["channel"]
-                for item in planned
+                pool.submit(probe, body.ip, body.port, path,
+                            body.username, body.password): (channel, kind)
+                for channel, kind, path in jobs
             }
             for future in as_completed(futures):
                 results[futures[future]] = future.result()
 
     for item in planned:
-        result = results.get(item["channel"])
+        result = results.get((item["channel"], "main"))
         item["ok"] = result["ok"] if result else None
         item["codec"] = result.get("codec", "") if result else ""
         item["transcode"] = bool(result.get("needs_transcode")) if result else False
         item["message"] = result["message"] if result else "tekshirilmadi"
+        if body.probe:
+            sub = results.get((item["channel"], "sub"))
+            if not (sub and sub.get("ok")):
+                item["sub_path"] = ""
 
     if body.dry_run:
         return {"planned": planned, "created": 0,
@@ -237,12 +274,12 @@ def admin_nvr_import(body: NvrIn):
             slug = unique_slug(db, f"{body.region}_{item['name']}")
             db.execute(
                 "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, ip, "
-                "port, username, password_enc, rtsp_path, vendor, enabled, note, "
-                "codec, transcode, always_on) "
-                "VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                "port, username, password_enc, rtsp_path, sub_path, vendor, enabled, "
+                "note, codec, transcode, always_on) "
+                "VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
                 (item["name"], body.region.strip(), item["lat"], item["lng"], slug,
                  body.ip.strip(), body.port, body.username.strip(), password_enc,
-                 item["rtsp_path"], body.vendor, int(body.enabled),
+                 item["rtsp_path"], item["sub_path"], body.vendor, int(body.enabled),
                  f"{body.ip} · {item['channel']}-kanal",
                  item["codec"], int(item["transcode"])),
             )

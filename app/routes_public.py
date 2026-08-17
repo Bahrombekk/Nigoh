@@ -54,10 +54,13 @@ def list_cameras(bbox: str = "", limit: int = 20000):
 
 
 @router.get("/{camera_id}/stream")
-def camera_stream(camera_id: int, request: Request, hevc: int = 0):
+def camera_stream(camera_id: int, request: Request, hevc: int = 0,
+                  quality: str = ""):
     """Bitta kameraning oqim manzili — ko'rish boshlanganda so'raladi.
 
     `hevc=1` — brauzer H.265 ni o'zi o'qiy oladi, o'girish kerak emas.
+    `quality=sub` — past sifatli 2-oqim (video devor setkasi uchun);
+    kamerada sub yo'l bo'lmasa asosiy oqim qaytadi.
     """
     with get_db() as db:
         row = db.execute(
@@ -70,15 +73,19 @@ def camera_stream(camera_id: int, request: Request, hevc: int = 0):
     # Yo'l MediaMTX'da borligiga ishonch hosil qilamiz — u qayta ishga
     # tushgan bo'lsa ham ko'rish shu yerda tiklanadi.
     if camera:
-        mediamtx_sync.ensure_path(camera)
-        mediamtx_sync.ensure_transcode_path(camera)
+        sub = mediamtx_sync.sub_variant(camera) if quality == "sub" else None
+        if sub:
+            mediamtx_sync.ensure_path(sub)
+        else:
+            mediamtx_sync.ensure_path(camera)
+            mediamtx_sync.ensure_transcode_path(camera)
         # Kameradan darhol keyframe so'raymiz (ONVIF) — tasvir navbatdagi
         # keyframe'gacha (2-4 s) kutib qolmasin. Fonda ketadi, javobni
         # kechiktirmaydi; qo'llamaydigan kamera jim rad etadi.
         fast_start.request_keyframe_async(
             camera["ip"], camera["username"], camera["password"],
             camera["rtsp_path"], row["vendor"] or "")
-    return stream_urls(row, request, hevc_ok=bool(hevc))
+    return stream_urls(row, request, hevc_ok=bool(hevc), quality=quality)
 
 
 @router.get("/{camera_id}/snapshot")

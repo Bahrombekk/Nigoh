@@ -239,6 +239,13 @@ def probe(ip: str, port: int, path: str, username: str = "",
 
         return {"ok": True, "stage": "tayyor", "message": message,
                 "codec": codec, "needs_transcode": needs_transcode}
+    except (socket.timeout, OSError) as exc:
+        # Ba'zi NVR'lar mavjud bo'lmagan kanal/oqim so'ralganda ulanishni
+        # majburan uzadi (ConnectionReset) — bu tizim xatosi emas,
+        # "bunday oqim yo'q" degani.
+        return fail("rtsp", f"Kamera ulanishni uzib qo'ydi "
+                            f"({exc.__class__.__name__}) — bu yo'l/kanal "
+                            f"mavjud emas bo'lishi mumkin")
     finally:
         try:
             sock.close()

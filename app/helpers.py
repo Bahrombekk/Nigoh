@@ -11,6 +11,7 @@ from fastapi import HTTPException, Request
 
 from core import security
 from core.db import get_db
+from core.fast_start import channel_from_path
 from core.rtsp_probe import probe
 from media import sync as mediamtx_sync
 
@@ -26,13 +27,17 @@ def media_host(request: Request) -> str:
     return "localhost" if host == "0.0.0.0" else host
 
 
-def stream_urls(row, request: Request, hevc_ok: bool = False) -> dict:
+def stream_urls(row, request: Request, hevc_ok: bool = False,
+                quality: str = "") -> dict:
     """Kameraning oqim manzillari — faqat kerak bo'lganda so'raladi.
 
     `hevc_ok` — brauzer H.265 ni o'zi o'qiy oladi. Shunday bo'lsa, H.265
     kamera o'girilmaydi: `<kamera>_raw` yo'li xom oqimni beradi va GPU
     umuman ishlatilmaydi. Bunda WebRTC ishlamaydi (u H.265 ni bilmaydi),
     shuning uchun faqat HLS manzili qaytariladi.
+
+    `quality="sub"` — past sifatli ikkinchi oqim (video devor setkasi
+    uchun). Kamerada sub yo'l bo'lmasa, jimgina asosiy oqim qaytadi.
     """
     host = media_host(request)
     if not row["ip"]:
@@ -47,7 +52,10 @@ def stream_urls(row, request: Request, hevc_ok: bool = False) -> dict:
     #      2-4 soniya, o'girilgan oqimda esa 1,2 soniya, ya'ni ikki barobar
     #      tez ochiladi. Buning narxi: doimiy FFmpeg va GPU.
     slug = row["slug"]
-    if row["transcode"] and (not hevc_ok or row["always_on"]):
+    if quality == "sub" and row["sub_path"]:
+        slug += mediamtx_sync.SUB_SUFFIX
+        mode = "sub"                      # sub odatda H.264 — o'girish kerak emas
+    elif row["transcode"] and (not hevc_ok or row["always_on"]):
         slug += mediamtx_sync.TRANSCODE_SUFFIX
         mode = "transcode"
     else:
@@ -88,6 +96,7 @@ def admin_camera(row, request: Request) -> dict:
         "username": row["username"] or "",
         "has_password": bool(row["password_enc"]),
         "rtsp_path": row["rtsp_path"] or "",
+        "sub_path": row["sub_path"] or "",
         "vendor": row["vendor"] or "boshqa",
         "enabled": bool(row["enabled"]),
         "note": row["note"] or "",
@@ -132,12 +141,52 @@ def camera_for_mediamtx(row) -> dict | None:
         "enabled": bool(row["enabled"]),
         "transcode": bool(row["transcode"]),
         "always_on": bool(row["always_on"]),
+        "sub_path": row["sub_path"] or "",
     }
 
 
 def cameras_for_mediamtx(db) -> list[dict]:
     rows = db.execute("SELECT * FROM cameras WHERE ip IS NOT NULL AND ip != ''").fetchall()
     return [c for c in (camera_for_mediamtx(r) for r in rows) if c]
+
+
+def channel_path(vendor: str, channel: int, stream: str) -> str:
+    """Kanal raqamidan ishlab chiqaruvchiga mos RTSP yo'lini quradi."""
+    sub = stream == "sub"
+    if vendor == "hikvision":
+        # 101 = 1-kanal asosiy, 102 = 1-kanal qo'shimcha oqim
+        return f"/Streaming/Channels/{channel}0{2 if sub else 1}"
+    if vendor in ("dahua", "amcrest"):
+        return f"/cam/realmonitor?channel={channel}&subtype={1 if sub else 0}"
+    if vendor == "uniview":
+        return f"/unicast/c{channel}/s{2 if sub else 1}/live"
+    if vendor == "reolink":
+        return f"/h264Preview_{channel:02d}_{'sub' if sub else 'main'}"
+    if vendor == "axis":
+        return f"/axis-media/media.amp?camera={channel}"
+    if vendor == "holowits":
+        return f"/LiveMedia/ch{channel}/Media{2 if sub else 1}"
+    return f"/stream{2 if sub else 1}"
+
+
+def detect_sub_path(cam: CameraIn, password: str) -> str:
+    """Past sifatli ikkinchi oqim yo'lini topadi (video devor uchun).
+
+    Admin qiymat kiritgan bo'lsa — o'sha saqlanadi. Kiritmagan bo'lsa
+    ishlab chiqaruvchi shablonidan hosil qilinadi va tekshiriladi:
+    javob bermagan yo'l saqlanmaydi (ba'zi NVR'lar ikkinchi oqimni
+    bermaydi — masalan, ayrim Holowits kanallarida Media2 xato beradi).
+    """
+    if cam.sub_path is not None:
+        return cam.sub_path.strip()
+    if cam.source_type != "rtsp" or not cam.ip.strip():
+        return ""
+    candidate = channel_path(cam.vendor, channel_from_path(cam.rtsp_path), "sub")
+    if candidate == cam.rtsp_path.strip():
+        return ""                          # asosiy oqimning o'zi sub ekan
+    result = probe(cam.ip.strip(), cam.port, candidate,
+                   cam.username.strip(), password)
+    return candidate if result.get("ok") else ""
 
 
 def detect_codec(cam: CameraIn, password: str) -> tuple[str, bool]:

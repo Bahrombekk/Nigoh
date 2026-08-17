@@ -26,6 +26,7 @@ CAMERA_EXTRA_COLUMNS = {
     "username": "TEXT",
     "password_enc": "TEXT",
     "rtsp_path": "TEXT",
+    "sub_path": "TEXT",                           # past sifatli 2-oqim (video devor)
     "vendor": "TEXT",
     "enabled": "INTEGER NOT NULL DEFAULT 1",
     "note": "TEXT",

@@ -135,6 +135,20 @@ def transcode_args(src_url: str, dst_url: str, gpu: bool = True,
 # ---------- yo'llar ----------
 
 TRANSCODE_SUFFIX = "_h264"
+SUB_SUFFIX = "_sub"
+
+
+def sub_variant(cam: dict) -> dict | None:
+    """Kameraning past sifatli ikkinchi oqimi (`<slug>_sub` yo'li).
+
+    Video devor 4×4 setkada 16 ta to'liq oqim tortmasin — sub-stream
+    tarmoq va dekodlash yukini ~10 barobar kamaytiradi. Sub odatda H.264
+    bo'ladi, shuning uchun o'girish ham kerak emas.
+    """
+    if not cam.get("sub_path"):
+        return None
+    return {**cam, "slug": cam["slug"] + SUB_SUFFIX,
+            "rtsp_path": cam["sub_path"], "always_on": False}
 
 
 def _launcher(slug_expr: str) -> str:
@@ -333,6 +347,9 @@ def desired_paths(cameras: list[dict]) -> dict:
         if not (cam.get("enabled") and cam.get("ip")):
             continue
         wanted[cam["slug"]] = source_path(cam)
+        sub = sub_variant(cam)
+        if sub:
+            wanted[sub["slug"]] = source_path(sub)
         if cam.get("transcode") and cam.get("always_on"):
             name = cam["slug"] + TRANSCODE_SUFFIX
             wanted[name] = {"runOnInit": _launcher(name), "runOnInitRestart": True}

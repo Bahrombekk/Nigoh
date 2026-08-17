@@ -42,6 +42,7 @@ _CHANNEL_PATTERNS = (
     r"Preview_(\d+)_",       # reolink: /h264Preview_01_main -> 1
     r"camera=(\d+)",         # axis
     r"/c(\d+)/",             # uniview: /unicast/c3/s1/live -> 3
+    r"/ch(\d+)/",            # holowits: /LiveMedia/ch2/Media1 -> 2
 )
 
 
