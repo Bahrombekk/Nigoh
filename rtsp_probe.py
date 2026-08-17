@@ -45,7 +45,8 @@ def _digest_header(username: str, password: str, method: str, uri: str,
     return header
 
 
-def _request(sock, method: str, uri: str, cseq: int, auth: str = "") -> str:
+def _request(sock, method: str, uri: str, cseq: int, auth: str = "",
+             extra: list[str] | None = None) -> str:
     lines = [
         f"{method} {uri} RTSP/1.0",
         f"CSeq: {cseq}",
@@ -53,6 +54,8 @@ def _request(sock, method: str, uri: str, cseq: int, auth: str = "") -> str:
     ]
     if method == "DESCRIBE":
         lines.append("Accept: application/sdp")
+    if extra:
+        lines.extend(extra)
     if auth:
         lines.append(f"Authorization: {auth}")
     sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
@@ -80,6 +83,33 @@ def sdp_codec(describe: str) -> str:
         if upper in ("H264", "H265", "HEVC", "MP4V-ES", "JPEG", "AV1", "VP8", "VP9"):
             return "H265" if upper == "HEVC" else upper
     return ""
+
+
+def sdp_video_control(describe: str, request_uri: str) -> str:
+    """SDP ichidan video trekning SETUP manzilini topadi.
+
+    Kameralar buni uch xil beradi: to'liq URL, nisbiy yo'l ('trackID=1')
+    yoki umuman bermaydi. Nisbiy bo'lsa Content-Base'ga qo'shiladi.
+    """
+    base = request_uri
+    match = re.search(r"^Content-Base:\s*(\S+)", describe,
+                      re.IGNORECASE | re.MULTILINE)
+    if match:
+        base = match.group(1)
+
+    control, in_video = "", False
+    for line in describe.splitlines():
+        if line.startswith("m="):
+            in_video = line.startswith("m=video")
+        elif in_video and line.startswith("a=control:"):
+            control = line.split(":", 1)[1].strip()
+            break
+
+    if not control or control == "*":
+        return base
+    if control.lower().startswith("rtsp://"):
+        return control
+    return base.rstrip("/") + "/" + control.lstrip("/")
 
 
 def probe(ip: str, port: int, path: str, username: str = "",
@@ -127,10 +157,10 @@ def probe(ip: str, port: int, path: str, username: str = "",
         describe = _request(sock, "DESCRIBE", uri, 2)
         code = _status(describe)
 
+        challenge = ""
         if code == 401:
             if not username:
                 return fail("parol", "Kamera login/parol so'rayapti — ularni kiriting")
-            challenge = ""
             for line in describe.split("\r\n"):
                 if line.lower().startswith("www-authenticate:"):
                     challenge = line.split(":", 1)[1].strip()
@@ -159,9 +189,47 @@ def probe(ip: str, port: int, path: str, username: str = "",
         codec = sdp_codec(describe)
         needs_transcode = codec in ("H265", "MP4V-ES", "JPEG")
 
-        if not ("m=video" in describe):
-            message = "Ulanish muvaffaqiyatli, lekin video oqim e'lon qilinmadi"
-        elif needs_transcode:
+        # Ba'zi qurilmalar istalgan (hatto mavjud bo'lmagan) yo'lga ham 200
+        # qaytaradi, lekin videosiz bo'sh SDP beradi — bu ishlaydigan oqim
+        # emas, xato deb qaytaramiz, aks holda skaner soxta kanallar topadi.
+        if "m=video" not in describe:
+            return fail("oqim", "Kamera javob berdi, lekin bu yo'lda video "
+                                "oqim yo'q — RTSP yo'lini tekshiring")
+
+        # 4-bosqich: SETUP — kamera oqimni haqiqatan beradimi. DESCRIBE'ga
+        # javob berib, SETUP'da rad etadigan kameralar uchraydi (masalan,
+        # o'chirilgan qo'shimcha oqim yoki band kanal) — bularni shu yerda
+        # ushlaymiz, aks holda "ok" deb saqlanadi-yu, video ochilmaydi.
+        if "m=video" in describe:
+            setup_uri = sdp_video_control(describe, uri)
+            transport = ["Transport: RTP/AVP/TCP;unicast;interleaved=0-1"]
+            setup_auth = ""
+            if challenge and challenge.lower().startswith("digest"):
+                setup_auth = _digest_header(username, password, "SETUP",
+                                            setup_uri, challenge)
+            elif challenge:
+                token = base64.b64encode(f"{username}:{password}".encode()).decode()
+                setup_auth = f"Basic {token}"
+            try:
+                setup = _request(sock, "SETUP", setup_uri, 4, setup_auth, transport)
+            except (socket.timeout, OSError):
+                return fail("oqim", "Kamera SETUP so'roviga javob bermadi")
+            setup_code = _status(setup)
+            if setup_code == 461:
+                # TCP transportni bilmaydi — UDP bilan qayta urinamiz.
+                udp = ["Transport: RTP/AVP;unicast;client_port=45678-45679"]
+                try:
+                    setup = _request(sock, "SETUP", setup_uri, 5, setup_auth, udp)
+                    setup_code = _status(setup)
+                except (socket.timeout, OSError):
+                    setup_code = 0
+            if setup_code and setup_code >= 400:
+                return fail("oqim",
+                            f"Kamera javob beradi, lekin oqimni bermayapti "
+                            f"(SETUP {setup_code}) — bu oqim/kanal o'chiq yoki "
+                            f"band bo'lishi mumkin, boshqa yo'lni sinang")
+
+        if needs_transcode:
             message = (f"Ulanish muvaffaqiyatli · kodek {codec} — brauzer buni "
                        f"o'qiy olmaydi, H.264 ga o'girib beriladi")
         elif codec:

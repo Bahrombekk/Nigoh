@@ -1,0 +1,97 @@
+"""Nigoh — kameralarning tirikligini fonda kuzatish.
+
+Talab bo'yicha ulanish dizaynining bitta kamchiligi bor: kamera o'chib
+qolsa, buni faqat kimdir bosganda bilamiz. Bu modul fonda yengil tekshiruv
+yuritadi — xaritada o'chiq kameralar qizil nuqta bo'lib ko'rinadi.
+
+Tekshiruv arzon bo'lishi uchun:
+
+  * RTSP oqim ochilmaydi — faqat TCP ulanish sinaladi (kamera/registrator
+    portga javob beryaptimi). Bu bir necha millisekund va trafik deyarli nol.
+  * Takrorlanuvchi manzillar birlashtiriladi: 2000 kamera 40 ta NVR'da
+    bo'lsa, 2000 emas, 40 ta tekshiruv ketadi.
+  * Hammasi parallel (32 oqim), har 60 soniyada bir marta.
+"""
+import socket
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+
+from db import get_db
+
+CHECK_INTERVAL = 60.0   # soniya — har qancha kamerada ham yetarli
+TIMEOUT = 2.0
+
+_statuses: dict[tuple[str, int], bool] = {}
+_lock = threading.Lock()
+_started = False
+
+
+def _tcp_ok(pair: tuple[str, int]) -> bool:
+    try:
+        sock = socket.create_connection(pair, timeout=TIMEOUT)
+        sock.close()
+        return True
+    except OSError:
+        return False
+
+
+def _sweep() -> None:
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT DISTINCT ip, port FROM cameras "
+            "WHERE enabled = 1 AND ip IS NOT NULL AND ip != ''"
+        ).fetchall()
+    pairs = [(row["ip"], row["port"] or 554) for row in rows]
+    if not pairs:
+        with _lock:
+            _statuses.clear()
+        return
+
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        results = list(pool.map(_tcp_ok, pairs))
+
+    fresh = dict(zip(pairs, results))
+
+    # Tirik chiqqanlarning "oxirgi onlayn" vaqti bazaga yoziladi — server
+    # qayta ishga tushsa ham tarix yo'qolmaydi.
+    alive = [pair for pair, ok in fresh.items() if ok]
+    if alive:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with get_db() as db:
+            db.executemany(
+                "UPDATE cameras SET last_seen = ? WHERE ip = ? AND port = ?",
+                [(now_iso, ip, port) for ip, port in alive],
+            )
+
+    with _lock:
+        _statuses.clear()               # o'chirilgan manzillar chiqib ketadi
+        _statuses.update(fresh)
+
+
+def _loop() -> None:
+    while True:
+        try:
+            _sweep()
+        except Exception:               # kuzatuv hech qachon yiqilmasin
+            pass
+        time.sleep(CHECK_INTERVAL)
+
+
+def start() -> None:
+    """Fon tekshiruvini ishga tushiradi (bir marta)."""
+    global _started
+    with _lock:
+        if _started:
+            return
+        _started = True
+    threading.Thread(target=_loop, daemon=True).start()
+
+
+def online(ip: str | None, port: int | None) -> bool | None:
+    """True — tirik, False — o'chiq, None — hali noma'lum yoki IP'siz."""
+    if not ip:
+        return None
+    with _lock:
+        return _statuses.get((ip, port or 554))

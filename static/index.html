@@ -4,273 +4,656 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nigoh — kamera xaritasi</title>
+<script>
+  // Mavzu birinchi chizishdan oldin qo'yiladi — miltillamasin.
+  document.documentElement.dataset.theme =
+    localStorage.getItem("nigoh-theme") === "dark" ? "dark" : "light";
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
 <style>
+  /* ---------- Dizayn tokenlari (Nigoh Operator Console) ---------- */
   :root{
-    --bg:#0d1320; --panel:#131b2b; --panel-2:#1a2438; --border:#26314e;
-    --text:#e9edf6; --muted:#8d99b5; --accent:#2fc6b1; --accent-dim:rgba(47,198,177,.14);
-    --warn:#e8a33d; --danger:#e2574b; --ok:#3ec98a;
-    --font:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --bg:#e9edf3; --surface:#ffffff; --surface-2:#f4f7fb; --line:#e3e9f1; --line-2:#eef2f8;
+    --text:#0e1a2b; --muted:#5e6f8c; --faint:#8e9cb4;
+    --accent:#1668d6; --accent-2:#0f5ab8; --accent-soft:#e9f1fd;
+    --ok:#0f9d58; --warn:#d99414; --danger:#d94436;
+    --shadow:0 6px 24px rgba(15,32,60,.13); --shadow-sm:0 2px 8px rgba(15,32,60,.10);
+    --glass:rgba(255,255,255,.78);
+    --video:#0b1220;
+    --font:'Inter',system-ui,'Segoe UI',sans-serif;
+    --display:'Space Grotesk','Inter',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  }
+  :root[data-theme="dark"]{
+    --bg:#070c16; --surface:#0f1828; --surface-2:#152034; --line:#1e2b44; --line-2:#182338;
+    --text:#e8eef8; --muted:#8d9cb8; --faint:#66748f;
+    --accent:#3d90f0; --accent-2:#5aa4f5; --accent-soft:rgba(61,144,240,.16);
+    --ok:#3ec98a; --warn:#e8a33d; --danger:#e2574b;
+    --shadow:0 8px 28px rgba(0,0,0,.5); --shadow-sm:0 2px 10px rgba(0,0,0,.45);
+    --glass:rgba(13,22,38,.7);
+    --video:#05090f;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
-  body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden}
-
-  /* ---------- Sarlavha ---------- */
-  header{
-    height:56px;flex:0 0 56px;display:flex;align-items:center;gap:14px;padding:0 16px;
-    background:rgba(13,19,32,.92);border-bottom:1px solid var(--border);z-index:1100;position:relative;
-  }
-  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:.04em}
-  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
-  .brand .sub{font-weight:400;color:var(--muted);font-size:13px;letter-spacing:0}
-  .stats{margin-left:auto;color:var(--muted);font-size:13px;white-space:nowrap}
-  .stats b{color:var(--text);font-weight:500}
-
-  button{font-family:var(--font);cursor:pointer;border:none;border-radius:8px;font-size:13.5px}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);overflow:hidden;line-height:1.45;
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;
+    font-feature-settings:'cv05' 1,'cv10' 1}  /* Inter: l va I farqlanadigan shakllar — texnik matnda adashtirmaydi */
+  a{color:var(--accent);text-decoration:none}
+  input,button,select,textarea{font-family:inherit}
+  button{cursor:pointer}
   button:disabled{opacity:.5;cursor:default}
-  .btn-outline{
-    padding:9px 14px;background:var(--accent-dim);color:var(--accent);
-    border:1px solid rgba(47,198,177,.45);font-weight:500;transition:background .15s;
-  }
-  .btn-outline:hover:not(:disabled){background:rgba(47,198,177,.24)}
-  .primary{background:var(--accent);color:#03211d;font-weight:700;padding:9px 16px}
-  .primary:hover:not(:disabled){filter:brightness(1.08)}
-  .ghost{background:none;border:1px solid var(--border);color:var(--muted);padding:9px 14px}
-  .ghost:hover:not(:disabled){color:var(--text)}
-  .who{color:var(--muted);font-size:12.5px}
-  .who b{color:var(--warn);font-weight:500}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+  ::-webkit-scrollbar-track{background:transparent}
+  .mono{font-family:var(--mono)}
 
-  /* ---------- Xarita ---------- */
-  #map{flex:1;background:#0d1320}
-  .leaflet-container{font-family:var(--font)}
-  .leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--border)!important}
-  .leaflet-control-attribution{background:rgba(13,19,32,.75)!important;color:#5f6a85!important;font-size:10px!important}
-  .leaflet-control-attribution a{color:#77839f!important}
+  .leaflet-container{background:var(--bg);font-family:var(--font)}
+  .leaflet-control-attribution{background:transparent!important;color:var(--faint)!important;font-size:9px!important}
+  .leaflet-control-attribution a{color:var(--faint)!important}
   body.picking #map{cursor:crosshair}
 
-  #pick-hint{
-    display:none;position:absolute;top:56px;left:0;right:0;z-index:1090;
-    background:rgba(232,163,61,.14);border-bottom:1px solid rgba(232,163,61,.4);
-    color:var(--warn);font-size:13px;padding:8px 16px;text-align:center;
-  }
+  @keyframes ping{0%{transform:scale(.6);opacity:.7}100%{transform:scale(2.1);opacity:0}}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+  @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  #stage{position:relative;height:100vh;width:100%;overflow:hidden;background:var(--bg)}
+  #map{position:absolute;inset:0}
+
+  /* ---------- Tepa qator: suzuvchi pill'lar ---------- */
+  #topbar{position:absolute;top:14px;left:14px;right:14px;z-index:600;display:flex;align-items:flex-start;gap:10px;pointer-events:none;flex-wrap:wrap}
+  .pill{pointer-events:auto;display:flex;align-items:center;height:48px;background:var(--glass);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);
+    backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3)}
+
+  #brand{gap:10px;padding:0 16px 0 12px}
+  #brand .mark{position:relative;width:26px;height:26px;display:flex;align-items:center;justify-content:center}
+  #brand .mark i{position:absolute;inset:0;border-radius:50%;background:var(--accent-soft)}
+  #brand .mark svg{position:relative;width:15px;height:15px;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  #brand .mark u{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--accent);animation:ping 2.6s ease-out infinite}
+  #brand .nm{font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:.18em}
+  #brand .dv{width:1px;height:20px;background:var(--line)}
+  #brand .sub{font-size:10.5px;line-height:1.25;letter-spacing:.02em;color:var(--muted);font-weight:500}
+
+  /* Bo'lim tablari pastki markazda — dock uslubi, tepa qator yengil qoladi. */
+  #tabs{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:610;gap:3px;padding:4px}
+  #tabs button{display:flex;align-items:center;gap:7px;height:40px;border:none;border-radius:20px;padding:0 18px;font-size:13.5px;font-weight:600;white-space:nowrap;background:transparent;color:var(--muted)}
+  #tabs button svg{width:15px;height:15px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.8}
+  #tabs button{transition:background .15s,color .15s}
+  #tabs button:not(.on):hover{color:var(--text);background:var(--surface-2)}
+  #tabs button.on{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;box-shadow:0 3px 14px color-mix(in srgb,var(--accent) 45%,transparent)}
+  #tabs button.on svg{opacity:1}
+
+  #searchpill{flex:1;max-width:420px;min-width:180px;gap:10px;padding:0 8px 0 16px}
+  #searchpill:focus-within{border-color:var(--accent)}
+  #admin-search:focus{border-color:var(--accent);outline:none}
+  #searchpill .glass{font-size:15px;color:var(--faint)}
+  #q-input{flex:1;min-width:0;background:none;border:none;outline:none;font-size:14px;font-weight:500;color:var(--text)}
+  #searchpill kbd{font-family:var(--mono);font-size:10.5px;color:var(--faint);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+
+  #top-right{pointer-events:auto;margin-left:auto;display:flex;align-items:center;gap:10px}
+  #themepill{gap:2px;padding:5px}
+  #themepill button{width:36px;height:36px;border:none;border-radius:18px;font-size:14px;background:transparent;color:var(--muted)}
+  #themepill button.on{background:var(--accent);color:#fff}
+  #userpill{gap:10px;padding:0 6px 0 14px}
+  #userpill .lang{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
+  #userpill .dv{width:1px;height:20px;background:var(--line)}
+  #avatar{display:flex;align-items:center;justify-content:center;min-width:36px;height:36px;border:none;border-radius:18px;background:var(--accent);color:#fff;font-size:12px;font-weight:700;letter-spacing:.04em;padding:0 11px;
+    box-shadow:0 3px 12px color-mix(in srgb,var(--accent) 40%,transparent)}
+
+  #pick-hint{display:none;position:absolute;top:72px;left:50%;transform:translateX(-50%);z-index:640;
+    background:var(--surface);border:1px solid var(--warn);color:var(--warn);
+    font-size:12.5px;font-weight:600;padding:9px 18px;border-radius:12px;box-shadow:var(--shadow)}
   body.picking #pick-hint{display:block}
 
-  .cam-marker{position:relative;width:22px;height:22px}
-  .cam-marker .core{position:absolute;inset:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent)}
-  .cam-marker .ring{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--accent);animation:pulse 2.4s ease-out infinite}
-  @keyframes pulse{0%{transform:scale(.45);opacity:.9}100%{transform:scale(1.7);opacity:0}}
-  @media (prefers-reduced-motion:reduce){.cam-marker .ring{animation:none;opacity:.5}}
-  .cam-marker.pending .core{background:var(--warn);box-shadow:0 0 9px var(--warn)}
-  .cam-marker.pending .ring{border-color:var(--warn)}
-  /* Kamera ko'p bo'lganda animatsiyasiz yengil marker ishlatiladi */
-  .cam-marker.plain .core{inset:5px;box-shadow:0 0 5px var(--accent)}
+  /* ---------- O'ng boshqaruvlar ---------- */
+  /* Boshqaruvlar pastki o'ngda — xarita servislarida qo'l odatlangan joy,
+     tepada esa tanlangan kamera paneliga keng joy qoladi. */
+  #mapctl{position:absolute;right:14px;bottom:30px;z-index:490;display:flex;flex-direction:column;gap:8px}
+  #mapctl .zoombox{display:flex;flex-direction:column;background:var(--glass);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;
+    backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3)}
+  #mapctl .zoombox button{width:42px;height:40px;border:none;background:none;color:var(--muted);font-size:17px}
+  #mapctl .zoombox button:first-child{border-bottom:1px solid var(--line-2)}
+  #mapctl>button{width:42px;height:42px;background:var(--glass);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);color:var(--muted);font-size:14px;
+    backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3)}
+  #mapctl button:hover{color:var(--accent)}
 
-  .cluster{
-    width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-    background:rgba(47,198,177,.16);border:1.5px solid var(--accent);color:var(--accent);
-    font-weight:700;font-size:14px;
-  }
+  /* ---------- Chap ro'yxat ---------- */
+  #list-panel{position:absolute;left:14px;top:78px;bottom:14px;width:312px;z-index:480;display:flex;flex-direction:column;
+    background:var(--glass);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;
+    backdrop-filter:blur(18px) saturate(1.3);-webkit-backdrop-filter:blur(18px) saturate(1.3);
+    animation:pop .18s ease}
+  #list-panel[hidden]{display:none}
+  #list-head{flex:0 0 auto;padding:11px 12px;border-bottom:1px solid var(--line-2);display:flex;flex-direction:column;gap:9px}
+  #list-head .row1{display:flex;align-items:center;gap:8px}
+  #list-head .row1 .ttl{font-family:var(--display);font-size:14.5px;font-weight:700;letter-spacing:.02em}
+  #list-count{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  #list-hide{margin-left:auto;width:22px;height:22px;border:none;border-radius:7px;background:var(--surface-2);color:var(--muted);font-size:13px}
+  #filters{display:flex;gap:5px}
+  #filters button{flex:1;padding:7px 4px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--muted);font-size:12px;font-weight:600}
+  #filters button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+  #list-body{flex:1;min-height:0;overflow-y:auto}
+  .grp{border-bottom:1px solid var(--line-2)}
+  .grp-row{display:flex;align-items:stretch}
+  .grp-row:hover{background:var(--surface-2)}
+  .grp-head{flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:9px 0 9px 12px;background:none;border:none;text-align:left;color:var(--text)}
+  .grp-head .st{flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:var(--ok)}
+  .grp-head .st.down{background:var(--danger);animation:blink 1.6s infinite}
+  .grp-head .st.unk{background:var(--faint)}
+  .grp-fly{flex:0 0 34px;border:none;background:none;color:transparent;font-size:14px;cursor:pointer}
+  .grp-row:hover .grp-fly{color:var(--faint)}
+  .grp-fly:hover{color:var(--accent)!important}
+  #list-exp{width:22px;height:22px;border:none;border-radius:7px;background:var(--surface-2);color:var(--muted);font-size:11px}
+  #list-exp:hover{color:var(--accent)}
+  .grp-head .caret{width:9px;font-size:8px;color:var(--faint);transition:transform .15s}
+  .grp.open .grp-head .caret{transform:rotate(90deg)}
+  .grp-head .rg{flex:1;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grp-head .bdg{font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:7px;background:var(--surface-2);color:var(--muted)}
+  .grp-head .bdg.down{color:var(--danger)}
+  .grp-cams{display:none;padding:0 6px 7px}
+  .grp.open .grp-cams{display:block}
+  .cam-row{width:100%;display:flex;align-items:center;gap:8px;padding:7px 9px 7px 15px;margin-bottom:2px;border:none;border-radius:9px;text-align:left;background:transparent}
+  .cam-row:hover{background:var(--surface-2)}
+  .cam-row.sel{background:var(--accent-soft)}
+  .cam-row .dot{flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:var(--ok)}
+  .cam-row.down .dot{background:var(--danger);animation:blink 1.6s infinite}
+  .cam-row .nm{flex:1;min-width:0;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .cam-row.sel .nm{color:var(--accent)}
+  .cam-row .cdx{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  #list-foot{flex:0 0 auto;border-top:1px solid var(--line-2);padding:9px 10px;display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  #list-foot .stat{background:var(--surface-2);border-radius:11px;padding:7px 9px}
+  #list-foot .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  #list-foot .v{font-family:var(--mono);font-size:15px;font-weight:500;margin-top:3px}
+  #list-foot .v.acc{color:var(--accent)}
+  .empty{padding:22px 14px;color:var(--muted);font-size:12.5px;text-align:center;line-height:1.6}
 
-  /* ---------- Yon panellar ---------- */
-  .drawer{
-    position:fixed;top:56px;bottom:0;z-index:1200;background:var(--panel);
-    transition:transform .28s ease;display:flex;flex-direction:column;
-  }
-  #panel{right:0;width:360px;max-width:100%;border-left:1px solid var(--border);transform:translateX(102%)}
-  #panel.open{transform:translateX(0)}
-  #admin-drawer{left:0;width:400px;max-width:100%;border-right:1px solid var(--border);transform:translateX(-102%)}
-  #admin-drawer.open{transform:translateX(0)}
+  /* Ro'yxatdagi kamera ustiga kelganda ko'rinadigan surat-ko'rinish */
+  #cam-tip{position:fixed;z-index:1200;width:230px;border-radius:12px;overflow:hidden;display:none;
+    background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);pointer-events:none;
+    animation:pop .15s ease}
+  #cam-tip img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--video)}
+  #cam-tip .cap{padding:7px 10px;font-size:11px;color:var(--muted);line-height:1.4}
 
-  .panel-head{display:flex;align-items:flex-start;gap:12px;padding:18px 18px 14px;border-bottom:1px solid var(--border);flex:0 0 auto}
-  .panel-head h2{font-size:18px;font-weight:700}
-  .panel-head p{color:var(--muted);font-size:12.5px;margin-top:3px}
-  .panel-close{margin-left:auto;background:none;color:var(--muted);font-size:22px;line-height:1;padding:2px 6px}
-  .panel-close:hover{color:var(--text)}
-  .panel-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
-  .panel-foot{flex:0 0 auto;padding:12px 14px;border-top:1px solid var(--border);display:flex;gap:8px}
-  .panel-foot button{flex:1;padding:9px 8px}
-  .panel-tools{flex:0 0 auto;padding:12px 14px 0}
-  .panel-tools input{margin-top:0;font-size:13px;padding:9px 11px}
-  .panel-tools input[hidden]{display:none}
-  .pager{display:flex;gap:8px;margin-top:4px}
-  .pager button{flex:1;padding:8px}
-  .more-btn{margin-top:2px}
+  /* ---------- Tanlangan kamera paneli ---------- */
+  #sel-panel{position:absolute;right:14px;top:78px;width:372px;z-index:485;display:flex;flex-direction:column;
+    background:var(--glass);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;
+    backdrop-filter:blur(18px) saturate(1.3);-webkit-backdrop-filter:blur(18px) saturate(1.3);
+    animation:pop .18s ease}
+  #sel-panel[hidden]{display:none}
+  #sel-head{display:flex;align-items:flex-start;gap:9px;padding:12px 13px;border-bottom:1px solid var(--line-2)}
+  #sel-dot{margin-top:5px;flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:var(--ok)}
+  #sel-dot.down{background:var(--danger);animation:blink 1.6s infinite}
+  #sel-head .tt{flex:1;min-width:0}
+  #sel-name{font-size:15px;font-weight:700;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #sel-sub{font-size:11.5px;color:var(--muted);margin-top:2px;font-weight:500}
+  #sel-close{width:24px;height:24px;border:none;border-radius:8px;background:var(--surface-2);color:var(--muted);font-size:14px}
+  #sel-video-wrap{position:relative;aspect-ratio:16/9;background:var(--video)}
+  /* Dizayndagi nozik "skaner chizig'i" teksturasi — bo'sh video qora tuynuk
+     bo'lib ko'rinmasin. */
+  #sel-video-wrap::before,.tile::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+    background:repeating-linear-gradient(180deg,rgba(255,255,255,.03) 0 1px,transparent 1px 3px)}
+  #sel-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:transparent}
+  #sel-msg{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 14px;
+    font-family:var(--mono);font-size:11px;color:#8493ac;letter-spacing:.05em;pointer-events:none}
+  #sel-badge{position:absolute;top:9px;left:9px;z-index:2;display:flex;align-items:center;gap:6px;padding:3px 8px;border-radius:8px;
+    background:rgba(5,9,15,.65);font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:#e8eef8;pointer-events:none}
+  #sel-badge i{width:5px;height:5px;border-radius:50%;background:var(--ok)}
+  #sel-badge.down i{background:var(--danger);animation:blink 1.6s infinite}
+  #sel-stamp{position:absolute;bottom:9px;right:10px;z-index:2;font-family:var(--mono);font-size:10px;color:#93a1b8;pointer-events:none}
+  #sel-facts{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line-2)}
+  #sel-facts>div{padding:9px 12px;border-right:1px solid var(--line-2)}
+  #sel-facts>div:last-child{border-right:none}
+  #sel-facts .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  #sel-facts .v{font-family:var(--mono);font-size:12px;margin-top:3px}
+  #sel-actions{display:flex;gap:7px;padding:11px 12px}
+  #sel-full{flex:1;padding:9px;border:none;border-radius:11px;background:var(--accent);color:#fff;font-size:13px;font-weight:700}
+  #sel-wall{flex:1;padding:9px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2);color:var(--text);font-size:13px;font-weight:600}
 
-  /* ---------- Kartochkalar ---------- */
-  .card{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-  .card-head{
-    width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;
-    background:none;color:var(--text);font-size:14px;text-align:left;
-  }
-  .card-head:hover{background:rgba(255,255,255,.03)}
-  .live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:0 0 auto}
-  .live-dot.off{background:var(--muted)}
-  .card-name{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .chev{margin-left:auto;color:var(--muted);transition:transform .2s;flex:0 0 auto}
-  .card.open .chev{transform:rotate(90deg)}
-  .card-body{display:none;border-top:1px solid var(--border)}
-  .card.open .card-body{display:block}
-  .video-wrap{position:relative;aspect-ratio:16/9;background:#000}
-  .video-wrap video{width:100%;height:100%;display:block;object-fit:contain}
-  .video-msg{
-    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    color:var(--muted);font-size:13px;pointer-events:none;text-align:center;padding:0 14px;
-  }
-  .video-msg:empty{display:none}
+  /* ---------- Pastki holat chiziqchasi ---------- */
+  /* Holat chiplari pastki o'ngda, xarita boshqaruvlari yonida. */
+  #strip{position:absolute;right:70px;bottom:30px;z-index:470;display:flex;gap:8px;pointer-events:none}
+  #strip.shift{transform:none}
+  #strip[hidden],#mapctl[hidden]{display:none}
+  #strip .chip{pointer-events:auto;display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;cursor:pointer;
+    background:var(--glass);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow-sm);
+    backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3)}
+  #strip .chip:hover{border-color:var(--accent)}
+  #strip .chip i{width:7px;height:7px;border-radius:50%}
+  #strip .chip b{font-family:var(--mono);font-size:12.5px;font-weight:500}
+  #strip .chip span{font-size:12px;color:var(--muted);font-weight:500}
 
-  /* ---------- Admin ro'yxati ---------- */
-  .adm-row{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:12px 13px}
-  .adm-row.disabled{opacity:.55}
-  .adm-top{display:flex;align-items:center;gap:9px}
-  .adm-name{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .tag{
-    margin-left:auto;flex:0 0 auto;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
-    padding:3px 7px;border-radius:5px;background:rgba(255,255,255,.06);color:var(--muted);
-  }
-  .tag.rtsp{background:var(--accent-dim);color:var(--accent)}
-  .adm-meta{color:var(--muted);font-size:12px;margin-top:6px;word-break:break-all;line-height:1.5}
-  .adm-actions{display:flex;gap:7px;margin-top:11px;flex-wrap:wrap}
-  .adm-actions button{padding:6px 11px;font-size:12.5px}
-  .mini{background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted)}
-  .mini:hover:not(:disabled){color:var(--text)}
-  .mini.danger{background:rgba(226,87,75,.12);border-color:rgba(226,87,75,.4);color:var(--danger)}
-  .mini.danger:hover:not(:disabled){background:rgba(226,87,75,.22)}
-  .probe-out{margin-top:9px;font-size:12.5px;line-height:1.5;padding:8px 10px;border-radius:7px;display:none}
-  .probe-out.show{display:block}
-  .probe-out.ok{background:rgba(62,201,138,.12);border:1px solid rgba(62,201,138,.35);color:var(--ok)}
-  .probe-out.bad{background:rgba(226,87,75,.1);border:1px solid rgba(226,87,75,.35);color:var(--danger)}
-  .probe-out.wait{background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted)}
+  /* ---------- To'liq oynali bo'limlar (devor/dashboard/boshqaruv) ---------- */
+  .view{position:absolute;left:14px;right:14px;top:78px;bottom:14px;z-index:520;display:flex;flex-direction:column;
+    background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+  .view[hidden]{display:none}
+  .view-head{flex:0 0 auto;display:flex;align-items:center;gap:11px;padding:12px 14px;border-bottom:1px solid var(--line-2);flex-wrap:wrap}
+  .view-head .ttl{font-family:var(--display);font-size:16px;font-weight:700}
+  .view-head .meta{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .btn{padding:8px 14px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2);color:var(--text);font-size:13px;font-weight:600}
+  .btn.muted{color:var(--muted)}
+  .btn.acc{border:none;background:var(--accent);color:#fff;font-weight:700}
+  .btn.soft{background:var(--accent-soft);color:var(--accent)}
+  .btn.danger{border-color:rgba(217,68,54,.35);background:rgba(217,68,54,.1);color:var(--danger)}
+  .btn.mini{padding:5px 10px;border-radius:8px;font-size:11.5px;color:var(--muted)}
+  .btn:hover{border-color:var(--accent)}
+  .btn.acc:hover,.btn.danger:hover{filter:brightness(1.08)}
 
-  .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:30px 16px;line-height:1.6}
+  /* Video devor */
+  #wall-sizes{margin-left:auto;display:flex;gap:3px;padding:3px;background:var(--surface-2);border-radius:12px}
+  #wall-sizes button{border:none;border-radius:9px;padding:6px 13px;font-family:var(--mono);font-size:11.5px;background:transparent;color:var(--muted)}
+  #wall-sizes button.on{background:var(--accent);color:#fff}
+  /* Qator/ustunlar buildWall'da repeat(N,1fr) qilib beriladi — devor
+     ekranga aniq sig'adi, plitkalar katakni to'liq egallaydi. */
+  #wall-grid{flex:1;min-height:0;overflow:hidden;padding:10px;display:grid;gap:9px}
+  .tile{position:relative;min-height:0;min-width:0;border:1px solid var(--line);border-radius:13px;overflow:hidden;background:var(--video);display:flex;flex-direction:column}
+  .tile.sel{border-color:var(--accent)}
+  .tile video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+  .tile .t-head{position:relative;z-index:2;display:flex;align-items:center;gap:7px;padding:8px 10px;background:linear-gradient(180deg,rgba(5,9,15,.55),transparent)}
+  .tile .t-head i{width:6px;height:6px;border-radius:50%;background:#3ec98a}
+  .tile.down .t-head i{background:#e2574b;animation:blink 1.6s infinite}
+  .tile .t-head .nm{font-size:12px;font-weight:600;color:#e8eef8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tile .t-head .st{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;color:#3ec98a}
+  .tile.down .t-head .st{color:#e2574b}
+  .tile .t-msg{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10.5px;color:#4f5d76;letter-spacing:.05em;text-align:center;padding:0 10px;pointer-events:none}
+  .tile .t-foot{position:relative;z-index:2;margin-top:auto;display:flex;align-items:center;gap:10px;padding:7px 10px;font-family:var(--mono);font-size:10px;color:#7b89a3;background:linear-gradient(0deg,rgba(5,9,15,.55),transparent)}
+  /* Plitka tugmalari — pastki o'ngda, pleyer boshqaruvlari kabi. */
+  .tile .t-btns{position:absolute;right:8px;bottom:36px;z-index:3;display:none;gap:6px;
+    padding:5px;border-radius:12px;background:rgba(5,9,15,.72);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  .tile:hover .t-btns{display:flex}
+  .tile .t-btns button{width:32px;height:32px;border:none;border-radius:9px;background:transparent;color:#c3cede;font-size:16px;line-height:1}
+  .tile .t-btns button:hover{color:#fff;background:rgba(255,255,255,.14)}
+  .tile .t-btns button.on{color:#ffd166}
+  #wall-grid.cover .tile video{object-fit:cover}
+  .toolsel{background:var(--surface-2);border:1px solid var(--line);border-radius:11px;color:var(--text);
+    font-size:12.5px;font-weight:600;padding:8px 10px;outline:none;max-width:180px}
+  .toolsel:focus{border-color:var(--accent)}
+  #wall-pager{display:flex;align-items:center;gap:6px}
 
-  /* ---------- Modal ---------- */
-  .backdrop{
-    display:none;position:fixed;inset:0;z-index:1300;background:rgba(5,8,15,.7);
-    align-items:center;justify-content:center;padding:16px;
-  }
+  /* Dashboard */
+  #dash-body{flex:1;min-height:0;overflow-y:auto;padding:12px 12px 72px}  /* pastda dock uchun joy */
+  #metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .metric{background:var(--surface-2);border:1px solid var(--line-2);border-radius:14px;padding:13px 14px}
+  .metric .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .metric .vrow{display:flex;align-items:flex-end;gap:6px;margin-top:7px}
+  .metric .v{font-family:var(--mono);font-size:31px;font-weight:600;letter-spacing:-.02em;line-height:1}
+  .metric .u{font-size:11.5px;color:var(--muted);padding-bottom:3px;font-weight:600}
+  .metric .note{font-size:11px;color:var(--muted);margin-top:8px;font-weight:500}
+  #dash-grid{display:grid;grid-template-columns:300px 1.3fr 1fr;gap:10px;margin-top:10px}
+  #dash-grid2{display:grid;grid-template-columns:1fr 1.3fr;gap:10px;margin-top:10px}
+  #donut-wrap{display:flex;align-items:center;gap:16px;padding:16px 14px}
+  #donut{width:130px;height:130px;flex:0 0 auto}
+  #donut-legend{display:flex;flex-direction:column;gap:9px;min-width:0}
+  #donut-legend .dl{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);font-weight:500;white-space:nowrap}
+  #donut-legend .dl i{flex:0 0 9px;width:9px;height:9px;border-radius:3px}
+  #donut-legend .dl b{font-family:var(--mono);color:var(--text);font-weight:500;margin-left:auto;padding-left:10px}
+  .metric svg.spark{display:block;width:100%;height:30px;margin-top:9px}
+  .c-sub{font-size:10.5px;color:var(--faint);font-weight:500;margin-left:6px}
+  .rrow.click{cursor:pointer}
+  .rrow.click:hover{background:var(--surface)}
+  .rrow .rg.wide{flex:0 0 178px}
+  .card{background:var(--surface-2);border:1px solid var(--line-2);border-radius:14px;overflow:hidden}
+  .card .c-head{padding:11px 14px;border-bottom:1px solid var(--line-2);font-size:12.5px;font-weight:700}
+  .rrow{display:flex;align-items:center;gap:11px;padding:8px 14px;border-bottom:1px solid var(--line-2)}
+  .rrow .rg{flex:0 0 104px;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rrow .bar{flex:1;height:6px;border-radius:4px;background:var(--line);overflow:hidden}
+  .rrow .bar i{display:block;height:100%}
+  .rrow .lb{flex:0 0 84px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .erow{display:flex;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line-2)}
+  .erow .tm{flex:0 0 40px;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .erow .ln{flex:0 0 3px;border-radius:2px}
+  .erow .tx{flex:1;font-size:12px;line-height:1.45;font-weight:500}
+
+  /* Boshqaruv jadvali */
+  #admin-search{width:220px;background:var(--surface-2);border:1px solid var(--line);border-radius:11px;outline:none;
+    padding:8px 12px;font-size:12.5px;color:var(--text)}
+  #admin-scroll{flex:1;min-height:0;overflow:auto}
+  #admin-table{width:100%;border-collapse:collapse}
+  #admin-table th{text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:700;
+    padding:9px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
+  #admin-table th:last-child{text-align:right}
+  #admin-table td{padding:8px 14px;border-bottom:1px solid var(--line-2);font-size:12.5px}
+  #admin-table tr:nth-child(even) td{background:var(--surface-2)}
+  .st-chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em}
+  .st-chip i{width:6px;height:6px;border-radius:50%}
+  .cdx-chip{font-family:var(--mono);font-size:10.5px;padding:3px 7px;border-radius:7px;background:var(--accent-soft);color:var(--accent)}
+  .adm-probe{font-size:11px;margin-top:4px;display:none}
+  .adm-probe.show{display:block}
+  .adm-probe.ok{color:var(--ok)} .adm-probe.bad{color:var(--danger)} .adm-probe.wait{color:var(--warn)}
+  #admin-filters{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line-2);flex-wrap:wrap}
+  .chipseg{display:flex;gap:3px;padding:3px;background:var(--surface-2);border-radius:12px}
+  .chipseg button{border:none;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:600;background:transparent;color:var(--muted)}
+  .chipseg button.on{background:var(--accent);color:#fff}
+  #admin-table th.sortable{cursor:pointer;user-select:none}
+  #admin-table th.sortable:hover{color:var(--accent)}
+  #admin-table th .arr{margin-left:3px;color:var(--accent)}
+  #admin-foot{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 14px;border-top:1px solid var(--line-2)}
+  #admin-foot .meta{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+  /* ---------- Xarita markerlari ---------- */
+  .mk{position:relative;width:24px;height:24px}
+  .mk .c{position:absolute;inset:4px;border-radius:50%;background:var(--accent);border:2.5px solid var(--surface);box-shadow:0 2px 8px rgba(15,32,60,.35)}
+  .mk.off .c{background:var(--danger)}
+  .mk .r{display:none;position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent)}
+  .mk.off .r{border-color:var(--danger)}
+  .mk.sel .r{display:block;animation:ping 2.2s ease-out infinite}
+  .mk-cluster{border-radius:50%;background:var(--accent);border:2.5px solid var(--surface);box-shadow:0 3px 10px rgba(15,32,60,.32);
+    color:#fff;font-weight:700;font-family:var(--font);font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center}
+  .mk-cluster.down{outline:2px solid var(--danger);outline-offset:1px}
+
+  /* ---------- Modallar ---------- */
+  .backdrop{position:fixed;inset:0;z-index:1300;background:rgba(7,12,22,.55);display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
   .backdrop.open{display:flex}
-  .modal{
-    width:520px;max-width:100%;max-height:calc(100vh - 32px);overflow-y:auto;
-    background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;
-  }
+  .modal{width:560px;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:22px 22px 18px;margin-bottom:40px}
   .modal.narrow{width:380px}
-  .modal h2{font-size:18px;margin-bottom:4px}
-  .modal .lead{color:var(--muted);font-size:12.5px;margin-bottom:16px}
-  label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:12px}
-  input,select,textarea{
-    width:100%;margin-top:5px;padding:10px 12px;border-radius:8px;font-family:var(--font);font-size:14px;
-    background:var(--bg);border:1px solid var(--border);color:var(--text);outline:none;
-  }
-  textarea{resize:vertical;min-height:56px}
-  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
-  input::placeholder,textarea::placeholder{color:#59637d}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
-  .grid31{display:grid;grid-template-columns:2fr 1fr;gap:0 12px}
-  .section{border-top:1px solid var(--border);margin:6px 0 14px;padding-top:14px}
-  .section-title{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+  .modal h2{font-family:var(--display);font-size:19px;font-weight:700;margin-bottom:4px}
+  .modal .lead{color:var(--muted);font-size:12.5px;margin-bottom:16px;line-height:1.5}
+  .modal label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:12px}
+  .modal input,.modal select,.modal textarea{
+    width:100%;margin-top:5px;padding:9px 11px;font-size:13px;color:var(--text);
+    background:var(--surface-2);border:1px solid var(--line);border-radius:10px;outline:none}
+  .modal input:focus,.modal select:focus,.modal textarea:focus{border-color:var(--accent)}
+  .modal textarea{min-height:64px;resize:vertical}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid31{display:grid;grid-template-columns:2fr 1fr;gap:12px}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px}
-  .modal-actions .left{margin-right:auto}
-  .hint{font-size:11.5px;color:#59637d;margin-top:-7px;margin-bottom:12px;line-height:1.5}
-  .rtsp-preview{
-    font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:11.5px;color:var(--accent);
-    background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:8px 10px;
-    word-break:break-all;margin:-6px 0 14px;
-  }
+  .section{border-top:1px solid var(--line-2);padding-top:14px;margin-top:2px}
+  .section-title{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);margin-bottom:12px}
+  .hint{font-size:11.5px;color:var(--faint);margin-top:-7px;margin-bottom:12px;line-height:1.5}
+  .rtsp-preview{font-family:var(--mono);font-size:11.5px;color:var(--accent);background:var(--surface-2);
+    border:1px solid var(--line);border-radius:9px;padding:8px 10px;word-break:break-all;margin:-6px 0 14px}
   .seg{display:flex;gap:8px;margin-bottom:14px}
-  .seg button{
-    flex:1;padding:9px;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:13px;
-  }
-  .seg button.on{background:var(--accent-dim);border-color:rgba(47,198,177,.45);color:var(--accent);font-weight:500}
+  .seg button{flex:1;padding:9px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px;font-weight:600}
+  .seg button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
   .err{color:var(--danger);font-size:12.5px;margin-bottom:12px;display:none}
   .err.show{display:block}
+  .probe-out{display:none;font-size:12.5px;line-height:1.5;border-radius:10px;padding:9px 12px;margin-bottom:12px}
+  .probe-out.show{display:block}
+  .probe-out.ok{display:block;background:rgba(15,157,88,.1);color:var(--ok)}
+  .probe-out.bad{display:block;background:rgba(217,68,54,.1);color:var(--danger)}
+  .probe-out.wait{display:block;background:rgba(217,148,20,.1);color:var(--warn)}
   .nvr-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px}
-  .nvr-table th{
-    text-align:left;color:var(--muted);font-weight:500;font-size:11px;
-    text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;
-    border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel);
-  }
-  .nvr-table td{padding:5px 8px;border-bottom:1px solid rgba(38,49,78,.5);color:var(--muted)}
+  .nvr-table th{text-align:left;color:var(--faint);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
+    padding:6px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface)}
+  .nvr-table td{padding:5px 8px;border-bottom:1px solid var(--line-2);color:var(--muted)}
   .nvr-table tr.ok td:nth-child(2){color:var(--ok)}
   .nvr-table tr.bad td{opacity:.6}
   .nvr-table tr.bad td:nth-child(2){color:var(--danger)}
   #n-table{max-height:34vh;overflow-y:auto}
-
-  pre.config{
-    background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;
-    font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:11.5px;color:var(--muted);
-    max-height:46vh;overflow:auto;white-space:pre;margin-bottom:14px;
-  }
+  pre.config{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px;
+    font-family:var(--mono);font-size:11.5px;color:var(--muted);max-height:46vh;overflow:auto;white-space:pre;margin-bottom:14px}
 
   /* ---------- Toast ---------- */
-  #toast{
-    position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);z-index:1400;
-    background:var(--panel-2);border:1px solid var(--border);border-left:3px solid var(--accent);
-    color:var(--text);font-size:13.5px;padding:11px 16px;border-radius:9px;
-    transition:transform .25s ease;pointer-events:none;max-width:90vw;
-  }
+  #toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);z-index:1400;
+    background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+    color:var(--text);font-size:13px;font-weight:500;padding:11px 16px;border-radius:11px;box-shadow:var(--shadow);
+    transition:transform .25s ease;pointer-events:none;max-width:90vw}
   #toast.show{transform:translate(-50%,0)}
   #toast.bad{border-left-color:var(--danger)}
 
-  @media (max-width:700px){
-    .stats{display:none}
-    #panel,#admin-drawer{width:100%}
-    .grid2,.grid31{grid-template-columns:1fr}
+  @media (max-width:900px){
+    #searchpill{display:none}
+    #metrics{grid-template-columns:1fr 1fr}
+    #dash-grid,#dash-grid2{grid-template-columns:1fr}
+    #donut-wrap{justify-content:center}
+    #sel-panel{right:14px;left:14px;width:auto;top:auto;bottom:76px}
+    #list-panel{width:min(312px,80vw)}
   }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="brand"><span class="dot"></span>NIGOH<span class="sub">kamera xaritasi</span></div>
-  <div class="stats"><b id="stat-cams">0</b> kamera · <b id="stat-regions">0</b> hudud</div>
-  <span class="who" id="who" hidden>super-admin: <b id="who-name"></b></span>
-  <button class="btn-outline" id="admin-open" hidden>Boshqaruv</button>
-  <button class="btn-outline" id="login-btn">Super admin</button>
-  <button class="ghost" id="logout-btn" hidden>Chiqish</button>
-</header>
-<div id="pick-hint">Xaritada kerakli nuqtani bosing — koordinata shakldagi maydonga tushadi</div>
+<div id="stage">
+  <div id="map"></div>
 
-<div id="map"></div>
-
-<!-- ===== Hudud paneli (ommaviy) ===== -->
-<aside id="panel" class="drawer" aria-label="Hudud kameralari">
-  <div class="panel-head">
-    <div>
-      <h2 id="panel-region"></h2>
-      <p id="panel-count"></p>
+  <!-- Tepa qator -->
+  <div id="topbar">
+    <div class="pill" id="brand">
+      <span class="mark"><i></i><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg><u></u></span>
+      <span class="nm">NIGOH</span>
+      <span class="dv"></span>
+      <span class="sub">kamera<br>xaritasi</span>
     </div>
-    <button class="panel-close" id="panel-close" aria-label="Yopish">&times;</button>
-  </div>
-  <div class="panel-tools">
-    <input id="panel-search" placeholder="Kamera nomi bo'yicha qidirish" hidden>
-  </div>
-  <div class="panel-body" id="panel-list"></div>
-</aside>
 
-<!-- ===== Boshqaruv paneli (super-admin) ===== -->
-<aside id="admin-drawer" class="drawer" aria-label="Kameralarni boshqarish">
-  <div class="panel-head">
-    <div>
-      <h2>Kameralarni boshqarish</h2>
-      <p id="admin-count"></p>
+    <div class="pill" id="tabs">
+      <button data-tab="map" class="on"><svg viewBox="0 0 24 24"><path d="M14.1 5.6a2 2 0 0 0 1.8 0l3.7-1.9A1 1 0 0 1 21 4.6v12.8a1 1 0 0 1-.6.9l-4.5 2.3a2 2 0 0 1-1.8 0l-4.2-2.1a2 2 0 0 0-1.8 0l-3.7 1.9A1 1 0 0 1 3 19.4V6.6a1 1 0 0 1 .6-.9l4.5-2.3a2 2 0 0 1 1.8 0z"/><path d="M15 5.8v15"/><path d="M9 3.2v15"/></svg>Xarita</button>
+      <button data-tab="wall"><svg viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg>Video devor</button>
+      <button data-tab="dash"><svg viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.3 19a10 10 0 1 1 17.4 0"/></svg>Dashboard</button>
+      <button data-tab="admin"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>Boshqaruv</button>
     </div>
-    <button class="panel-close" id="admin-close" aria-label="Yopish">&times;</button>
+
+    <div class="pill" id="searchpill">
+      <span class="glass">&#8981;</span>
+      <input id="q-input" placeholder="Kamera, hudud izlash" autocomplete="off">
+      <kbd>Ctrl K</kbd>
+    </div>
+
+    <div id="top-right">
+      <div class="pill" id="themepill">
+        <button id="theme-lt" title="Yorug'">&#9728;</button>
+        <button id="theme-dk" title="Tungi">&#9790;</button>
+      </div>
+      <div class="pill" id="userpill">
+        <span class="lang">UZ</span>
+        <span class="dv"></span>
+        <button id="avatar" title="Super-admin">Kirish</button>
+      </div>
+    </div>
   </div>
-  <div class="panel-tools">
-    <input id="admin-search" placeholder="Nomi, hududi yoki IP bo'yicha qidirish">
+
+  <div id="pick-hint">Xaritada kerakli nuqtani bosing — koordinata shaklga tushadi</div>
+
+  <!-- O'ng boshqaruvlar -->
+  <div id="mapctl">
+    <div class="zoombox">
+      <button id="z-in" title="Kattalashtirish">+</button>
+      <button id="z-out" title="Kichiklashtirish">&minus;</button>
+    </div>
+    <button id="go-wall" title="Video devor">&#8862;</button>
+    <button id="fit-all" title="Hammasini ko'rsatish">&#10530;</button>
+    <button id="toggle-list" title="Kameralar ro'yxati">&#9776;</button>
   </div>
-  <div class="panel-body" id="admin-list"></div>
-  <div class="panel-foot">
-    <button class="primary" id="new-cam">+ Kamera</button>
-    <button class="btn-outline" id="nvr-btn">NVR</button>
-    <button class="ghost" id="sync-btn">MediaMTX</button>
+
+  <!-- Chap ro'yxat -->
+  <aside id="list-panel">
+    <div id="list-head">
+      <div class="row1">
+        <span class="ttl">Kameralar</span>
+        <span id="list-count"></span>
+        <button id="list-exp" title="Hammasini ochish/yopish" style="margin-left:auto">&#9662;</button>
+        <button id="list-hide" style="margin-left:0">&times;</button>
+      </div>
+      <div id="filters">
+        <button data-filter="all" class="on">Hammasi</button>
+        <button data-filter="online">Onlayn</button>
+        <button data-filter="offline">Uzilgan</button>
+      </div>
+    </div>
+    <div id="list-body"></div>
+    <div id="list-foot">
+      <div class="stat">
+        <div class="k">O'rtacha ochilish</div>
+        <div class="v acc" id="stat-open">&mdash;</div>
+      </div>
+      <div class="stat">
+        <div class="k">Faol oqim</div>
+        <div class="v" id="stat-live">0</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Tanlangan kamera -->
+  <aside id="sel-panel" hidden>
+    <div id="sel-head">
+      <span id="sel-dot"></span>
+      <div class="tt">
+        <div id="sel-name"></div>
+        <div id="sel-sub"></div>
+      </div>
+      <button id="sel-close">&times;</button>
+    </div>
+    <div id="sel-video-wrap">
+      <video id="sel-video" muted playsinline></video>
+      <div id="sel-msg"></div>
+      <div id="sel-badge"><i></i><span id="sel-badge-tx">LIVE</span></div>
+      <div id="sel-stamp"></div>
+    </div>
+    <div id="sel-facts">
+      <div><div class="k">Kodek</div><div class="v" id="sel-f-codec" style="color:var(--accent)">&mdash;</div></div>
+      <div><div class="k">Ochilish</div><div class="v" id="sel-f-open">&mdash;</div></div>
+      <div><div class="k">Rejim</div><div class="v" id="sel-f-mode" style="color:var(--muted)">&mdash;</div></div>
+    </div>
+    <div id="sel-actions">
+      <button id="sel-full">To'liq ekran</button>
+      <button id="sel-wall">Devorga qo'shish</button>
+    </div>
+  </aside>
+
+  <!-- Pastki chiziqcha -->
+  <div id="strip" class="shift">
+    <div class="chip" id="chip-on" title="Faqat onlaynlarni ko'rsatish"><i style="background:var(--ok)"></i><b id="strip-on">0</b><span>onlayn</span></div>
+    <div class="chip" id="chip-off" title="Faqat uzilganlarni ko'rsatish"><i style="background:var(--danger)"></i><b id="strip-off">0</b><span>uzilgan</span></div>
+    <div class="chip" id="chip-reg" title="Hammasini ko'rsatish"><i style="background:var(--accent)"></i><b id="strip-reg">0</b><span>hudud</span></div>
   </div>
-</aside>
+
+  <!-- Video devor -->
+  <section class="view" id="wall-view" hidden>
+    <div class="view-head">
+      <span class="ttl">Video devor</span>
+      <span class="meta" id="wall-label"></span>
+      <select id="wall-region" class="toolsel" title="Hudud bo'yicha filtr">
+        <option value="">Barcha hududlar</option>
+      </select>
+      <div id="wall-sizes">
+        <button data-wsize="2">2&times;2</button>
+        <button data-wsize="3" class="on">3&times;3</button>
+        <button data-wsize="4">4&times;4</button>
+      </div>
+      <button class="btn" id="wall-fit" title="Kadr: butun ko'rinish / katakni to'ldirish">Kadr: butun</button>
+      <button class="btn" id="wall-auto" title="Sahifalarni har 12 soniyada almashtirish">&#8635; Avto</button>
+      <span id="wall-pager">
+        <button class="btn mini" id="wall-prev">&lsaquo;</button>
+        <span class="meta" id="wall-page"></span>
+        <button class="btn mini" id="wall-next">&rsaquo;</button>
+      </span>
+      <button class="btn" id="wall-fs" title="Devorni to'liq ekranga chiqarish">&#10530; To'liq ekran</button>
+      <button class="btn" id="wall-back">Xaritaga qaytish</button>
+    </div>
+    <div id="wall-grid"></div>
+  </section>
+
+  <!-- Dashboard -->
+  <section class="view" id="dash-view" hidden>
+    <div class="view-head">
+      <span class="ttl">Dashboard</span>
+      <span class="meta">jonli holat</span>
+      <button class="btn" id="dash-back" style="margin-left:auto">Xaritaga qaytish</button>
+    </div>
+    <div id="dash-body">
+      <div id="metrics">
+        <div class="metric"><div class="k">Jami kamera</div>
+          <div class="vrow"><span class="v" id="m-total">0</span><span class="u">ta</span></div>
+          <div class="note" id="m-total-note"></div></div>
+        <div class="metric"><div class="k">Onlayn</div>
+          <div class="vrow"><span class="v" id="m-online" style="color:var(--ok)">&mdash;</span></div>
+          <div class="note" id="m-online-note"></div></div>
+        <div class="metric"><div class="k">O'rtacha ochilish</div>
+          <div class="vrow"><span class="v" id="m-open" style="color:var(--accent)">&mdash;</span><span class="u">s</span></div>
+          <div class="note" id="m-open-note">shu seansdagi o'lchovlar</div>
+          <svg class="spark" id="m-open-spark" viewBox="0 0 200 30" preserveAspectRatio="none"></svg></div>
+        <div class="metric"><div class="k">Uzilgan</div>
+          <div class="vrow"><span class="v" id="m-down" style="color:var(--danger)">0</span><span class="u">ta</span></div>
+          <div class="note" id="m-down-note"></div></div>
+      </div>
+      <div id="dash-grid">
+        <div class="card">
+          <div class="c-head">Holat taqsimoti</div>
+          <div id="donut-wrap">
+            <svg id="donut" viewBox="0 0 120 120" role="img"></svg>
+            <div id="donut-legend"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="c-head">Hududlar bo'yicha holat <span class="c-sub">bosib xaritada oching</span></div>
+          <div id="region-rows"></div>
+        </div>
+        <div class="card">
+          <div class="c-head">Hodisalar</div>
+          <div id="events-list"></div>
+        </div>
+      </div>
+      <div id="dash-grid2">
+        <div class="card">
+          <div class="c-head">Texnik kesim <span class="c-sub">kodek va rejim</span></div>
+          <div id="tech-rows"></div>
+        </div>
+        <div class="card">
+          <div class="c-head">Ochilish vaqti bo'yicha <span class="c-sub">shu seans, sekinlari yuqorida</span></div>
+          <div id="slow-rows"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Boshqaruv -->
+  <section class="view" id="admin-view" hidden>
+    <div class="view-head">
+      <span class="ttl">Boshqaruv</span>
+      <span class="meta" id="admin-total"></span>
+      <div style="margin-left:auto;display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+        <input id="admin-search" placeholder="Nomi, hududi yoki IP izlash" autocomplete="off">
+        <button class="btn acc" id="new-cam">+ Kamera</button>
+        <button class="btn soft" id="nvr-btn">NVR dan ommaviy</button>
+        <button class="btn muted" id="sync-btn">MediaMTX</button>
+        <button class="btn" id="admin-back">Xaritaga qaytish</button>
+      </div>
+    </div>
+    <div id="admin-filters">
+      <div class="chipseg" id="adm-status">
+        <button data-st="" class="on">Hammasi</button>
+        <button data-st="online">Onlayn</button>
+        <button data-st="offline">Uzilgan</button>
+        <button data-st="disabled">O'chirilgan</button>
+      </div>
+      <select id="adm-region" class="toolsel"><option value="">Barcha hududlar</option></select>
+      <select id="adm-codec" class="toolsel">
+        <option value="">Barcha kodeklar</option>
+        <option value="h265raw">H.265 xom</option>
+        <option value="trans">H.265 &rarr; H.264</option>
+        <option value="h264">H.264</option>
+      </select>
+      <select id="adm-mode" class="toolsel">
+        <option value="">Barcha rejimlar</option>
+        <option value="always">Doim tayyor</option>
+        <option value="ondemand">So'rov bo'yicha</option>
+      </select>
+      <span class="meta" id="adm-shown" style="margin-left:auto"></span>
+    </div>
+    <div id="admin-scroll">
+      <table id="admin-table">
+        <thead><tr>
+          <th class="sortable" data-key="status">Holat<span class="arr"></span></th>
+          <th class="sortable" data-key="name">Nomi<span class="arr"></span></th>
+          <th class="sortable" data-key="region">Hudud<span class="arr"></span></th>
+          <th>Manzil</th>
+          <th class="sortable" data-key="codec">Kodek<span class="arr"></span></th>
+          <th class="sortable" data-key="mode">Rejim<span class="arr"></span></th>
+          <th>Amallar</th>
+        </tr></thead>
+        <tbody id="admin-tbody"></tbody>
+      </table>
+    </div>
+    <div id="admin-foot">
+      <span class="meta" id="admin-count"></span>
+      <span style="margin-left:auto;display:flex;gap:7px">
+        <button class="btn mini" id="adm-prev">&lsaquo; Oldingi</button>
+        <button class="btn mini" id="adm-next">Keyingi &rsaquo;</button>
+      </span>
+    </div>
+  </section>
+</div>
 
 <!-- ===== Kirish oynasi ===== -->
 <div class="backdrop" id="login-modal">
@@ -285,8 +668,8 @@
       <input id="l-pass" type="password" autocomplete="current-password">
     </label>
     <div class="modal-actions">
-      <button class="ghost" data-close="login-modal">Bekor qilish</button>
-      <button class="primary" id="l-submit">Kirish</button>
+      <button class="btn" data-close="login-modal">Bekor qilish</button>
+      <button class="btn acc" id="l-submit">Kirish</button>
     </div>
   </div>
 </div>
@@ -295,7 +678,8 @@
 <div class="backdrop" id="cam-modal">
   <div class="modal" role="dialog" aria-modal="true">
     <h2 id="cam-title">Yangi kamera</h2>
-    <p class="lead">Real kamera uchun IP, login va parolni kiriting — oqim MediaMTX orqali uzatiladi.</p>
+    <p class="lead">IP, login va parolni kiriting — qolganini tizim o'zi aniqlaydi.
+      Xaritadan nuqta tanlansa, hudud ham avtomatik to'ladi.</p>
     <div class="err" id="cam-err"></div>
 
     <div class="seg">
@@ -305,34 +689,31 @@
 
     <div class="grid2">
       <label>Nomi
-        <input id="f-name" placeholder="Registon maydoni" maxlength="120">
+        <input id="f-name" placeholder="Chorsu bozori" maxlength="120">
       </label>
       <label>Hudud
-        <input id="f-region" placeholder="Samarqand" maxlength="120">
+        <input id="f-region" placeholder="Toshkent" maxlength="120">
       </label>
     </div>
 
     <div class="grid2">
       <label>Kenglik (lat)
-        <input id="f-lat" type="number" step="0.00001" placeholder="39.65470">
+        <input id="f-lat" type="number" step="0.00001" placeholder="41.32660">
       </label>
       <label>Uzunlik (lng)
-        <input id="f-lng" type="number" step="0.00001" placeholder="66.97580">
+        <input id="f-lng" type="number" step="0.00001" placeholder="69.23450">
       </label>
     </div>
     <div class="modal-actions" style="margin:-4px 0 14px">
-      <button class="ghost" id="f-pick" style="margin-right:auto">Xaritadan tanlash</button>
+      <button class="btn" id="f-pick" style="margin-right:auto">Xaritadan tanlash</button>
     </div>
 
-    <!-- RTSP bo'limi -->
     <div id="rtsp-block">
       <div class="section">
         <div class="section-title">Kamera ulanishi</div>
-
         <label>Ishlab chiqaruvchi
           <select id="f-vendor"></select>
         </label>
-
         <div class="grid31">
           <label>IP manzil
             <input id="f-ip" placeholder="192.168.1.10" maxlength="100">
@@ -341,30 +722,34 @@
             <input id="f-port" type="number" value="554" min="1" max="65535">
           </label>
         </div>
-
         <div class="grid2">
           <label>Login
             <input id="f-user" placeholder="admin" maxlength="100" autocomplete="off">
           </label>
           <label>Parol
-            <input id="f-pass" type="password" placeholder="••••••••" maxlength="200" autocomplete="new-password">
+            <input id="f-pass" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" maxlength="200" autocomplete="new-password">
           </label>
         </div>
         <div class="hint" id="pass-hint" hidden>Bo'sh qoldirilsa — saqlangan parol o'zgarmaydi.</div>
-
+        <div class="modal-actions" style="margin:2px 0 6px">
+          <button class="btn acc" id="f-scan" style="margin-right:auto">&#128269; Qurilmani aniqlash</button>
+        </div>
+        <div class="hint">IP, login va parolni kiritib «Qurilmani aniqlash»ni
+          bosing — turi (kamera yoki NVR), ishlab chiqaruvchisi va kanallari
+          avtomatik topiladi. Pastdagi maydonlarni qo'lda to'ldirish shart emas.</div>
+        <div class="probe-out" id="f-scan-out"></div>
+        <div id="f-channels"></div>
         <label>RTSP yo'li
           <input id="f-path" placeholder="/Streaming/Channels/101" maxlength="300">
         </label>
-        <div class="rtsp-preview" id="f-preview">rtsp://…</div>
-
+        <div class="rtsp-preview" id="f-preview">rtsp://&hellip;</div>
         <div class="modal-actions" style="margin:-6px 0 4px">
-          <button class="ghost" id="f-test" style="margin-right:auto">Ulanishni tekshirish</button>
+          <button class="btn" id="f-test" style="margin-right:auto">Ulanishni tekshirish</button>
         </div>
         <div class="probe-out" id="f-probe"></div>
       </div>
     </div>
 
-    <!-- Tayyor oqim bo'limi -->
     <div id="manual-block" hidden>
       <div class="section">
         <div class="section-title">Oqim manzili</div>
@@ -379,11 +764,11 @@
       <label>Izoh (ixtiyoriy)
         <textarea id="f-note" placeholder="Masalan: 3-qavat, kirish eshigi" maxlength="500"></textarea>
       </label>
-      <label style="display:flex;align-items:center;gap:9px;color:var(--text);font-size:13.5px">
+      <label style="display:flex;align-items:center;gap:9px;color:var(--text);font-size:13px;font-weight:500">
         <input type="checkbox" id="f-enabled" checked style="width:auto;margin:0">
         Faol — xaritada ko'rsatilsin
       </label>
-      <label style="display:flex;align-items:center;gap:9px;color:var(--text);font-size:13.5px">
+      <label style="display:flex;align-items:center;gap:9px;color:var(--text);font-size:13px;font-weight:500">
         <input type="checkbox" id="f-always" style="width:auto;margin:0">
         Tez ochilsin
       </label>
@@ -397,8 +782,8 @@
     </div>
 
     <div class="modal-actions">
-      <button class="ghost" data-close="cam-modal">Bekor qilish</button>
-      <button class="primary" id="f-save">Saqlash</button>
+      <button class="btn" data-close="cam-modal">Bekor qilish</button>
+      <button class="btn acc" id="f-save">Saqlash</button>
     </div>
   </div>
 </div>
@@ -419,16 +804,14 @@
         <input id="n-port" type="number" value="554" min="1" max="65535">
       </label>
     </div>
-
     <div class="grid2">
       <label>Login
         <input id="n-user" placeholder="admin" maxlength="100" autocomplete="off">
       </label>
       <label>Parol
-        <input id="n-pass" type="password" placeholder="••••••••" maxlength="200" autocomplete="new-password">
+        <input id="n-pass" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" maxlength="200" autocomplete="new-password">
       </label>
     </div>
-
     <div class="grid2">
       <label>Ishlab chiqaruvchi
         <select id="n-vendor"></select>
@@ -437,7 +820,6 @@
         <input id="n-channels" value="1-16" placeholder="1-16 yoki 1,3,5-8" maxlength="200">
       </label>
     </div>
-
     <div class="grid2">
       <label>Oqim turi
         <select id="n-stream">
@@ -449,7 +831,6 @@
         <input id="n-spread" type="number" value="120" min="0" max="5000">
       </label>
     </div>
-
     <div class="grid2">
       <label>Hudud
         <input id="n-region" placeholder="Toshkent" maxlength="120">
@@ -458,7 +839,6 @@
         <input id="n-prefix" placeholder="Chorsu" maxlength="100">
       </label>
     </div>
-
     <div class="grid2">
       <label>Kenglik (lat)
         <input id="n-lat" type="number" step="0.00001" placeholder="41.32660">
@@ -468,7 +848,7 @@
       </label>
     </div>
     <div class="modal-actions" style="margin:-4px 0 14px">
-      <button class="ghost" id="n-pick" style="margin-right:auto">Xaritadan tanlash</button>
+      <button class="btn" id="n-pick" style="margin-right:auto">Xaritadan tanlash</button>
     </div>
     <div class="hint">Barcha kanallar shu nuqta atrofiga spiral bo'ylab
       tarqatiladi — keyin har birini alohida joyiga surish mumkin.</div>
@@ -477,9 +857,10 @@
     <div id="n-table"></div>
 
     <div class="modal-actions">
-      <button class="ghost" data-close="nvr-modal">Yopish</button>
-      <button class="ghost" id="n-check">Tekshirish</button>
-      <button class="primary" id="n-save" disabled>Qo'shish</button>
+      <button class="btn" data-close="nvr-modal">Yopish</button>
+      <button class="btn" id="n-scan" style="margin-right:auto">&#128269; Kanallarni avto-aniqlash</button>
+      <button class="btn" id="n-check">Tekshirish</button>
+      <button class="btn acc" id="n-save" disabled>Qo'shish</button>
     </div>
   </div>
 </div>
@@ -489,65 +870,76 @@
   <div class="modal" role="dialog" aria-modal="true">
     <h2>MediaMTX konfiguratsiyasi</h2>
     <p class="lead" id="mtx-lead">Bazadagi kameralardan yaratilgan.</p>
-    <pre class="config" id="mtx-text">…</pre>
+    <pre class="config" id="mtx-text">&hellip;</pre>
     <div class="modal-actions">
-      <button class="ghost" data-close="mtx-modal">Yopish</button>
-      <button class="primary" id="mtx-apply">Faylga yozish va qo'llash</button>
+      <button class="btn" data-close="mtx-modal">Yopish</button>
+      <button class="btn acc" id="mtx-apply">Faylga yozish va qo'llash</button>
     </div>
   </div>
 </div>
 
+<div id="cam-tip"><img alt=""><div class="cap"></div></div>
+
 <div id="toast"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1" crossorigin="anonymous"></script>
 <script>
+"use strict";
+
 const state = {
   cameras: [],
-  adminCameras: [],
+  byId: new Map(),
   vendors: [],
   admin: null,
-  activeHls: null,
-  activePc: null,
-  activeVideo: null,
-  streamToken: null,
-  openRegionName: null,
+  tab: "map",
+  filter: "all",
+  q: "",
+  selectedId: null,
+  listOpen: true,
+  openRegions: {},
+  pinned: [],                 // "Devorga qo'shish" bilan tanlanganlar
+  wallSize: 3,
+  wallRegion: "",             // devorda faqat shu hudud ("" — hammasi)
+  wallFit: "contain",         // contain — butun kadr, cover — katakni to'ldirish
+  wallPage: 0,
+  wallAuto: false,            // sahifalarni avtomatik aylantirish
+  wallHidden: new Set(),      // devordan vaqtincha olib tashlanganlar
+  openTimes: [],              // shu seansda o'lchangan ochilish vaqtlari (ms)
+  openByCam: new Map(),       // kamera → oxirgi ochilish vaqti (ms)
+  events: [],                 // dashboard hodisalari
+  prevOnline: new Map(),
   editingId: null,
   sourceType: "rtsp",
   picking: null,
   pickMarker: null,
-  regionCams: [],
-  regionShown: 0,
   adminQuery: "",
   adminOffset: 0,
-  adminTotal: 0
+  adminTotal: 0,
+  adminCameras: [],
+  adminFilters: { status: "", region: "", codec: "", mode: "" },
+  adminSort: { key: "", dir: 1 }
 };
 
-/* Brauzer H.265 (HEVC) ni o'zi o'qiy oladimi?
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+}[c]));
 
-   Olsa — server oqimni o'girmaydi, xom holda beradi va GPU umuman
-   ishlatilmaydi. Chrome/Edge (Windows, apparatli dekodlash bilan) va
-   Safari uddalaydi; Firefox hozircha yo'q. */
+/* Brauzer H.265 (HEVC) ni o'zi o'qiy oladimi? Olsa — server oqimni
+   o'girmaydi, xom holda beradi va GPU umuman ishlatilmaydi. */
 const HEVC_OK = (() => {
-  // WebRTC yo'li — asosiysi, shuning uchun avval shuni tekshiramiz.
   try {
     const caps = RTCRtpReceiver.getCapabilities("video");
     if (caps && caps.codecs.some((c) => /H265|hevc/i.test(c.mimeType))) return true;
   } catch (e) { /* WebRTC yo'q */ }
-
-  // HLS yo'li uchun (WebRTC ishlamasa zaxira sifatida ishlatiladi).
   const type = 'video/mp4; codecs="hvc1.1.6.L93.B0"';
   try {
     if (window.MediaSource && MediaSource.isTypeSupported(type)) return true;
   } catch (e) { /* eskirgan brauzer */ }
   return document.createElement("video").canPlayType(type) === "probably";
 })();
-
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
-  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-}[c]));
 
 /* ---------- API ---------- */
 async function api(path, options = {}) {
@@ -568,27 +960,88 @@ async function api(path, options = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+/* ---------- Mavzu ---------- */
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("nigoh-theme", theme);
+  $("theme-lt").classList.toggle("on", theme === "light");
+  $("theme-dk").classList.toggle("on", theme === "dark");
+  setTiles();
+  // Hudud pardasi va chegara rangi ham mavzuga moslashadi.
+  if (uzMask) uzMask.setStyle(uzMaskStyle());
+  if (uzBorder) uzBorder.setStyle(uzBorderStyle());
+}
+$("theme-lt").addEventListener("click", () => setTheme("light"));
+$("theme-dk").addEventListener("click", () => setTheme("dark"));
+
 /* ---------- Xarita ---------- */
-const map = L.map("map", { zoomControl: false }).setView([41.35, 64.6], 6);
-L.control.zoom({ position: "bottomright" }).addTo(map);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-  maxZoom: 19
-}).addTo(map);
+// maxZoom shu yerda shart: markercluster xaritadan so'raydi, tile-qatlam
+// esa keyinroq (mavzu tanlangach) qo'shiladi.
+const map = L.map("map", { zoomControl: false, maxZoom: 19 }).setView([41.35, 64.6], 6);
+let tiles = null;
+function setTiles() {
+  if (tiles) map.removeLayer(tiles);
+  const dark = document.documentElement.dataset.theme === "dark";
+  tiles = L.tileLayer(dark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 19
+  }).addTo(map);
+}
+
+/* O'zbekiston hududini ajratib ko'rsatish: chegara urg'u rangida chiziladi,
+   tashqi hududlar esa yarim shaffof parda bilan xiralashtiriladi. */
+let uzMask = null;
+let uzBorder = null;
+
+function uzMaskStyle() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  return { fillColor: dark ? "#02050b" : "#5b6b85",
+           fillOpacity: dark ? 0.55 : 0.22 };
+}
+function uzBorderStyle() {
+  const accent = getComputedStyle(document.documentElement)
+    .getPropertyValue("--accent").trim() || "#1668d6";
+  return { color: accent, weight: 1.8, opacity: 0.85 };
+}
+
+async function loadUzBoundary() {
+  try {
+    // Aniq chegara (geoBoundaries ADM0) — loyihaning o'zida saqlanadi,
+    // internetga bog'liq emas. Anklavlar ham alohida poligon sifatida bor.
+    const res = await fetch("/static/uz.geojson");
+    const gj = await res.json();
+    const geom = gj.features[0].geometry;
+    const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+    const rings = polys.map((p) => p[0].map(([lng, lat]) => [lat, lng]));
+
+    // Butun dunyoni qoplaydigan tashqi halqa + O'zbekiston "teshik" sifatida.
+    const world = [[-89.9, -179.9], [-89.9, 179.9], [89.9, 179.9], [89.9, -179.9]];
+    uzMask = L.polygon([world, ...rings], Object.assign({
+      stroke: false, fillRule: "evenodd", interactive: false
+    }, uzMaskStyle())).addTo(map);
+    uzBorder = L.polygon(rings, Object.assign({
+      fill: false, interactive: false
+    }, uzBorderStyle())).addTo(map);
+  } catch (e) { /* chegara fayli yuklanmasa — xarita oddiy qoladi */ }
+}
+loadUzBoundary();
 
 const cluster = L.markerClusterGroup({
   maxClusterRadius: 60,
   showCoverageOnHover: false,
-  // Kamera ko'p bo'lganda ochilish animatsiyasi brauzerni bo'g'adi.
-  animate: false,
+  animate: false,               // kamera ko'p bo'lganda brauzerni bo'g'masin
   chunkedLoading: true,
   chunkInterval: 120,
   disableClusteringAtZoom: 17,
   iconCreateFunction: (c) => {
     const n = c.getChildCount();
-    const size = n > 999 ? 58 : n > 99 ? 50 : 42;
+    const down = c.getAllChildMarkers().some((m) => m.options.camDown);
+    const size = n > 999 ? 54 : n > 99 ? 46 : n > 9 ? 40 : 32;
     return L.divIcon({
-      html: '<div class="cluster" style="width:' + size + 'px;height:' + size + 'px">' +
+      html: '<div class="mk-cluster' + (down ? " down" : "") + '" style="width:' + size +
+            'px;height:' + size + 'px;font-size:' + (size > 40 ? 15 : 13) + 'px">' +
             (n > 999 ? (n / 1000).toFixed(1) + "k" : n) + "</div>",
       className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2]
     });
@@ -596,308 +1049,950 @@ const cluster = L.markerClusterGroup({
 });
 map.addLayer(cluster);
 
-// Marker soni ko'payganda pulsatsiya animatsiyasi og'irlik qiladi.
-const HEAVY_LIMIT = 300;
-const plainIcon = L.divIcon({
-  className: "",
-  html: '<div class="cam-marker plain"><span class="core"></span></div>',
-  iconSize: [22, 22], iconAnchor: [11, 11]
-});
+function camIcon(cam) {
+  const off = cam.online === false;
+  const sel = cam.id === state.selectedId;
+  return L.divIcon({
+    className: "",
+    html: '<div class="mk' + (off ? " off" : "") + (sel ? " sel" : "") +
+          '"><span class="r"></span><span class="c"></span></div>',
+    iconSize: [24, 24], iconAnchor: [12, 12]
+  });
+}
 
-const camIcon = L.divIcon({
-  className: "",
-  html: '<div class="cam-marker"><span class="ring"></span><span class="core"></span></div>',
-  iconSize: [22, 22], iconAnchor: [11, 11]
-});
-const pendingIcon = L.divIcon({
-  className: "",
-  html: '<div class="cam-marker pending"><span class="ring"></span><span class="core"></span></div>',
-  iconSize: [22, 22], iconAnchor: [11, 11]
-});
+const markersById = new Map();
 
-async function loadCameras() {
-  const res = await api("/api/cameras");
-  state.cameras = res.cameras;
+function visibleCams() {
+  const q = state.q.trim().toLowerCase();
+  return state.cameras.filter((c) => {
+    if (state.filter === "online" && c.online === false) return false;
+    if (state.filter === "offline" && c.online !== false) return false;
+    if (!q) return true;
+    return (c.name + " " + c.region).toLowerCase().includes(q);
+  });
+}
 
-  const icon = state.cameras.length > HEAVY_LIMIT ? plainIcon : camIcon;
-  const markers = state.cameras.map((cam) => {
-    const m = L.marker([cam.lat, cam.lng], { icon, title: cam.name });
-    m.on("click", () => openRegion(cam.region, cam.id, true));
+function rebuildMarkers() {
+  const cams = visibleCams();
+  markersById.clear();
+  const markers = cams.map((cam) => {
+    const m = L.marker([cam.lat, cam.lng], {
+      icon: camIcon(cam), title: cam.name, camDown: cam.online === false
+    });
+    m.on("click", () => selectCamera(cam.id, false));
+    m.on("mouseover", () => prewarm(cam));
+    markersById.set(cam.id, m);
     return m;
   });
   cluster.clearLayers();
-  cluster.addLayers(markers);          // to'plab qo'shish bittalab qo'shishdan tez
+  cluster.addLayers(markers);
+}
 
-  $("stat-cams").textContent = res.total;
-  $("stat-regions").textContent = new Set(state.cameras.map((c) => c.region)).size;
-  if (res.shown < res.total) {
-    toast(res.total + " tadan " + res.shown + " tasi ko'rsatildi");
+/* Holat yangilanganda markerlar qayta chizilmaydi — faqat rangi
+   o'zgarganlarning belgisi almashadi. */
+function refreshMarkerIcons() {
+  let dirty = false;
+  markersById.forEach((m, id) => {
+    const cam = state.byId.get(id);
+    if (!cam) return;
+    const down = cam.online === false;
+    if (m.options.camDown !== down) { m.options.camDown = down; dirty = true; }
+    m.setIcon(camIcon(cam));
+  });
+  if (dirty && cluster.refreshClusters) cluster.refreshClusters();
+}
+
+/* ---------- Ma'lumot yuklash va yangilash ---------- */
+async function loadCameras() {
+  const res = await api("/api/cameras");
+  applyCameras(res);
+  rebuildMarkers();
+}
+
+function applyCameras(res) {
+  // Holat o'zgarishlarini hodisa sifatida yozib boramiz.
+  res.cameras.forEach((cam) => {
+    const prev = state.prevOnline.get(cam.id);
+    if (prev !== undefined && prev !== cam.online) {
+      if (cam.online === false) addEvent(cam.name + " — uzildi", "danger");
+      else if (cam.online === true && prev === false) addEvent(cam.name + " — qayta ulandi", "ok");
+    }
+    state.prevOnline.set(cam.id, cam.online);
+  });
+  state.cameras = res.cameras;
+  state.byId = new Map(res.cameras.map((c) => [c.id, c]));
+  // Tanlangan kamera o'chirilgan bo'lsa panel yopiladi.
+  if (state.selectedId && !state.byId.has(state.selectedId)) closeSel();
+  renderList();
+  renderStrip();
+  renderDash();
+  updateSelHead();
+}
+
+async function refreshStatus() {
+  let res;
+  try { res = await api("/api/cameras"); } catch (e) { return; }
+  const changed = res.cameras.length !== state.cameras.length ||
+                  res.cameras.some((c) => !state.byId.has(c.id));
+  applyCameras(res);
+  if (changed) rebuildMarkers(); else refreshMarkerIcons();
+  // Boshqaruv jadvali ochiq bo'lsa, undagi Holat ustuni ham yangilanadi.
+  if (state.tab === "admin" && state.admin) {
+    loadAdminCameras(state.adminOffset).catch(() => {});
   }
-  if (state.openRegionName) openRegion(state.openRegionName, null, false);
+}
+setInterval(refreshStatus, 60000);
+
+/* ---------- Chap ro'yxat ---------- */
+
+/* Ma'lumot o'zgarmagan bo'lsa ro'yxat qayta chizilmaydi — 60 soniyalik
+   yangilanish foydalanuvchi qarab turgan ro'yxatni "sakratmaydi". */
+let lastListSig = "";
+
+function renderList(force) {
+  const cams = visibleCams();
+  const sig = [state.filter, state.q, state.selectedId,
+    state.cameras.map((c) => c.id + (c.online === false ? "d" : c.online ? "u" : "?")).join("")
+  ].join("|");
+  if (!force && sig === lastListSig) return;
+  lastListSig = sig;
+
+  $("list-count").textContent = cams.length + " / " + state.cameras.length;
+
+  // Filtr tugmalarida jonli hisob ko'rinadi.
+  const onCount = state.cameras.filter((c) => c.online === true).length;
+  const offCount = state.cameras.filter((c) => c.online === false).length;
+  const fLabels = { all: "Hammasi " + state.cameras.length,
+                    online: "Onlayn " + onCount, offline: "Uzilgan " + offCount };
+  document.querySelectorAll("#filters button").forEach((b) => {
+    b.textContent = fLabels[b.dataset.filter];
+  });
+
+  const regions = [...new Set(cams.map((c) => c.region))];
+  const body = $("list-body");
+  body.innerHTML = regions.length ? "" :
+    '<div class="empty">Kamera topilmadi.</div>';
+
+  regions.forEach((region) => {
+    const list = cams.filter((c) => c.region === region);
+    const down = list.filter((c) => c.online === false).length;
+    const known = list.some((c) => c.online === true);
+    const grp = document.createElement("div");
+    grp.className = "grp" + (state.openRegions[region] ? " open" : "");
+
+    const headRow = document.createElement("div");
+    headRow.className = "grp-row";
+    headRow.innerHTML =
+      '<button class="grp-head">' +
+        '<span class="caret">&#9654;</span>' +
+        '<span class="st' + (down ? " down" : known ? "" : " unk") + '"></span>' +
+        '<span class="rg">' + esc(region) + "</span>" +
+        '<span class="bdg' + (down ? " down" : "") + '">' +
+          (down ? list.length + " &middot; " + down + "&darr;" : list.length) + "</span>" +
+      "</button>" +
+      '<button class="grp-fly" title="Xaritada ko\'rsatish">&#9678;</button>';
+    headRow.querySelector(".grp-head").addEventListener("click", () => {
+      state.openRegions[region] = !state.openRegions[region];
+      grp.classList.toggle("open", state.openRegions[region]);
+    });
+    headRow.querySelector(".grp-fly").addEventListener("click", () => flyToRegion(region));
+    grp.appendChild(headRow);
+
+    const wrap = document.createElement("div");
+    wrap.className = "grp-cams";
+    list.forEach((cam) => {
+      const row = document.createElement("button");
+      row.className = "cam-row" + (cam.online === false ? " down" : "") +
+                      (cam.id === state.selectedId ? " sel" : "");
+      row.innerHTML =
+        '<span class="dot"></span>' +
+        '<span class="nm">' + esc(cam.name) + "</span>" +
+        '<span class="cdx">' + esc(cam.codec || "") + "</span>";
+      row.addEventListener("click", () => { hideCamTip(); selectCamera(cam.id, true); });
+      row.addEventListener("mouseenter", (e) => { prewarm(cam); showCamTip(cam, row); });
+      row.addEventListener("mouseleave", hideCamTip);
+      wrap.appendChild(row);
+    });
+    grp.appendChild(wrap);
+    body.appendChild(grp);
+  });
+
+  renderFootStats();
 }
 
-/* ---------- Hudud paneli ---------- */
-const PANEL_PAGE = 50;
-
-function openRegion(region, activeId, autoplay) {
-  const cams = state.cameras.filter((c) => c.region === region);
-  state.openRegionName = region;
-  state.regionCams = cams;
-  state.regionShown = 0;
-  $("panel-region").textContent = region;
-  $("panel-count").textContent = cams.length + " ta kamera";
-  $("panel-search").value = "";
-  $("panel-search").hidden = cams.length <= 12;
-  renderRegionList(cams, activeId, autoplay);
-  $("panel").classList.add("open");
+/* Hududdagi barcha kameralar sig'adigan qilib xaritani yaqinlashtiradi. */
+function flyToRegion(region) {
+  const pts = state.cameras.filter((c) => c.region === region)
+    .map((c) => [c.lat, c.lng]);
+  if (!pts.length) return;
+  if (pts.length === 1) map.flyTo(pts[0], 13, { duration: 0.6 });
+  else map.flyToBounds(L.latLngBounds(pts).pad(0.3), { duration: 0.6 });
 }
 
-function renderRegionList(cams, activeId, autoplay) {
-  const list = $("panel-list");
-  list.innerHTML = cams.length ? "" : '<div class="empty">Kamera topilmadi.</div>';
-  state.regionShown = 0;
-  appendRegionChunk(cams, activeId, autoplay);
-}
-
-function appendRegionChunk(cams, activeId, autoplay) {
-  const list = $("panel-list");
-  const more = list.querySelector(".more-btn");
-  if (more) more.remove();
-
-  const slice = cams.slice(state.regionShown, state.regionShown + PANEL_PAGE);
-  slice.forEach((cam) =>
-    list.appendChild(cameraCard(cam, autoplay && cam.id === activeId)));
-  state.regionShown += slice.length;
-
-  if (state.regionShown < cams.length) {
-    const btn = document.createElement("button");
-    btn.className = "ghost more-btn";
-    btn.textContent = "Yana " +
-      Math.min(PANEL_PAGE, cams.length - state.regionShown) + " ta ko'rsatish";
-    btn.addEventListener("click", () => appendRegionChunk(cams, activeId, false));
-    list.appendChild(btn);
-  }
-}
-
-$("panel-search").addEventListener("input", (e) => {
-  const needle = e.target.value.trim().toLowerCase();
-  const cams = (state.regionCams || []).filter((c) =>
-    !needle || c.name.toLowerCase().includes(needle));
-  renderRegionList(cams, null, false);
+/* Hammasini ochish/yopish */
+$("list-exp").addEventListener("click", () => {
+  const regions = [...new Set(state.cameras.map((c) => c.region))];
+  const anyClosed = regions.some((r) => !state.openRegions[r]);
+  regions.forEach((r) => { state.openRegions[r] = anyClosed; });
+  renderList(true);
 });
 
-function closePanel() {
-  $("panel").classList.remove("open");
-  state.openRegionName = null;
-  stopActiveStream();
+/* ---------- Kamera surat-ko'rinishi (hover tooltip) ---------- */
+function showCamTip(cam, row) {
+  const tip = $("cam-tip");
+  const img = tip.querySelector("img");
+  img.hidden = false;
+  img.onerror = () => { img.hidden = true; };
+  // 8 soniyalik server keshi bilan mos — bir xil manzil qayta so'ralmaydi.
+  img.src = "/api/cameras/" + cam.id + "/snapshot?t=" + Math.floor(Date.now() / 8000);
+  tip.querySelector(".cap").textContent = cam.online === false
+    ? "O'chiq · oxirgi onlayn: " + fmtLastSeen(cam.last_seen)
+    : [cam.codec, cam.always_on ? "doim tayyor" : "jonli"].filter(Boolean).join(" · ");
+  const r = row.getBoundingClientRect();
+  tip.style.left = (r.right + 10) + "px";
+  tip.style.top = Math.max(80, Math.min(r.top - 40, innerHeight - 200)) + "px";
+  tip.style.display = "block";
+}
+function hideCamTip() { $("cam-tip").style.display = "none"; }
+$("list-body").addEventListener("scroll", hideCamTip);
+
+function renderFootStats() {
+  const t = state.openTimes;
+  $("stat-open").innerHTML = t.length
+    ? (t.reduce((s, v) => s + v, 0) / t.length / 1000).toFixed(2).replace(".", ",") + "s"
+    : "&mdash;";
+  // Faqat chindan o'ynayotgan oqimlar sanaladi.
+  const live = [selPlayer, ...wallPlayers]
+    .filter((p) => p && p.video && !p.video.paused).length;
+  $("stat-live").textContent = live + "/" + state.cameras.length;
 }
 
-/* Kamerani oldindan uyg'otish.
+function setListOpen(open) {
+  state.listOpen = open;
+  $("list-panel").hidden = !open;
+  $("strip").classList.toggle("shift", open);
+}
+$("list-hide").addEventListener("click", () => setListOpen(false));
+$("toggle-list").addEventListener("click", () => setListOpen(!state.listOpen));
 
-   Sovuq ochilishning katta qismi kameradan keyframe kutishga ketadi
-   (bizning tarafda emas — oddiy nusxalashda ham shuncha). Foydalanuvchi
-   kartochka ustiga sichqonchani olib kelganda oqimni jimgina boshlaymiz,
-   shunda bosgunicha tayyor bo'ladi. */
+function setFilter(f) {
+  state.filter = f;
+  document.querySelectorAll("#filters button").forEach((x) =>
+    x.classList.toggle("on", x.dataset.filter === f));
+  renderList();
+  rebuildMarkers();
+}
+document.querySelectorAll("#filters button").forEach((b) =>
+  b.addEventListener("click", () => setFilter(b.dataset.filter)));
+
+/* Pastki chiplar ham filtr sifatida ishlaydi. */
+function chipFilter(f) {
+  if (state.tab !== "map") showTab("map");
+  setFilter(f);
+  setListOpen(true);
+}
+$("chip-on").addEventListener("click", () => chipFilter("online"));
+$("chip-off").addEventListener("click", () => chipFilter("offline"));
+$("chip-reg").addEventListener("click", () => chipFilter("all"));
+
+/* ---------- Qidiruv ---------- */
+let qTimer = null;
+$("q-input").addEventListener("input", (e) => {
+  state.q = e.target.value;
+  clearTimeout(qTimer);
+  qTimer = setTimeout(() => { renderList(); rebuildMarkers(); }, 300);
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    $("q-input").focus();
+  }
+});
+
+/* ---------- Pastki chiziqcha ---------- */
+function renderStrip() {
+  const on = state.cameras.filter((c) => c.online === true).length;
+  const off = state.cameras.filter((c) => c.online === false).length;
+  $("strip-on").textContent = on;
+  $("strip-off").textContent = off;
+  $("strip-reg").textContent = new Set(state.cameras.map((c) => c.region)).size;
+}
+
+/* ---------- Video pleyer (WebRTC -> HLS) ----------
+   Har bir pleyer o'z holatini olib yuradi — devorda bir nechta birga ishlaydi. */
+
+const FAIL_MSG = "Oqim ochilmadi — MediaMTX ishlayaptimi va kamera ulanganmi tekshiring";
+
+function createPlayer(video, msgEl) {
+  const p = { video, msgEl, hls: null, pc: null, token: 0, onOpen: null };
+
+  p.stop = () => {
+    p.token++;
+    if (p.hls) { p.hls.destroy(); p.hls = null; }
+    if (p.pc) { p.pc.close(); p.pc = null; }
+    video.pause();
+    video.removeAttribute("src");
+    video.srcObject = null;
+    video.load();
+  };
+
+  p.open = (cam, useHevc) => {
+    p.stop();
+    const my = ++p.token;
+    const stale = () => p.token !== my;
+    const t0 = performance.now();
+    msgEl.textContent = "Ulanmoqda…";
+    if (!video.poster) video.poster = "/api/cameras/" + cam.id + "/snapshot";
+
+    const opened = () => {
+      if (stale()) return;
+      msgEl.textContent = "";
+      const ms = performance.now() - t0;
+      state.openTimes.push(ms);
+      if (state.openTimes.length > 50) state.openTimes.shift();
+      state.openByCam.set(cam.id, ms);   // dashboard: kamera kesimida oxirgi o'lchov
+      renderFootStats();
+      renderDashMetrics();
+      if (p.onOpen) p.onOpen(ms, p.mode);
+    };
+    video.addEventListener("playing", opened, { once: true });
+
+    api("/api/cameras/" + cam.id + "/stream?hevc=" + (useHevc ? 1 : 0))
+      .then((urls) => {
+        if (stale()) return;
+        p.mode = urls.mode;
+        // Xom H.265 amalda o'qilmasa — bir marta o'girilganiga qaytamiz.
+        const onFail = urls.mode === "raw"
+          ? () => { if (!stale()) p.open(cam, false); }
+          : () => { if (!stale()) msgEl.textContent = FAIL_MSG; };
+        attach(urls, stale, onFail);
+      })
+      .catch((e) => { if (!stale()) msgEl.textContent = e.message; });
+
+    function attach(urls, staleFn, onFail) {
+      if (urls.webrtc_url) {
+        playWebRtc(urls.webrtc_url, staleFn).catch(() => {
+          if (staleFn()) return;
+          msgEl.textContent = "Zaxira yo'l orqali ulanmoqda…";
+          playHls(urls.stream_url, staleFn, onFail);
+        });
+        return;
+      }
+      if (!urls.stream_url) { msgEl.textContent = "Oqim manzili sozlanmagan"; return; }
+      playHls(urls.stream_url, staleFn, onFail);
+    }
+
+    async function playWebRtc(whepUrl, staleFn) {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      p.pc = pc;
+      pc.addTransceiver("video", { direction: "recvonly" });
+      pc.ontrack = (e) => {
+        if (staleFn()) return;
+        video.srcObject = e.streams[0];
+        video.play().catch(() => {});
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await new Promise((resolve) => {          // ICE (ko'pi bilan 900 ms)
+        if (pc.iceGatheringState === "complete") return resolve();
+        const done = () => { pc.removeEventListener("icegatheringstatechange", check); resolve(); };
+        const check = () => { if (pc.iceGatheringState === "complete") done(); };
+        pc.addEventListener("icegatheringstatechange", check);
+        setTimeout(done, 900);
+      });
+      const res = await fetch(whepUrl, {
+        method: "POST", headers: { "Content-Type": "application/sdp" },
+        body: pc.localDescription.sdp
+      });
+      if (!res.ok) { pc.close(); throw new Error("WHEP " + res.status); }
+      const answer = await res.text();
+      if (staleFn()) { pc.close(); return; }
+      await pc.setRemoteDescription({ type: "answer", sdp: answer });
+      await new Promise((resolve, reject) => {  // 6 s da tasvir kelmasa — HLS
+        const timer = setTimeout(() => {
+          if (video.srcObject) resolve();
+          else { pc.close(); reject(new Error("WebRTC jim")); }
+        }, 6000);
+        pc.addEventListener("connectionstatechange", () => {
+          if (pc.connectionState === "connected") { clearTimeout(timer); resolve(); }
+          if (pc.connectionState === "failed") { clearTimeout(timer); pc.close(); reject(new Error("WebRTC uzildi")); }
+        });
+      });
+    }
+
+    function playHls(url, staleFn, onFail) {
+      if (!url) { msgEl.textContent = FAIL_MSG; return; }
+      const isHls = url.includes(".m3u8");
+      if (isHls && window.Hls && Hls.isSupported()) {
+        const hls = new Hls({
+          lowLatencyMode: true, maxBufferLength: 6, backBufferLength: 6,
+          liveSyncDurationCount: 1,
+          manifestLoadingTimeOut: 25000     // sovuq start 5 soniyagacha cho'ziladi
+        });
+        p.hls = hls;
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (!staleFn()) video.play().catch(() => {});
+        });
+        hls.on(Hls.Events.ERROR, (_, d) => {
+          if (!d.fatal || staleFn()) return;
+          if (onFail && d.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.destroy(); onFail(); return; }
+          msgEl.textContent = FAIL_MSG;
+        });
+      } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = url;
+        video.addEventListener("loadedmetadata", () => {
+          if (!staleFn()) video.play().catch(() => {});
+        }, { once: true });
+        video.onerror = () => { if (!staleFn()) msgEl.textContent = FAIL_MSG; };
+      } else {
+        video.src = url;
+        video.onerror = () => { if (!staleFn()) msgEl.textContent = FAIL_MSG; };
+        video.play().catch(() => {});
+      }
+    }
+  };
+  return p;
+}
+
+/* Kamerani oldindan uyg'otish — sichqoncha kelganda oqim va surat tayyorlanadi. */
 const warmed = new Map();
-
 function prewarm(cam) {
   const last = warmed.get(cam.id) || 0;
   if (Date.now() - last < 30000) return;      // MediaMTX 60 s ushlab turadi
   warmed.set(cam.id, Date.now());
+  fetch("/api/cameras/" + cam.id + "/snapshot", { cache: "no-store" }).catch(() => {});
   api("/api/cameras/" + cam.id + "/stream?hevc=" + (HEVC_OK ? 1 : 0))
     .then((urls) => {
       if (!urls.stream_url) return;
-      // Javob kerak emas — maqsad MediaMTX'da oqimni ishga tushirish.
       fetch(urls.stream_url, { cache: "no-store", mode: "no-cors" }).catch(() => {});
     })
     .catch(() => {});
 }
 
-function cameraCard(cam, open) {
-  const card = document.createElement("div");
-  card.className = "card";
-  card.innerHTML =
-    '<button class="card-head">' +
-      '<span class="live-dot"></span>' +
-      '<span class="card-name">' + esc(cam.name) + "</span>" +
-      '<span class="chev">&#9656;</span>' +
-    "</button>" +
-    '<div class="card-body">' +
-      '<div class="video-wrap"><video muted playsinline controls></video><div class="video-msg"></div></div>' +
-    "</div>";
-  const head = card.querySelector(".card-head");
-  head.addEventListener("click", () => toggleCard(card, cam));
-  head.addEventListener("mouseenter", () => prewarm(cam));
-  head.addEventListener("focus", () => prewarm(cam));
-  if (open) toggleCard(card, cam);
-  return card;
+/* ---------- Tanlangan kamera paneli ---------- */
+let selPlayer = null;
+
+function fmtLastSeen(iso) {
+  if (!iso) return "ma'lum emas";
+  const t = new Date(iso);
+  if (isNaN(t)) return "ma'lum emas";
+  const diff = (Date.now() - t.getTime()) / 1000;
+  if (diff < 90) return "hozirgina";
+  if (diff < 3600) return Math.round(diff / 60) + " daqiqa oldin";
+  if (diff < 86400) return Math.round(diff / 3600) + " soat oldin";
+  const p = (n) => String(n).padStart(2, "0");
+  return p(t.getDate()) + "." + p(t.getMonth() + 1) + "." + t.getFullYear() +
+         " " + p(t.getHours()) + ":" + p(t.getMinutes());
 }
 
-function toggleCard(card, cam) {
-  const wasOpen = card.classList.contains("open");
-  document.querySelectorAll("#panel-list .card.open").forEach((c) => c.classList.remove("open"));
-  stopActiveStream();
-  if (wasOpen) return;
-  card.classList.add("open");
-  openStream(card, cam, HEVC_OK);
-}
+function selectCamera(id, fly) {
+  state.selectedId = id;
+  const cam = state.byId.get(id);
+  if (!cam) return;
+  // Boshqa tab'dan kelinsa avval xaritaga o'tamiz — showTab o'zi qayta chaqiradi.
+  if (state.tab !== "map") { showTab("map"); return; }
+  if (fly !== false) map.flyTo([cam.lat, cam.lng], Math.max(map.getZoom(), 13), { duration: 0.6 });
 
-/* Oqimni ochadi.
+  $("sel-panel").hidden = false;
+  updateSelHead();
+  renderList();
+  refreshMarkerIcons();
 
-   `useHevc` — xom H.265 ni so'raymizmi. Brauzer buni uddalashini aytgan
-   bo'lsa ham amalda ishlamasligi mumkin (kodek profili, drayver, Firefox).
-   Shuning uchun xatolikda o'girilgan H.264 ga qaytamiz — bir marta. */
-function openStream(card, cam, useHevc) {
-  const msg = card.querySelector(".video-msg");
-  msg.textContent = "Ulanmoqda…";
-  api("/api/cameras/" + cam.id + "/stream?hevc=" + (useHevc ? 1 : 0))
-    .then((urls) => {
-      if (!card.classList.contains("open")) return;
-      const fallback = urls.mode === "raw"
-        ? () => {
-            if (!card.classList.contains("open")) return;
-            msg.textContent = "Brauzer H.265 ni o'qiy olmadi — o'girib beriladi…";
-            openStream(card, cam, false);
-          }
-        : null;
-      attachStream(card.querySelector("video"),
-                   Object.assign({}, cam, urls), msg, fallback);
-    })
-    .catch((e) => { msg.textContent = e.message; });
-}
-
-/* ---------- Video oqim ----------
-   Avval WebRTC (WHEP) sinaladi — u ~0.5 soniyada ochiladi.
-   Ishlamasa HLS'ga tushiladi (sekinroq, lekin hamma joyda ishlaydi). */
-
-const FAIL_MSG = "Oqim ochilmadi — MediaMTX ishlayaptimi va kamera ulanganmi tekshiring";
-
-function stopActiveStream() {
-  state.streamToken = null;          // kutayotgan ulanishlar bekor bo'lsin
-  if (state.activeHls) { state.activeHls.destroy(); state.activeHls = null; }
-  if (state.activePc) { state.activePc.close(); state.activePc = null; }
-  if (state.activeVideo) {
-    state.activeVideo.pause();
-    state.activeVideo.removeAttribute("src");
-    state.activeVideo.srcObject = null;
-    state.activeVideo.load();
-    state.activeVideo = null;
+  const video = $("sel-video");
+  video.poster = "";
+  video.poster = "/api/cameras/" + cam.id + "/snapshot?" + Date.now();
+  if (!selPlayer) selPlayer = createPlayer(video, $("sel-msg"));
+  selPlayer.onOpen = (ms, mode) => {
+    $("sel-f-open").textContent = (ms / 1000).toFixed(2).replace(".", ",") + " s";
+    const modeText = { raw: "xom H.265", direct: "to'g'ridan-to'g'ri",
+                       transcode: "H.264 ga o'girilgan", manual: "tashqi oqim" }[mode] || mode;
+    $("sel-f-mode").textContent = cam.always_on ? "doim tayyor" : modeText;
+    addEvent(cam.name + " — oqim ochildi (" + (ms / 1000).toFixed(1) + " s)", "ok");
+  };
+  $("sel-f-open").innerHTML = "&mdash;";
+  selPlayer.open(cam, HEVC_OK);
+  // O'chiq kamera — kutish o'rniga darhol sabab ko'rsatiladi (oqim baribir
+  // sinab ko'riladi: tekshiruv 60 soniya eskirgan bo'lishi mumkin).
+  if (cam.online === false) {
+    $("sel-msg").textContent =
+      "Kamera o'chiq · oxirgi onlayn: " + fmtLastSeen(cam.last_seen);
   }
+  renderFootStats();
 }
 
-function attachStream(video, cam, msg, onFail) {
-  state.activeVideo = video;
-  const token = Symbol("stream");
-  state.streamToken = token;
-  const stale = () => state.streamToken !== token;
+function updateSelHead() {
+  const cam = state.byId.get(state.selectedId);
+  if (!cam) { $("sel-panel").hidden = true; return; }
+  const down = cam.online === false;
+  $("sel-name").textContent = cam.name;
+  $("sel-sub").textContent = cam.region + " · " +
+    (down ? "uzilgan · oxirgi onlayn: " + fmtLastSeen(cam.last_seen) : "jonli oqim");
+  $("sel-dot").classList.toggle("down", down);
+  $("sel-badge").classList.toggle("down", down);
+  $("sel-badge-tx").textContent = down ? "OFFLINE" : "LIVE";
+  $("sel-f-codec").textContent = cam.codec || "—";
+  $("sel-f-mode").textContent = cam.always_on ? "doim tayyor" : "so'rov bo'yicha";
+  const p = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  $("sel-stamp").textContent = p(now.getDate()) + "-" + p(now.getMonth() + 1) + "-" +
+    now.getFullYear() + " " + p(now.getHours()) + ":" + p(now.getMinutes());
+}
 
-  if (cam.webrtc_url) {
-    msg.textContent = "Ulanmoqda…";
-    playWebRtc(video, cam.webrtc_url, msg, stale).catch(() => {
-      if (stale()) return;
-      msg.textContent = "Zaxira yo'l orqali ulanmoqda…";
-      playHls(video, cam.stream_url, msg, stale, onFail);
+function closeSel() {
+  state.selectedId = null;
+  $("sel-panel").hidden = true;
+  if (selPlayer) selPlayer.stop();
+  renderList();
+  refreshMarkerIcons();
+  renderFootStats();
+}
+$("sel-close").addEventListener("click", closeSel);
+
+$("sel-full").addEventListener("click", () => {
+  const v = $("sel-video");
+  (v.requestFullscreen || v.webkitEnterFullscreen || function(){}).call(v);
+});
+
+$("sel-wall").addEventListener("click", () => {
+  const id = state.selectedId;
+  if (id && !state.pinned.includes(id)) state.pinned.push(id);
+  showTab("wall");
+});
+
+/* ---------- Video devor ---------- */
+let wallPlayers = [];
+let wallAutoTimer = null;
+
+/* Devor sozlamalari brauzerda saqlanadi — qayta ochilganda tiklanadi. */
+function saveWallPrefs() {
+  try {
+    localStorage.setItem("nigoh-wall", JSON.stringify({
+      size: state.wallSize, fit: state.wallFit,
+      region: state.wallRegion, auto: state.wallAuto
+    }));
+  } catch (e) {}
+}
+function loadWallPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem("nigoh-wall") || "{}");
+    if ([2, 3, 4].includes(p.size)) state.wallSize = p.size;
+    if (p.fit === "cover" || p.fit === "contain") state.wallFit = p.fit;
+    if (typeof p.region === "string") state.wallRegion = p.region;
+    state.wallAuto = !!p.auto;
+  } catch (e) {}
+  document.querySelectorAll("#wall-sizes button").forEach((b) =>
+    b.classList.toggle("on", Number(b.dataset.wsize) === state.wallSize));
+}
+loadWallPrefs();
+
+/* Devorga tushadigan kameralar: biriktirilganlar oldinda, keyin qolganlar. */
+function wallCams() {
+  const seen = new Set();
+  const out = [];
+  const fits = (cam) =>
+    !state.wallHidden.has(cam.id) &&
+    (!state.wallRegion || cam.region === state.wallRegion);
+  state.pinned.forEach((id) => {
+    const cam = state.byId.get(id);
+    if (cam && !seen.has(id) && fits(cam)) { seen.add(id); out.push(cam); }
+  });
+  state.cameras.forEach((cam) => {
+    if (!seen.has(cam.id) && cam.online !== false && fits(cam)) {
+      seen.add(cam.id); out.push(cam);
+    }
+  });
+  return out;
+}
+
+function fillWallRegions() {
+  const sel = $("wall-region");
+  const regions = [...new Set(state.cameras.map((c) => c.region))].sort();
+  const cur = state.wallRegion;
+  sel.innerHTML = '<option value="">Barcha hududlar</option>' +
+    regions.map((r) => '<option value="' + esc(r) + '"' +
+      (r === cur ? " selected" : "") + ">" + esc(r) + "</option>").join("");
+  if (cur && !regions.includes(cur)) { state.wallRegion = ""; sel.value = ""; }
+}
+
+function buildWall() {
+  stopWall();
+  fillWallRegions();
+  const all = wallCams();
+  const slots = state.wallSize * state.wallSize;
+  const pages = Math.max(1, Math.ceil(all.length / slots));
+  state.wallPage = Math.min(state.wallPage, pages - 1);
+  const cams = all.slice(state.wallPage * slots, state.wallPage * slots + slots);
+
+  const grid = $("wall-grid");
+  grid.classList.toggle("cover", state.wallFit === "cover");
+  // Setka kamera soniga moslashadi: 2 ta kamera 2×2 katakka qisilmaydi,
+  // butun ekranni to'ldiradi. Tanlangan o'lcham — yuqori chegara.
+  const n = Math.max(1, cams.length);
+  const cols = Math.min(state.wallSize, Math.ceil(Math.sqrt(n)));
+  const rows = Math.min(state.wallSize, Math.ceil(n / cols));
+  grid.style.gridTemplateColumns = "repeat(" + cols + ",1fr)";
+  grid.style.gridTemplateRows = "repeat(" + rows + ",1fr)";
+
+  $("wall-label").textContent = state.wallSize + "×" + state.wallSize +
+    " · " + all.length + " kamera" +
+    (state.wallRegion ? " · " + state.wallRegion : "") +
+    (state.pinned.length ? " · " + state.pinned.length + " biriktirilgan" : "");
+  $("wall-page").textContent = pages > 1 ? (state.wallPage + 1) + " / " + pages : "";
+  $("wall-prev").disabled = state.wallPage === 0;
+  $("wall-next").disabled = state.wallPage >= pages - 1;
+  $("wall-pager").style.display = pages > 1 ? "" : "none";
+  $("wall-fit").textContent = state.wallFit === "cover" ? "Kadr: to'liq" : "Kadr: butun";
+  $("wall-auto").classList.toggle("soft", state.wallAuto);
+
+  grid.innerHTML = cams.length ? "" :
+    '<div class="empty" style="grid-column:1/-1">Ko‘rsatiladigan kamera yo‘q.</div>';
+
+  cams.forEach((cam) => {
+    const down = cam.online === false;
+    const pinned = state.pinned.includes(cam.id);
+    const tile = document.createElement("div");
+    tile.className = "tile" + (down ? " down" : "") +
+                     (cam.id === state.selectedId ? " sel" : "");
+    tile.innerHTML =
+      '<video muted playsinline poster="/api/cameras/' + cam.id + '/snapshot"></video>' +
+      '<div class="t-msg"></div>' +
+      '<div class="t-head"><i></i><span class="nm">' + esc(cam.name) + "</span>" +
+        '<span class="st">' + (down ? "OFFLINE" : "LIVE") + "</span></div>" +
+      '<div class="t-btns">' +
+        '<button data-w="pin" class="' + (pinned ? "on" : "") +
+          '" title="Devorga biriktirish">&#9733;</button>' +
+        '<button data-w="shot" title="Suratini yuklab olish">&#8681;</button>' +
+        '<button data-w="full" title="To\'liq ekran">&#10530;</button>' +
+        '<button data-w="x" title="Devordan olish">&times;</button>' +
+      "</div>" +
+      '<div class="t-foot"><span>' + esc(cam.region) + "</span><span>" +
+        esc(cam.codec || "") + '</span><span style="margin-left:auto"></span></div>';
+
+    const on = (act, fn) => tile.querySelector('[data-w="' + act + '"]')
+      .addEventListener("click", (e) => { e.stopPropagation(); fn(); });
+    on("pin", () => {
+      state.pinned = pinned ? state.pinned.filter((x) => x !== cam.id)
+                            : [cam.id, ...state.pinned];
+      buildWall();
     });
+    on("shot", async () => {
+      try {
+        const blob = await (await fetch("/api/cameras/" + cam.id + "/snapshot")).blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = cam.name.replace(/[^\w\-]+/g, "_") + ".jpg";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (e) { toast("Surat olinmadi", true); }
+    });
+    // Plitkaning o'zi to'liq ekranga chiqadi — nomi, LIVE belgisi va
+    // pastki ma'lumotlar saqlanib qoladi. Qayta bosish/ESC — chiqish.
+    const goFull = () => {
+      if (document.fullscreenElement) { document.exitFullscreen(); return; }
+      const v = tile.querySelector("video");
+      if (tile.requestFullscreen) tile.requestFullscreen();
+      else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+    };
+    on("full", goFull);
+    on("x", () => {
+      state.wallHidden.add(cam.id);
+      state.pinned = state.pinned.filter((x) => x !== cam.id);
+      buildWall();
+    });
+    tile.addEventListener("click", () => selectCamera(cam.id, true));
+    tile.addEventListener("dblclick", goFull);
+    grid.appendChild(tile);
+
+    if (!down) {
+      const player = createPlayer(tile.querySelector("video"), tile.querySelector(".t-msg"));
+      const msEl = tile.querySelector(".t-foot span:last-child");
+      player.onOpen = (ms) => { msEl.textContent = (ms / 1000).toFixed(2) + "s"; };
+      player.open(cam, HEVC_OK);
+      wallPlayers.push(player);
+    } else {
+      tile.querySelector(".t-msg").textContent = "ulanish yo'q";
+    }
+  });
+  renderFootStats();
+  syncWallAuto();
+}
+
+function stopWall() {
+  wallPlayers.forEach((p) => p.stop());
+  wallPlayers = [];
+  clearInterval(wallAutoTimer);
+  wallAutoTimer = null;
+  renderFootStats();
+}
+
+/* Avto-aylanish: bir necha sahifa bo'lsa, har 12 soniyada keyingisiga o'tadi. */
+function syncWallAuto() {
+  clearInterval(wallAutoTimer);
+  wallAutoTimer = null;
+  if (!state.wallAuto || state.tab !== "wall") return;
+  wallAutoTimer = setInterval(() => {
+    const pages = Math.max(1, Math.ceil(wallCams().length /
+      (state.wallSize * state.wallSize)));
+    if (pages < 2) return;
+    state.wallPage = (state.wallPage + 1) % pages;
+    buildWall();
+  }, 12000);
+}
+
+document.querySelectorAll("#wall-sizes button").forEach((b) =>
+  b.addEventListener("click", () => {
+    state.wallSize = Number(b.dataset.wsize);
+    state.wallPage = 0;
+    document.querySelectorAll("#wall-sizes button").forEach((x) =>
+      x.classList.toggle("on", x === b));
+    saveWallPrefs();
+    buildWall();
+  }));
+$("wall-region").addEventListener("change", (e) => {
+  state.wallRegion = e.target.value;
+  state.wallPage = 0;
+  saveWallPrefs();
+  buildWall();
+});
+$("wall-fit").addEventListener("click", () => {
+  state.wallFit = state.wallFit === "cover" ? "contain" : "cover";
+  saveWallPrefs();
+  buildWall();
+});
+$("wall-auto").addEventListener("click", () => {
+  state.wallAuto = !state.wallAuto;
+  saveWallPrefs();
+  buildWall();
+});
+$("wall-prev").addEventListener("click", () => {
+  state.wallPage = Math.max(0, state.wallPage - 1);
+  buildWall();
+});
+$("wall-next").addEventListener("click", () => {
+  state.wallPage++;
+  buildWall();
+});
+
+/* ---------- Dashboard ---------- */
+function addEvent(text, kind) {
+  const p = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  state.events.unshift({ time: p(now.getHours()) + ":" + p(now.getMinutes()), text, kind });
+  if (state.events.length > 50) state.events.pop();
+  renderEvents();
+}
+
+function renderDashMetrics() {
+  const total = state.cameras.length;
+  const on = state.cameras.filter((c) => c.online === true).length;
+  const off = state.cameras.filter((c) => c.online === false).length;
+  $("m-total").textContent = total;
+  $("m-total-note").textContent = new Set(state.cameras.map((c) => c.region)).size + " hududda";
+  $("m-online").textContent = total ? Math.round((on / total) * 100) + "%" : "—";
+  $("m-online-note").textContent = on + " ta javob beryapti";
+  const t = state.openTimes;
+  $("m-open").textContent = t.length
+    ? (t.reduce((s, v) => s + v, 0) / t.length / 1000).toFixed(2).replace(".", ",")
+    : "—";
+  $("m-open-note").textContent = t.length
+    ? "shu seansda " + t.length + " o'lchov" : "hali oqim ochilmadi";
+  $("m-down").textContent = off;
+  $("m-down-note").textContent = off ? "tekshirish talab qiladi" : "hammasi joyida";
+  renderDonut();
+  renderSpark();
+}
+
+/* Holat taqsimoti — donut. Markazda bosh ko'rsatkich: onlayn foizi. */
+function renderDonut() {
+  const on = state.cameras.filter((c) => c.online === true).length;
+  const off = state.cameras.filter((c) => c.online === false).length;
+  const unk = state.cameras.length - on - off;
+  const total = state.cameras.length || 1;
+  const parts = [
+    { label: "Onlayn", n: on, color: "var(--ok)" },
+    { label: "Uzilgan", n: off, color: "var(--danger)" },
+    { label: "Noma'lum", n: unk, color: "var(--faint)" },
+  ].filter((p) => p.n > 0);
+
+  const R = 46, C = 2 * Math.PI * R;
+  const gap = parts.length > 1 ? 3 : 0;   // segmentlar orasidagi "havo"
+  let acc = 0;
+  const segs = parts.map((p) => {
+    const frac = p.n / total;
+    const len = Math.max(C * frac - gap, 0.5);
+    const s = '<circle cx="60" cy="60" r="' + R + '" fill="none" pathLength="' + C.toFixed(2) +
+      '" style="stroke:' + p.color + ';stroke-width:13" stroke-dasharray="' +
+      len.toFixed(2) + " " + C.toFixed(2) + '" stroke-dashoffset="' + (-acc - gap / 2).toFixed(2) +
+      '" transform="rotate(-90 60 60)"><title>' + p.label + ": " + p.n + " ta</title></circle>";
+    acc += C * frac;
+    return s;
+  }).join("");
+  const pct = Math.round((on / total) * 100);
+  $("donut").innerHTML = segs +
+    '<text x="60" y="58" text-anchor="middle" style="font:700 23px var(--font),sans-serif;fill:var(--text)">' + pct + "%</text>" +
+    '<text x="60" y="76" text-anchor="middle" style="font:700 8.5px var(--font),sans-serif;letter-spacing:.1em;fill:var(--faint)">ONLAYN</text>';
+  $("donut-legend").innerHTML = parts.map((p) =>
+    '<div class="dl"><i style="background:' + p.color + '"></i>' + p.label +
+    " <b>" + p.n + " ta</b></div>").join("");
+}
+
+/* Ochilish vaqtlari sparkline'i — seansdagi so'nggi 24 o'lchov. */
+function renderSpark() {
+  const el = $("m-open-spark");
+  const data = state.openTimes.slice(-24);
+  if (data.length < 2) { el.innerHTML = ""; return; }
+  const W = 200, H = 30, P = 4;
+  const max = Math.max(...data), min = Math.min(...data);
+  const x = (i) => P + (W - 2 * P) * i / (data.length - 1);
+  const y = (v) => max === min ? H / 2 : H - P - (H - 2 * P) * (v - min) / (max - min);
+  const pts = data.map((v, i) => x(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ");
+  const lx = x(data.length - 1).toFixed(1), ly = y(data[data.length - 1]).toFixed(1);
+  el.innerHTML =
+    '<polygon points="' + P + "," + (H - P) + " " + pts + " " + lx + "," + (H - P) +
+      '" style="fill:var(--accent);opacity:.1"/>' +
+    '<polyline points="' + pts + '" vector-effect="non-scaling-stroke" ' +
+      'style="fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round"/>' +
+    '<circle cx="' + lx + '" cy="' + ly + '" r="3.5" style="fill:var(--accent);stroke:var(--surface-2);stroke-width:2"/>';
+}
+
+function renderDash() {
+  renderDashMetrics();
+  const regions = [...new Set(state.cameras.map((c) => c.region))].sort();
+  $("region-rows").innerHTML = regions.map((region) => {
+    const list = state.cameras.filter((c) => c.region === region);
+    const up = list.filter((c) => c.online !== false).length;
+    const pct = list.length ? Math.round((up / list.length) * 100) : 0;
+    const color = pct === 100 ? "var(--ok)" : pct >= 60 ? "var(--accent)" : "var(--danger)";
+    return '<div class="rrow click" data-region="' + esc(region) + '"><span class="rg">' + esc(region) + "</span>" +
+      '<div class="bar"><i style="width:' + pct + "%;background:" + color + '"></i></div>' +
+      '<span class="lb">' + up + "/" + list.length + " · " + pct + "%</span></div>";
+  }).join("");
+  // Hudud qatori bosilsa — xaritaga o'tib, o'sha hudud kameralari ko'rsatiladi.
+  document.querySelectorAll("#region-rows .rrow").forEach((row) =>
+    row.addEventListener("click", () => {
+      const region = row.dataset.region;
+      showTab("map");
+      $("q-input").value = region;
+      state.q = region;
+      renderList();
+      const pts = state.cameras.filter((c) => c.region === region && c.lat != null);
+      if (pts.length) {
+        const b = L.latLngBounds(pts.map((c) => [c.lat, c.lng]));
+        map.fitBounds(b.pad(0.35));
+      }
+    }));
+  renderTech();
+  renderSlow();
+  renderEvents();
+}
+
+/* Texnik kesim: kodeklar, o'girish va rejimlar taqsimoti. */
+function renderTech() {
+  const total = state.cameras.length || 1;
+  // Bitta o'lchov (ulush) — bitta rang: qatorlar yorliq bilan farqlanadi.
+  const groups = [
+    ["H.265 xom (o'girishsiz)", state.cameras.filter((c) => /h265|hevc/i.test(c.codec || "") && !c.transcode).length, "var(--accent)"],
+    ["H.265 → H.264 o'girish", state.cameras.filter((c) => c.transcode).length, "var(--accent)"],
+    ["H.264 to'g'ridan-to'g'ri", state.cameras.filter((c) => /h264|avc/i.test(c.codec || "") && !c.transcode).length, "var(--accent)"],
+    ["Doim tayyor rejimda", state.cameras.filter((c) => c.always_on).length, "var(--accent)"],
+  ];
+  $("tech-rows").innerHTML = groups.map(([label, n, color]) => {
+    const pct = Math.round((n / total) * 100);
+    return '<div class="rrow"><span class="rg wide">' + label + "</span>" +
+      '<div class="bar"><i style="width:' + pct + "%;background:" + color + '"></i></div>' +
+      '<span class="lb">' + n + " ta · " + pct + "%</span></div>";
+  }).join("");
+}
+
+/* Shu seansda o'lchangan oqim ochilish vaqtlari — sekinlari yuqorida. */
+function renderSlow() {
+  const rows = [...state.openByCam.entries()]
+    .map(([id, ms]) => ({ cam: state.byId.get(id), ms }))
+    .filter((r) => r.cam)
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, 8);
+  const max = rows.length ? rows[0].ms : 1;
+  $("slow-rows").innerHTML = rows.length ? rows.map((r) => {
+    const sec = r.ms / 1000;
+    const color = sec <= 2 ? "var(--ok)" : sec <= 5 ? "var(--warn)" : "var(--danger)";
+    return '<div class="rrow"><span class="rg wide">' + esc(r.cam.name) + "</span>" +
+      '<div class="bar"><i style="width:' + Math.max(6, Math.round((r.ms / max) * 100)) +
+      "%;background:" + color + '"></i></div>' +
+      '<span class="lb">' + sec.toFixed(2) + " s</span></div>";
+  }).join("") : '<div class="empty">Hali oqim ochilmadi — kamera oching, o\'lchov shu yerda ko\'rinadi.</div>';
+}
+
+/* Dashboard ochiq turganda har 15 soniyada o'zi yangilanadi. */
+setInterval(() => {
+  if (state.tab === "dash" && !document.hidden) renderDash();
+}, 15000);
+
+function renderEvents() {
+  const colors = { ok: "var(--ok)", warn: "var(--warn)", danger: "var(--danger)" };
+  $("events-list").innerHTML = state.events.length
+    ? state.events.map((e) =>
+        '<div class="erow"><span class="tm">' + e.time + "</span>" +
+        '<span class="ln" style="background:' + (colors[e.kind] || "var(--muted)") + '"></span>' +
+        '<span class="tx">' + esc(e.text) + "</span></div>").join("")
+    : '<div class="empty">Hodisalar hali yo‘q.</div>';
+}
+
+/* ---------- Tab'lar ---------- */
+function showTab(tab) {
+  if (tab === "admin" && !state.admin) {
+    state.pendingTab = "admin";
+    openModal("login-modal");
+    setTimeout(() => $("l-pass").focus(), 60);
     return;
   }
-  if (!cam.stream_url) { msg.textContent = "Oqim manzili sozlanmagan"; return; }
-  msg.textContent = "Ulanmoqda…";
-  playHls(video, cam.stream_url, msg, stale, onFail);
+  const prev = state.tab;
+  state.tab = tab;
+  document.querySelectorAll("#tabs button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.tab === tab));
+  $("wall-view").hidden = tab !== "wall";
+  $("dash-view").hidden = tab !== "dash";
+  $("admin-view").hidden = tab !== "admin";
+
+  const onMap = tab === "map";
+  $("list-panel").hidden = !onMap || !state.listOpen;
+  $("sel-panel").hidden = !onMap || !state.selectedId;
+  $("strip").hidden = !onMap;
+  $("mapctl").hidden = !onMap;
+
+  if (prev === "wall" && tab !== "wall") stopWall();
+  if (prev === "map" && tab !== "map" && selPlayer) selPlayer.stop();
+
+  if (tab === "wall") buildWall();
+  if (tab === "dash") renderDash();
+  if (tab === "admin") loadAdminCameras(0);
+  if (tab === "map" && state.selectedId) selectCamera(state.selectedId, false);
 }
+document.querySelectorAll("#tabs button").forEach((b) =>
+  b.addEventListener("click", () => showTab(b.dataset.tab)));
+$("wall-back").addEventListener("click", () => showTab("map"));
+$("dash-back").addEventListener("click", () => showTab("map"));
+$("admin-back").addEventListener("click", () => showTab("map"));
+$("go-wall").addEventListener("click", () => showTab("wall"));
 
-async function playWebRtc(video, whepUrl, msg, stale) {
-  const pc = new RTCPeerConnection({ iceServers: [] });
-  state.activePc = pc;
-  pc.addTransceiver("video", { direction: "recvonly" });
+/* ---------- Xarita boshqaruvlari ---------- */
+$("z-in").addEventListener("click", () => map.zoomIn());
+$("z-out").addEventListener("click", () => map.zoomOut());
+$("fit-all").addEventListener("click", () => {
+  try {
+    const b = cluster.getBounds();
+    if (b.isValid()) { map.fitBounds(b.pad(0.2)); return; }
+  } catch (e) {}
+  map.setView([41.35, 64.6], 6);
+});
 
-  pc.ontrack = (e) => {
-    if (stale()) return;
-    video.srcObject = e.streams[0];
-    msg.textContent = "";
-    video.play().catch(() => {});
-  };
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  // ICE nomzodlari yig'ilishini kutamiz (ko'pi bilan 900 ms).
-  await new Promise((resolve) => {
-    if (pc.iceGatheringState === "complete") return resolve();
-    const done = () => { pc.removeEventListener("icegatheringstatechange", check); resolve(); };
-    const check = () => { if (pc.iceGatheringState === "complete") done(); };
-    pc.addEventListener("icegatheringstatechange", check);
-    setTimeout(done, 900);
-  });
-
-  const res = await fetch(whepUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/sdp" },
-    body: pc.localDescription.sdp
-  });
-  if (!res.ok) { pc.close(); throw new Error("WHEP " + res.status); }
-  const answer = await res.text();
-  if (stale()) { pc.close(); return; }
-  await pc.setRemoteDescription({ type: "answer", sdp: answer });
-
-  // 6 soniyada tasvir kelmasa — HLS'ga o'tamiz.
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (video.srcObject) resolve(); else { pc.close(); reject(new Error("WebRTC jim")); }
-    }, 6000);
-    pc.addEventListener("connectionstatechange", () => {
-      if (pc.connectionState === "connected") { clearTimeout(timer); resolve(); }
-      if (pc.connectionState === "failed") { clearTimeout(timer); pc.close(); reject(new Error("WebRTC uzildi")); }
-    });
-  });
-}
-
-function playHls(video, url, msg, stale, onFail) {
-  if (!url) { msg.textContent = FAIL_MSG; return; }
-  const isHls = url.includes(".m3u8");
-
-  if (isHls && window.Hls && Hls.isSupported()) {
-    const hls = new Hls({
-      lowLatencyMode: true,
-      maxBufferLength: 6,
-      backBufferLength: 6,
-      liveSyncDurationCount: 1,
-      manifestLoadingTimeOut: 25000     // sovuq start 5 soniyagacha cho'ziladi
-    });
-    state.activeHls = hls;
-    hls.loadSource(url);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      if (stale()) return;
-      msg.textContent = "";
-      video.play().catch(() => {});
-    });
-    hls.on(Hls.Events.ERROR, (_, d) => {
-      if (!d.fatal || stale()) return;
-      // Kodek o'qilmasa — o'girilgan oqimga qaytishga imkon beramiz.
-      if (onFail && d.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.destroy(); onFail(); return; }
-      msg.textContent = FAIL_MSG;
-    });
-  } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
-    video.src = url;
-    video.addEventListener("loadedmetadata", () => {
-      if (stale()) return;
-      msg.textContent = "";
-      video.play().catch(() => {});
-    }, { once: true });
-    video.onerror = () => { if (!stale()) msg.textContent = FAIL_MSG; };
-  } else {
-    video.src = url;
-    video.onerror = () => { if (!stale()) msg.textContent = FAIL_MSG; };
-    video.addEventListener("canplay", () => { if (!stale()) msg.textContent = ""; }, { once: true });
-    video.play().catch(() => {});
-  }
-}
-
-/* ---------- Modal yordamchilari ---------- */
+/* ---------- Modallar ---------- */
 function openModal(id) { $(id).classList.add("open"); }
 function closeModal(id) {
   $(id).classList.remove("open");
   if (id === "cam-modal") stopPicking(true);
+  if (id === "login-modal") state.pendingTab = null;
 }
 document.querySelectorAll("[data-close]").forEach((b) =>
   b.addEventListener("click", () => closeModal(b.dataset.close)));
@@ -907,14 +2002,14 @@ document.querySelectorAll(".backdrop").forEach((bd) =>
 /* ---------- Autentifikatsiya ---------- */
 function setAdmin(admin) {
   state.admin = admin;
-  const on = Boolean(admin);
-  $("login-btn").hidden = on;
-  $("logout-btn").hidden = !on;
-  $("admin-open").hidden = !on;
-  $("who").hidden = !on;
-  if (on) $("who-name").textContent = admin.username;
-  if (!on) {
-    $("admin-drawer").classList.remove("open");
+  const av = $("avatar");
+  if (admin) {
+    av.textContent = admin.username.slice(0, 2).toUpperCase();
+    av.title = admin.username + " — chiqish uchun bosing";
+  } else {
+    av.textContent = "Kirish";
+    av.title = "Super-admin";
+    if (state.tab === "admin") showTab("map");
     stopPicking(true);
   }
 }
@@ -924,11 +2019,19 @@ async function checkAuth() {
   setAdmin(me.authenticated ? { username: me.username } : null);
 }
 
-$("login-btn").addEventListener("click", () => {
-  $("login-err").classList.remove("show");
-  $("l-pass").value = "";
-  openModal("login-modal");
-  setTimeout(() => $("l-pass").focus(), 60);
+$("avatar").addEventListener("click", async () => {
+  if (!state.admin) {
+    $("login-err").classList.remove("show");
+    $("l-pass").value = "";
+    openModal("login-modal");
+    setTimeout(() => $("l-pass").focus(), 60);
+    return;
+  }
+  if (confirm("Chiqmoqchimisiz?")) {
+    await api("/api/auth/logout", { method: "POST" });
+    setAdmin(null);
+    toast("Chiqdingiz");
+  }
 });
 
 $("l-submit").addEventListener("click", doLogin);
@@ -944,28 +2047,15 @@ async function doLogin() {
     });
     setAdmin({ username: me.username });
     closeModal("login-modal");
-    await loadAdminCameras(0);
-    $("admin-drawer").classList.add("open");
     toast("Xush kelibsiz, " + me.username);
+    if (state.pendingTab === "admin") { state.pendingTab = null; showTab("admin"); }
   } catch (e) {
     err.textContent = e.message;
     err.classList.add("show");
   }
 }
 
-$("logout-btn").addEventListener("click", async () => {
-  await api("/api/auth/logout", { method: "POST" });
-  setAdmin(null);
-  toast("Chiqdingiz");
-});
-
-/* ---------- Boshqaruv paneli ---------- */
-$("admin-open").addEventListener("click", async () => {
-  await loadAdminCameras(0);
-  $("admin-drawer").classList.add("open");
-});
-$("admin-close").addEventListener("click", () => $("admin-drawer").classList.remove("open"));
-
+/* ---------- Boshqaruv jadvali ---------- */
 const ADMIN_PAGE = 100;
 
 async function loadAdminCameras(offset) {
@@ -977,83 +2067,148 @@ async function loadAdminCameras(offset) {
   state.adminOffset = start;
   state.adminTotal = res.total;
 
-  const list = $("admin-list");
+  $("admin-total").textContent = res.total + " ta yozuv";
   const last = Math.min(start + res.cameras.length, res.total);
-  $("admin-count").textContent = res.total
-    ? (res.total > ADMIN_PAGE ? `${start + 1}–${last} / ${res.total} ta` : `${res.total} ta yozuv`)
-    : "yozuv yo'q";
+  $("admin-count").textContent = res.total > ADMIN_PAGE
+    ? (start + 1) + "–" + last + " / " + res.total : "";
+  $("adm-prev").disabled = start === 0;
+  $("adm-next").disabled = start + ADMIN_PAGE >= res.total;
 
-  list.innerHTML = res.cameras.length ? "" :
-    '<div class="empty">' + (state.adminQuery
-      ? "Qidiruvga mos kamera topilmadi."
-      : "Hali kamera qo'shilmagan.<br>Pastdagi tugmalardan boshlang.") + "</div>";
-  res.cameras.forEach((cam) => list.appendChild(adminRow(cam)));
-
-  if (res.total > ADMIN_PAGE) list.appendChild(adminPager(start, res.total));
-  list.scrollTop = 0;
+  fillAdminRegions();
+  renderAdminTable();
 }
 
-function adminPager(start, total) {
-  const bar = document.createElement("div");
-  bar.className = "pager";
-  const prev = document.createElement("button");
-  prev.className = "mini";
-  prev.textContent = "‹ Oldingi";
-  prev.disabled = start === 0;
-  prev.addEventListener("click", () => loadAdminCameras(Math.max(0, start - ADMIN_PAGE)));
-  const next = document.createElement("button");
-  next.className = "mini";
-  next.textContent = "Keyingi ›";
-  next.disabled = start + ADMIN_PAGE >= total;
-  next.addEventListener("click", () => loadAdminCameras(start + ADMIN_PAGE));
-  bar.append(prev, next);
-  return bar;
+/* Kamera holati filtrlash/saralash uchun yagona qiymatga keltiriladi. */
+function camStatus(cam) {
+  if (!cam.enabled) return "disabled";
+  const pub = state.byId.get(cam.id);
+  if (pub && pub.online === false) return "offline";
+  if (pub && pub.online === true) return "online";
+  return "unknown";
+}
+function camCodecKind(cam) {
+  if (cam.transcode) return "trans";
+  if (/h265|hevc/i.test(cam.codec || "")) return "h265raw";
+  if (/h264|avc/i.test(cam.codec || "")) return "h264";
+  return "";
 }
 
-let adminSearchTimer = null;
-$("admin-search").addEventListener("input", (e) => {
-  state.adminQuery = e.target.value;
-  clearTimeout(adminSearchTimer);
-  adminSearchTimer = setTimeout(() => loadAdminCameras(0), 250);
+function fillAdminRegions() {
+  const sel = $("adm-region");
+  const cur = sel.value;
+  const regions = [...new Set(state.adminCameras.map((c) => c.region))].sort();
+  sel.innerHTML = '<option value="">Barcha hududlar</option>' +
+    regions.map((r) => '<option value="' + esc(r) + '"' +
+      (r === cur ? " selected" : "") + ">" + esc(r) + "</option>").join("");
+}
+
+function renderAdminTable() {
+  const f = state.adminFilters;
+  let rows = state.adminCameras.filter((cam) =>
+    (!f.status || camStatus(cam) === f.status) &&
+    (!f.region || cam.region === f.region) &&
+    (!f.codec || camCodecKind(cam) === f.codec) &&
+    (!f.mode || (f.mode === "always") === !!cam.always_on));
+
+  const s = state.adminSort;
+  if (s.key) {
+    const val = (cam) => s.key === "status" ? camStatus(cam)
+      : s.key === "codec" ? camCodecKind(cam)
+      : s.key === "mode" ? (cam.always_on ? "a" : "b")
+      : String(cam[s.key] || "").toLowerCase();
+    rows = [...rows].sort((a, b) => s.dir * val(a).localeCompare(val(b), "uz"));
+  }
+  document.querySelectorAll("#admin-table th.sortable").forEach((th) => {
+    th.querySelector(".arr").textContent =
+      th.dataset.key === s.key ? (s.dir > 0 ? "▲" : "▼") : "";
+  });
+
+  $("adm-shown").textContent = rows.length !== state.adminCameras.length
+    ? rows.length + " / " + state.adminCameras.length + " ko'rsatilyapti" : "";
+
+  const tbody = $("admin-tbody");
+  tbody.innerHTML = "";
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty">' +
+      (state.adminCameras.length ? "Filtrlarga mos kamera topilmadi."
+        : state.adminQuery ? "Qidiruvga mos kamera topilmadi."
+        : "Hali kamera qo'shilmagan — «+ Kamera» dan boshlang.") +
+      "</div></td></tr>";
+    return;
+  }
+  rows.forEach((cam) => tbody.appendChild(adminRow(cam)));
+}
+
+document.querySelectorAll("#adm-status button").forEach((b) =>
+  b.addEventListener("click", () => {
+    state.adminFilters.status = b.dataset.st;
+    document.querySelectorAll("#adm-status button").forEach((x) =>
+      x.classList.toggle("on", x === b));
+    renderAdminTable();
+  }));
+$("adm-region").addEventListener("change", (e) => {
+  state.adminFilters.region = e.target.value; renderAdminTable();
 });
+$("adm-codec").addEventListener("change", (e) => {
+  state.adminFilters.codec = e.target.value; renderAdminTable();
+});
+$("adm-mode").addEventListener("change", (e) => {
+  state.adminFilters.mode = e.target.value; renderAdminTable();
+});
+document.querySelectorAll("#admin-table th.sortable").forEach((th) =>
+  th.addEventListener("click", () => {
+    const key = th.dataset.key;
+    if (state.adminSort.key === key) state.adminSort.dir *= -1;
+    else state.adminSort = { key, dir: 1 };
+    renderAdminTable();
+  }));
 
 function adminRow(cam) {
-  const row = document.createElement("div");
-  row.className = "adm-row" + (cam.enabled ? "" : " disabled");
-  const meta = cam.source_type === "rtsp"
-    ? esc(cam.ip) + ":" + cam.port + esc(cam.rtsp_path || "") +
-      (cam.username ? " · " + esc(cam.username) : "") +
-      (cam.codec ? " · " + esc(cam.codec) + (cam.transcode ? " → H264" : "") : "") +
-      (cam.always_on ? " · doim tayyor" : " · so'rov bo'yicha")
-    : esc(cam.raw_stream_url || "—");
+  const tr = document.createElement("tr");
+  const pub = state.byId.get(cam.id);
+  const stateInfo = !cam.enabled
+    ? { tx: "O'CHIRILGAN", color: "var(--faint)" }
+    : pub && pub.online === false
+      ? { tx: "UZILGAN", color: "var(--danger)" }
+      : pub && pub.online === true
+        ? { tx: "ONLAYN", color: "var(--ok)" }
+        : { tx: "—", color: "var(--muted)" };
+  const addr = cam.source_type === "rtsp"
+    ? cam.ip + ":" + cam.port + (cam.rtsp_path || "")
+    : (cam.raw_stream_url || "—");
 
-  row.innerHTML =
-    '<div class="adm-top">' +
-      '<span class="live-dot' + (cam.enabled ? "" : " off") + '"></span>' +
-      '<span class="adm-name">' + esc(cam.name) + "</span>" +
-      '<span class="tag ' + (cam.source_type === "rtsp" ? "rtsp" : "") + '">' +
-        (cam.source_type === "rtsp" ? "RTSP" : "OQIM") + "</span>" +
-    "</div>" +
-    '<div class="adm-meta">' + esc(cam.region) + " · " + meta + "</div>" +
-    '<div class="adm-actions">' +
-      '<button class="mini" data-act="edit">Tahrirlash</button>' +
-      (cam.source_type === "rtsp" ? '<button class="mini" data-act="test">Tekshirish</button>' : "") +
-      '<button class="mini" data-act="find">Xaritada</button>' +
-      '<button class="mini danger" data-act="del">O\'chirish</button>' +
-    "</div>" +
-    '<div class="probe-out"></div>';
+  tr.innerHTML =
+    '<td><span class="st-chip" style="color:' + stateInfo.color + '">' +
+      '<i style="background:' + stateInfo.color + '"></i>' + stateInfo.tx + "</span></td>" +
+    '<td style="font-weight:600">' + esc(cam.name) + "</td>" +
+    '<td style="color:var(--muted)">' + esc(cam.region) + "</td>" +
+    '<td class="mono" style="font-size:11px;color:var(--muted);word-break:break-all">' + esc(addr) + "</td>" +
+    "<td>" + (cam.codec
+      ? '<span class="cdx-chip">' + esc(cam.codec) + (cam.transcode ? " → H264" : "") + "</span>"
+      : '<span style="color:var(--faint)">—</span>') + "</td>" +
+    '<td style="color:var(--muted);font-size:11.5px">' +
+      (cam.always_on ? "doim tayyor" : "so'rov bo'yicha") + "</td>" +
+    '<td style="text-align:right;white-space:nowrap">' +
+      '<span style="display:inline-flex;gap:6px">' +
+        '<button class="btn mini" data-act="edit">Tahrirlash</button>' +
+        (cam.source_type === "rtsp" ? '<button class="btn mini" data-act="test">Tekshirish</button>' : "") +
+        '<button class="btn mini" data-act="find">Xaritada</button>' +
+        '<button class="btn mini danger" data-act="del">O‘chirish</button>' +
+      "</span><div class=\"adm-probe\"></div></td>";
 
-  const out = row.querySelector(".probe-out");
-  row.querySelector('[data-act="edit"]').addEventListener("click", () => openCameraForm(cam));
-  row.querySelector('[data-act="del"]').addEventListener("click", () => deleteCamera(cam));
-  row.querySelector('[data-act="find"]').addEventListener("click", () => {
+  const out = tr.querySelector(".adm-probe");
+  tr.querySelector('[data-act="edit"]').addEventListener("click", () => openCameraForm(cam));
+  tr.querySelector('[data-act="del"]').addEventListener("click", () => deleteCamera(cam));
+  tr.querySelector('[data-act="find"]').addEventListener("click", () => {
+    showTab("map");
     map.setView([cam.lat, cam.lng], 15);
-    openRegion(cam.region, cam.id, false);
+    selectCamera(cam.id, false);
   });
-  const testBtn = row.querySelector('[data-act="test"]');
+  const testBtn = tr.querySelector('[data-act="test"]');
   if (testBtn) testBtn.addEventListener("click", async () => {
     testBtn.disabled = true;
-    showProbe(out, "wait", "Tekshirilmoqda…");
+    out.className = "adm-probe show wait";
+    out.textContent = "Tekshirilmoqda…";
     try {
       const r = await api("/api/admin/probe", {
         method: "POST",
@@ -1062,26 +2217,36 @@ function adminRow(cam) {
           rtsp_path: cam.rtsp_path, camera_id: cam.id
         })
       });
-      showProbe(out, r.ok ? "ok" : "bad", r.message);
+      out.className = "adm-probe show " + (r.ok ? "ok" : "bad");
+      out.textContent = r.message;
     } catch (e) {
-      showProbe(out, "bad", e.message);
+      out.className = "adm-probe show bad";
+      out.textContent = e.message;
     }
     testBtn.disabled = false;
   });
-  return row;
+  return tr;
 }
 
-function showProbe(el, kind, text) {
-  el.className = "probe-out show " + kind;
-  el.textContent = text;
-}
+$("adm-prev").addEventListener("click", () =>
+  loadAdminCameras(Math.max(0, state.adminOffset - ADMIN_PAGE)));
+$("adm-next").addEventListener("click", () =>
+  loadAdminCameras(state.adminOffset + ADMIN_PAGE));
+
+let adminSearchTimer = null;
+$("admin-search").addEventListener("input", (e) => {
+  state.adminQuery = e.target.value;
+  clearTimeout(adminSearchTimer);
+  adminSearchTimer = setTimeout(() => loadAdminCameras(0), 250);
+});
 
 async function deleteCamera(cam) {
-  if (!confirm('"' + cam.name + '" kamerasi butunlay o\'chirilsinmi?')) return;
+  if (!confirm('"' + cam.name + '" kamerasi butunlay o‘chirilsinmi?')) return;
   try {
     await api("/api/admin/cameras/" + cam.id, { method: "DELETE" });
     await loadAdminCameras(state.adminOffset);
     await loadCameras();
+    addEvent(cam.name + " — o'chirildi", "warn");
     toast("Kamera o'chirildi");
   } catch (e) { toast(e.message, true); }
 }
@@ -1126,11 +2291,14 @@ function updatePreview() {
 }
 
 function openCameraForm(cam) {
+  // Vendor ro'yxati ishga tushishda yuklanmay qolgan bo'lsa — hozir yuklaymiz.
+  if (!state.vendors.length) loadVendors().catch(() => {});
   state.editingId = cam ? cam.id : null;
   $("cam-title").textContent = cam ? "Kamerani tahrirlash" : "Yangi kamera";
   $("cam-err").classList.remove("show");
   $("f-probe").className = "probe-out";
   $("pass-hint").hidden = !cam;
+  resetScan();
 
   setSourceType(cam ? cam.source_type : "rtsp");
   $("f-name").value = cam ? cam.name : "";
@@ -1150,10 +2318,10 @@ function openCameraForm(cam) {
 
   const out = $("f-probe");
   if (cam && cam.codec) {
-    showProbe(out, cam.transcode ? "wait" : "ok",
-      cam.transcode
-        ? "Kodek " + cam.codec + " — brauzer o'qiy olmaydi, H.264 ga o'girib beriladi"
-        : "Kodek " + cam.codec + " — to'g'ridan-to'g'ri uzatiladi");
+    out.className = "probe-out show " + (cam.transcode ? "wait" : "ok");
+    out.textContent = cam.transcode
+      ? "Kodek " + cam.codec + " — brauzer o'qiy olmaydi, H.264 ga o'girib beriladi"
+      : "Kodek " + cam.codec + " — to'g'ridan-to'g'ri uzatiladi";
   }
 
   updatePreview();
@@ -1163,12 +2331,64 @@ function openCameraForm(cam) {
 
 $("new-cam").addEventListener("click", () => openCameraForm(null));
 
+/* --- viloyatni koordinatadan aniqlash --- */
+let regionGeo = null;
+async function ensureRegionGeo() {
+  if (regionGeo) return regionGeo;
+  const r = await fetch("/static/uz_regions.geojson");
+  if (!r.ok) throw new Error("chegara fayli yuklanmadi");
+  regionGeo = await r.json();
+  return regionGeo;
+}
+
+function pointInRing(lat, lng, ring) {
+  // Nur usuli (ray casting); geojson koordinatasi [lng, lat] tartibida.
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    if ((yi > lat) !== (yj > lat) &&
+        lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function regionAt(lat, lng) {
+  if (!regionGeo) return "";
+  for (const f of regionGeo.features) {
+    const g = f.geometry;
+    const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+    for (const poly of polys) {
+      if (pointInRing(lat, lng, poly[0]) &&
+          !poly.slice(1).some((hole) => pointInRing(lat, lng, hole)))
+        return f.properties.name;
+    }
+  }
+  return "";
+}
+
+function autoRegion(prefix) {
+  const lat = parseFloat($(prefix + "-lat").value);
+  const lng = parseFloat($(prefix + "-lng").value);
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return;
+  const fill = () => {
+    const name = regionAt(lat, lng);
+    if (name) $(prefix + "-region").value = name;
+  };
+  if (regionGeo) fill();
+  else ensureRegionGeo().then(fill).catch(() => {});
+}
+
+["f", "n"].forEach((prefix) =>
+  ["-lat", "-lng"].forEach((suffix) =>
+    $(prefix + suffix).addEventListener("change", () => autoRegion(prefix))));
+
 /* --- xaritadan koordinata tanlash --- */
 $("f-pick").addEventListener("click", () => {
   $("cam-modal").classList.remove("open");
   state.picking = "cam";
   document.body.classList.add("picking");
-  $("admin-drawer").classList.remove("open");
+  showTab("map");
   toast("Xaritada kerakli nuqtani bosing");
 });
 
@@ -1187,8 +2407,13 @@ map.on("click", (e) => {
   const prefix = state.picking === "nvr" ? "n" : "f";
   $(prefix + "-lat").value = e.latlng.lat.toFixed(5);
   $(prefix + "-lng").value = e.latlng.lng.toFixed(5);
+  autoRegion(prefix);
   if (state.pickMarker) map.removeLayer(state.pickMarker);
-  state.pickMarker = L.marker(e.latlng, { icon: pendingIcon }).addTo(map);
+  state.pickMarker = L.marker(e.latlng, {
+    icon: L.divIcon({ className: "",
+      html: '<div class="mk sel"><span class="r"></span><span class="c"></span></div>',
+      iconSize: [24, 24], iconAnchor: [12, 12] })
+  }).addTo(map);
   stopPicking(false);
   openModal(target);
 });
@@ -1196,9 +2421,10 @@ map.on("click", (e) => {
 /* --- ulanishni tekshirish --- */
 $("f-test").addEventListener("click", async () => {
   const out = $("f-probe");
-  if (!$("f-ip").value.trim()) { showProbe(out, "bad", "Avval IP manzilni kiriting"); return; }
+  const show = (kind, tx) => { out.className = "probe-out show " + kind; out.textContent = tx; };
+  if (!$("f-ip").value.trim()) { show("bad", "Avval IP manzilni kiriting"); return; }
   $("f-test").disabled = true;
-  showProbe(out, "wait", "Tekshirilmoqda… (10 soniyagacha)");
+  show("wait", "Tekshirilmoqda… (10 soniyagacha)");
   try {
     const r = await api("/api/admin/probe", {
       method: "POST",
@@ -1211,11 +2437,95 @@ $("f-test").addEventListener("click", async () => {
         camera_id: state.editingId
       })
     });
-    showProbe(out, r.ok ? "ok" : "bad", r.message);
+    show(r.ok ? "ok" : "bad", r.message);
   } catch (e) {
-    showProbe(out, "bad", e.message);
+    show("bad", e.message);
   }
   $("f-test").disabled = false;
+});
+
+/* --- qurilmani avtomatik aniqlash --- */
+function scanPicked() {
+  if (!state.scan) return null;
+  return state.scan.channels.filter((c) => {
+    const cb = document.querySelector('#f-channels input[data-ch="' + c.channel + '"]');
+    return cb ? cb.checked : true;
+  });
+}
+
+function updateSaveLabel() {
+  const picked = scanPicked();
+  $("f-save").textContent = picked && picked.length > 1
+    ? picked.length + " ta kamerani qo'shish"
+    : "Saqlash";
+}
+
+function resetScan() {
+  state.scan = null;
+  $("f-channels").innerHTML = "";
+  $("f-scan-out").className = "probe-out";
+  updateSaveLabel();
+}
+
+function renderScanChannels(res) {
+  const box = $("f-channels");
+  if (res.channels.length < 2) { box.innerHTML = ""; return; }
+  box.innerHTML =
+    '<div class="section" style="margin-top:8px">' +
+    '<div class="section-title">Topilgan kanallar — qo\'shiladiganlarini belgilang</div>' +
+    res.channels.map((c) =>
+      '<label style="display:flex;align-items:center;gap:9px;color:var(--text);' +
+      'font-size:13px;font-weight:500;cursor:pointer">' +
+      '<input type="checkbox" data-ch="' + c.channel + '" checked style="width:auto;margin:0">' +
+      c.channel + "-kanal " +
+      '<span class="cdx-chip">' + esc(c.codec || "?") + (c.needs_transcode ? " →H264" : "") + "</span>" +
+      '<span class="mono" style="color:var(--muted);font-size:11px">' + esc(c.rtsp_path) + "</span>" +
+      "</label>").join("") +
+    '<div class="hint">Har biri alohida kamera bo\'lib qo\'shiladi: «Nomi 1-kanal», ' +
+    "«Nomi 2-kanal»… Nuqtalar tanlangan joy atrofiga tarqatiladi, keyin har birini " +
+    "xaritada o'z joyiga surish mumkin.</div></div>";
+  box.querySelectorAll("input[data-ch]").forEach((cb) =>
+    cb.addEventListener("change", updateSaveLabel));
+}
+
+$("f-scan").addEventListener("click", async () => {
+  const out = $("f-scan-out");
+  const show = (kind, tx) => { out.className = "probe-out show " + kind; out.textContent = tx; };
+  const ip = $("f-ip").value.trim();
+  if (!ip) { show("bad", "Avval IP manzilni kiriting"); return; }
+  $("f-scan").disabled = true;
+  state.scan = null;
+  $("f-channels").innerHTML = "";
+  updateSaveLabel();
+  show("wait", "Qurilma aniqlanmoqda — shablonlar va kanallar tekshirilmoqda (~10-30 s)…");
+  try {
+    const res = await api("/api/admin/scan", {
+      method: "POST",
+      body: JSON.stringify({
+        ip,
+        port: Number($("f-port").value) || 554,
+        username: $("f-user").value.trim(),
+        password: $("f-pass").value || "",
+        camera_id: state.editingId
+      })
+    });
+    if (!res.found) { show("bad", res.message); }
+    else {
+      state.scan = res;
+      const first = res.channels[0];
+      $("f-vendor").value = res.vendor;
+      $("f-path").value = first.rtsp_path;
+      updatePreview();
+      renderScanChannels(res);
+      updateSaveLabel();
+      show("ok", res.device === "nvr"
+        ? res.vendor_name + " registrator (NVR) — " + res.channels.length +
+          " ta jonli kanal topildi"
+        : res.vendor_name + " — bitta kamera · kodek " + (first.codec || "noma'lum") +
+          (first.needs_transcode ? " (H.264 ga o'girib beriladi)" : ""));
+    }
+  } catch (e) { show("bad", e.message); }
+  $("f-scan").disabled = false;
 });
 
 /* --- saqlash --- */
@@ -1248,6 +2558,38 @@ $("f-save").addEventListener("click", async () => {
   if (body.source_type === "rtsp" && !body.ip) return fail("IP manzilni kiriting");
   if (body.source_type === "manual" && !body.stream_url) return fail("Oqim manzilini kiriting");
 
+  // Skaner bir nechta kanal topgan bo'lsa — har biri alohida kamera bo'ladi.
+  const picked = state.sourceType === "rtsp" ? scanPicked() : null;
+  if (!state.editingId && picked && picked.length > 1) {
+    $("f-save").disabled = true;
+    try {
+      const res = await api("/api/admin/nvr/import", {
+        method: "POST",
+        body: JSON.stringify({
+          ip: body.ip, port: body.port,
+          username: body.username, password: $("f-pass").value || "",
+          vendor: state.scan.vendor,
+          channels: picked.map((c) => c.channel).join(","),
+          region: body.region, name_prefix: body.name,
+          lat, lng, spread_m: 60, stream: "main",
+          enabled: body.enabled, probe: true, dry_run: false
+        })
+      });
+      closeModal("cam-modal");
+      resetScan();
+      await loadCameras();
+      if (state.tab === "admin") await loadAdminCameras(0);
+      addEvent(body.name + " — " + res.created + " ta kamera qo'shildi", "ok");
+      toast(res.created + " ta kamera qo'shildi");
+    } catch (e) { fail(e.message); }
+    $("f-save").disabled = false;
+    return;
+  }
+  if (picked && picked.length === 1 && state.scan) {
+    body.rtsp_path = picked[0].rtsp_path;
+    body.vendor = state.scan.vendor;
+  }
+
   $("f-save").disabled = true;
   try {
     if (state.editingId) {
@@ -1256,14 +2598,12 @@ $("f-save").addEventListener("click", async () => {
       await api("/api/admin/cameras", { method: "POST", body: JSON.stringify(body) });
     }
     closeModal("cam-modal");
-    await loadAdminCameras(state.adminOffset);
     await loadCameras();
-    $("admin-drawer").classList.add("open");
+    if (state.tab === "admin") await loadAdminCameras(state.adminOffset);
+    addEvent(body.name + (state.editingId ? " — tahrirlandi" : " — qo'shildi"), "ok");
     toast(state.editingId ? "O'zgarishlar saqlandi" : "Kamera qo'shildi");
-    // Oddiy kamera darhol ishlaydi — MediaMTX konfiguratsiyasi kameralar
-    // ro'yxatiga bog'liq emas. Faqat "doim tayyor" o'zgarsa qayta yozish kerak.
     if (body.always_on) {
-      toast("\"Doim tayyor\" o'zgardi — \"MediaMTX\" tugmasini bosing");
+      toast("«Doim tayyor» o'zgardi — «MediaMTX» tugmasini bosing");
     }
   } catch (e) {
     fail(e.message);
@@ -1286,7 +2626,7 @@ $("n-pick").addEventListener("click", () => {
   $("nvr-modal").classList.remove("open");
   state.picking = "nvr";
   document.body.classList.add("picking");
-  $("admin-drawer").classList.remove("open");
+  showTab("map");
   toast("Xaritada registrator joylashgan nuqtani bosing");
 });
 
@@ -1320,13 +2660,19 @@ function nvrValidate(body) {
   return true;
 }
 
+function showNvrOut(kind, tx) {
+  const el = $("n-out");
+  el.className = "probe-out show " + kind;
+  el.textContent = tx;
+}
+
 async function nvrRun(dryRun) {
   const body = nvrBody(dryRun);
   if (!nvrValidate(body)) return;
 
   const btn = dryRun ? $("n-check") : $("n-save");
   btn.disabled = true;
-  showProbe($("n-out"), "wait", "Kanallar tekshirilmoqda — biroz kuting…");
+  showNvrOut("wait", "Kanallar tekshirilmoqda — biroz kuting…");
   try {
     const res = await api("/api/admin/nvr/import", {
       method: "POST", body: JSON.stringify(body)
@@ -1334,19 +2680,20 @@ async function nvrRun(dryRun) {
     renderNvrTable(res.planned);
     const ok = res.reachable;
     if (dryRun) {
-      showProbe($("n-out"), ok ? "ok" : "bad",
-        `${res.planned.length} ta kanaldan ${ok} tasi javob berdi` +
-        (ok ? " — \"Qo'shish\" tugmasini bosing" : ""));
+      showNvrOut(ok ? "ok" : "bad",
+        res.planned.length + " ta kanaldan " + ok + " tasi javob berdi" +
+        (ok ? " — «Qo'shish» tugmasini bosing" : ""));
       $("n-save").disabled = ok === 0;
     } else {
-      showProbe($("n-out"), "ok", `${res.created} ta kamera qo'shildi`);
+      showNvrOut("ok", res.created + " ta kamera qo'shildi");
       closeModal("nvr-modal");
-      await loadAdminCameras(0);
       await loadCameras();
+      if (state.tab === "admin") await loadAdminCameras(0);
+      addEvent(body.region + " — NVR'dan " + res.created + " ta kamera qo'shildi", "ok");
       toast(res.created + " ta kamera qo'shildi — darhol ishlatsa bo'ladi");
     }
   } catch (e) {
-    showProbe($("n-out"), "bad", e.message);
+    showNvrOut("bad", e.message);
   }
   btn.disabled = false;
 }
@@ -1356,8 +2703,8 @@ function renderNvrTable(planned) {
   const rows = planned.map((p) => {
     const mark = p.ok === null ? "·" : p.ok ? "✓" : "✕";
     const cls = p.ok === null ? "" : p.ok ? "ok" : "bad";
-    return '<tr class="' + cls + '"><td>' + p.channel + '</td>' +
-           '<td>' + mark + "</td>" +
+    return '<tr class="' + cls + '"><td>' + p.channel + "</td>" +
+           "<td>" + mark + "</td>" +
            "<td>" + esc(p.codec || "—") + (p.transcode ? " →H264" : "") + "</td>" +
            '<td title="' + esc(p.message) + '">' + esc(p.message.slice(0, 44)) + "</td></tr>";
   }).join("");
@@ -1365,6 +2712,33 @@ function renderNvrTable(planned) {
     '<table class="nvr-table"><thead><tr><th>Kanal</th><th></th><th>Kodek</th>' +
     "<th>Holat</th></tr></thead><tbody>" + rows + "</tbody></table>";
 }
+
+$("n-scan").addEventListener("click", async () => {
+  const ip = $("n-ip").value.trim();
+  if (!ip) { showNvrOut("bad", "Avval NVR manzilini kiriting"); return; }
+  $("n-scan").disabled = true;
+  showNvrOut("wait", "Qurilma aniqlanmoqda — kanallar sanalmoqda…");
+  try {
+    const res = await api("/api/admin/scan", {
+      method: "POST",
+      body: JSON.stringify({
+        ip,
+        port: Number($("n-port").value) || 554,
+        username: $("n-user").value.trim(),
+        password: $("n-pass").value || ""
+      })
+    });
+    if (!res.found) { showNvrOut("bad", res.message); }
+    else {
+      $("n-vendor").value = res.vendor;
+      $("n-channels").value = res.channels.map((c) => c.channel).join(",");
+      showNvrOut("ok", res.vendor_name + " — " + res.channels.length +
+        " ta jonli kanal topildi; hudud va nuqtani belgilab «Qo'shish»ni bosing");
+      $("n-save").disabled = false;
+    }
+  } catch (e) { showNvrOut("bad", e.message); }
+  $("n-scan").disabled = false;
+});
 
 $("n-check").addEventListener("click", () => nvrRun(true));
 $("n-save").addEventListener("click", () => nvrRun(false));
@@ -1390,7 +2764,7 @@ $("mtx-apply").addEventListener("click", async () => {
     const r = await api("/api/admin/mediamtx/sync", { method: "POST" });
     closeModal("mtx-modal");
     toast(r.written + " ta kamera yozildi · " + r.live.message, !r.live.ok);
-    await loadCameras();
+    addEvent("MediaMTX konfiguratsiyasi qo'llandi", "ok");
   } catch (e) {
     toast(e.message, true);
   }
@@ -1398,14 +2772,18 @@ $("mtx-apply").addEventListener("click", async () => {
 });
 
 /* ---------- Umumiy ---------- */
-$("panel-close").addEventListener("click", closePanel);
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   const open = document.querySelector(".backdrop.open");
   if (open) { closeModal(open.id); return; }
-  if (state.picking) { stopPicking(true); openModal("cam-modal"); return; }
-  if ($("panel").classList.contains("open")) closePanel();
-  else if ($("admin-drawer").classList.contains("open")) $("admin-drawer").classList.remove("open");
+  if (state.picking) {
+    const target = state.picking === "nvr" ? "nvr-modal" : "cam-modal";
+    stopPicking(true);
+    openModal(target);
+    return;
+  }
+  if (!$("sel-panel").hidden) { closeSel(); return; }
+  if (state.tab !== "map") showTab("map");   // devor/dashboard/boshqaruvdan qaytish
 });
 
 let toastTimer = null;
@@ -1418,11 +2796,31 @@ function toast(text, bad) {
   toastTimer = setTimeout(() => t.classList.remove("show"), 3200);
 }
 
+/* ---------- Ishga tushirish ---------- */
 (async function start() {
-  await loadCameras();
-  await loadVendors();
-  await checkAuth();
-  if (state.admin) await loadAdminCameras(0);
+  setTheme(localStorage.getItem("nigoh-theme") === "dark" ? "dark" : "light");
+
+  // Server hali ko'tarilmagan bo'lsa (masalan, birga ishga tushirilganda)
+  // sahifa bo'sh qolib ketmaydi — ulanguncha qayta urinamiz.
+  for (let attempt = 0; ; attempt++) {
+    try { await loadCameras(); break; }
+    catch (e) {
+      if (attempt === 0) toast("Server bilan aloqa yo'q — qayta urinilmoqda…", true);
+      if (attempt >= 30) { toast("Server javob bermayapti: " + e.message, true); return; }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+
+  // Uzilgan kameralar birinchi ochilishda hodisalar ro'yxatiga tushadi.
+  state.cameras.filter((c) => c.online === false).forEach((c) =>
+    addEvent(c.name + " — uzilgan (oxirgi onlayn: " + fmtLastSeen(c.last_seen) + ")", "danger"));
+
+  try { await loadVendors(); } catch (e) { /* shakl ochilganda qayta yuklanadi */ }
+  try { await checkAuth(); } catch (e) { /* kirilmagan holat — muammo emas */ }
+
+  // Chuqur havola: /#wall, /#dash, /#admin — to'g'ridan-to'g'ri bo'limga olib kiradi.
+  const hashTab = location.hash.replace("#", "");
+  if (["wall", "dash", "admin"].includes(hashTab)) showTab(hashTab);
 })();
 </script>
 </body>

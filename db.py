@@ -31,6 +31,7 @@ CAMERA_EXTRA_COLUMNS = {
     "codec": "TEXT",                              # kameradan kelayotgan kodek
     "transcode": "INTEGER NOT NULL DEFAULT 0",    # H.264 ga o'girish kerakmi
     "always_on": "INTEGER NOT NULL DEFAULT 0",    # doim tayyor tursinmi
+    "last_seen": "TEXT",                          # oxirgi marta onlayn bo'lgan vaqt (UTC)
 }
 
 # Kamera ko'payganda xaritani va ro'yxatni tez ushlab turadigan indekslar.

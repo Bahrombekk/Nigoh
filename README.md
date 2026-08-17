@@ -154,13 +154,24 @@ har 2–4 soniyada bir marta yuboriladi.
 Xom oqimda vaqt tasodifiy: keyframe siklining qayeriga tushishingizga
 bog'liq. O'girilgan oqimda GOP 1,2 s bo'lgani uchun barqaror.
 
-**Tezlashtirishning uchta yo'li** — samaradorlik bo'yicha:
+Sayt bu kutishni ikki tomondan qisqartiradi (`fast_start.py`):
+
+- **Surat darhol ko'rsatiladi.** Kamera bosilganda avval uning JPEG surati
+  chiqadi (~0,2 s), video orqa fonda ulanadi. Ochilish bir zumda his
+  qilinadi. Suratlar 8 soniya keshlanadi — kamera bosim ostida qolmaydi.
+- **Kameradan keyframe so'raladi.** Ko'rish boshlanganda kameraga "hozir
+  keyframe yubor" buyrug'i ketadi (ONVIF SetSynchronizationPoint, Hikvision'da
+  ISAPI orqali ham) — tasvir GOP oxirini kutmasdan ~0,5 s da keladi.
+  Qo'llamaydigan kamera jim rad etadi, hech narsa buzilmaydi.
+
+**Yana tezlashtirishning uchta yo'li** — samaradorlik bo'yicha:
 
 1. **Registratorda `I Frame Interval` ni kamaytiring** (25 fps uchun 25;
    odatda 100 qo'yilgan). Bepul va hamma kameraga ta'sir qiladi.
 2. **"Tez ochilsin"** belgisi — oqim doim tayyor turadi va qisqa GOP bilan
    tayyorlanadi. ~2,5 s o'rniga ~1 s. Narxi: ~200 MB va bir oz GPU.
-3. Sayt kamera nomiga sichqoncha kelganda oqimni jimgina oldindan boshlaydi.
+3. Sayt kamera nomiga sichqoncha kelganda oqimni (va suratni) jimgina
+   oldindan tayyorlaydi.
 
 ### Tarmoq — eng katta chegara
 
@@ -180,6 +191,8 @@ tarmoqda qoladi, magistralga faqat ko'rilayotgan oqim chiqadi.
 | `db.py` | SQLite sxemasi va migratsiya |
 | `security.py` | Admin paroli (scrypt), kamera parollari (Fernet), sessiyalar |
 | `rtsp_probe.py` | Kamerani tekshirish: tarmoq, RTSP, login/parol, kodek |
+| `fast_start.py` | Tez ochilish: JPEG surat (poster) va darhol keyframe so'rash |
+| `health.py` | Kameralar tirikligini fonda kuzatish — o'chiqlari xaritada qizil |
 | `mediamtx_sync.py` | `mediamtx.yml` ni yaratish, FFmpeg buyruqlari |
 | `stream_launcher.py` | MediaMTX chaqiradi: bitta kamera oqimini ochadi |
 | `import_mediamtx.py` | Qo'lda yozilgan `mediamtx.yml` ni bazaga ko'chirish |

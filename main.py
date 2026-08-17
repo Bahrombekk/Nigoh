@@ -20,6 +20,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
+import fast_start
+import health
 import mediamtx_sync
 import security
 from db import BASE_DIR, get_db, init_db, unique_slug
@@ -39,8 +41,13 @@ VENDORS = [
     {"id": "tplink", "name": "TP-Link / Tapo", "path": "/stream1", "port": 554},
     {"id": "reolink", "name": "Reolink", "path": "/h264Preview_01_main", "port": 554},
     {"id": "amcrest", "name": "Amcrest", "path": "/cam/realmonitor?channel=1&subtype=0", "port": 554},
+    {"id": "holowits", "name": "Holowits / Huawei", "path": "/LiveMedia/ch1/Media1", "port": 554},
     {"id": "boshqa", "name": "Boshqa (qo'lda)", "path": "/stream1", "port": 554},
 ]
+
+# Kanal raqami bilan ishlaydigan (NVR bo'la oladigan) ishlab chiqaruvchilar —
+# skaner shu tartibda sinaydi, birinchi javob bergani tanlanadi.
+CHANNEL_VENDORS = ["hikvision", "dahua", "holowits", "uniview", "reolink", "axis"]
 
 
 # ---------- so'rov modellari ----------
@@ -117,6 +124,16 @@ class ProbeIn(BaseModel):
     password: str | None = None
     rtsp_path: str = Field(default="/stream1", max_length=300)
     camera_id: int | None = None       # saqlangan parolni ishlatish uchun
+
+
+class ScanIn(BaseModel):
+    """Qurilmani avtomatik aniqlash: IP+login yetadi, qolganini skaner topadi."""
+    ip: str = Field(min_length=1, max_length=100)
+    port: int = Field(default=554, ge=1, le=65535)
+    username: str = Field(default="", max_length=100)
+    password: str = Field(default="", max_length=200)
+    max_channels: int = Field(default=64, ge=1, le=256)
+    camera_id: int | None = None       # tahrirlashda saqlangan parolni ishlatish
 
 
 # ---------- yordamchilar ----------
@@ -264,6 +281,22 @@ def index():
     return FileResponse(BASE_DIR / "static" / "index.html")
 
 
+@app.get("/static/uz.geojson", include_in_schema=False)
+def uz_boundary():
+    """O'zbekiston chegarasi (geoBoundaries, ADM0) — xaritada hududni ajratish uchun."""
+    return FileResponse(BASE_DIR / "static" / "uz.geojson",
+                        media_type="application/geo+json",
+                        headers={"Cache-Control": "max-age=86400"})
+
+
+@app.get("/static/uz_regions.geojson", include_in_schema=False)
+def uz_regions():
+    """Viloyat chegaralari (geoBoundaries, ADM1) — nuqtadan hududni aniqlash uchun."""
+    return FileResponse(BASE_DIR / "static" / "uz_regions.geojson",
+                        media_type="application/geo+json",
+                        headers={"Cache-Control": "max-age=86400"})
+
+
 @app.get("/api/vendors")
 def list_vendors():
     return VENDORS
@@ -324,7 +357,8 @@ def list_cameras(bbox: str = "", limit: int = 20000):
     `bbox` berilsa (minLat,minLng,maxLat,maxLng) faqat shu to'rtburchak
     ichidagilar qaytariladi.
     """
-    sql = ("SELECT id, name, region, lat, lng FROM cameras WHERE enabled = 1")
+    sql = ("SELECT id, name, region, lat, lng, ip, port, last_seen, codec, "
+           "transcode, always_on FROM cameras WHERE enabled = 1")
     params: list = []
     if bbox:
         try:
@@ -342,7 +376,16 @@ def list_cameras(bbox: str = "", limit: int = 20000):
     return {
         "total": total,
         "shown": len(rows),
-        "cameras": [dict(r) for r in rows],
+        # IP tashqariga chiqmaydi — undan faqat tiriklik holati hisoblanadi.
+        "cameras": [{
+            "id": r["id"], "name": r["name"], "region": r["region"],
+            "lat": r["lat"], "lng": r["lng"],
+            "online": health.online(r["ip"], r["port"]),
+            "last_seen": r["last_seen"] or "",
+            "codec": r["codec"] or "",
+            "transcode": bool(r["transcode"]),
+            "always_on": bool(r["always_on"]),
+        } for r in rows],
     }
 
 
@@ -365,7 +408,36 @@ def camera_stream(camera_id: int, request: Request, hevc: int = 0):
     if camera:
         mediamtx_sync.ensure_path(camera)
         mediamtx_sync.ensure_transcode_path(camera)
+        # Kameradan darhol keyframe so'raymiz (ONVIF) — tasvir navbatdagi
+        # keyframe'gacha (2-4 s) kutib qolmasin. Fonda ketadi, javobni
+        # kechiktirmaydi; qo'llamaydigan kamera jim rad etadi.
+        fast_start.request_keyframe_async(
+            camera["ip"], camera["username"], camera["password"],
+            camera["rtsp_path"], row["vendor"] or "")
     return stream_urls(row, request, hevc_ok=bool(hevc))
+
+
+@app.get("/api/cameras/{camera_id}/snapshot")
+def camera_snapshot(camera_id: int):
+    """Kameraning JPEG surati — video ulangunicha darhol ko'rsatish uchun.
+
+    Player suratni poster sifatida qo'yadi: his qilinadigan ochilish
+    ~100 ms bo'ladi, video esa orqa fonda ulanadi.
+    """
+    with get_db() as db:
+        row = db.execute(
+            "SELECT * FROM cameras WHERE id = ? AND enabled = 1", (camera_id,)
+        ).fetchone()
+    if row is None or not row["ip"]:
+        raise HTTPException(404, "Kamera topilmadi")
+    data = fast_start.snapshot(
+        row["id"], row["ip"], row["username"] or "",
+        security.decrypt(row["password_enc"]),
+        row["vendor"] or "", row["rtsp_path"] or "", row["slug"] or "")
+    if not data:
+        raise HTTPException(404, "Kameradan surat olib bo'lmadi")
+    return Response(content=data, media_type="image/jpeg",
+                    headers={"Cache-Control": "max-age=5"})
 
 
 # ---------- super-admin ----------
@@ -521,6 +593,8 @@ def channel_path(vendor: str, channel: int, stream: str) -> str:
         return f"/h264Preview_{channel:02d}_{'sub' if sub else 'main'}"
     if vendor == "axis":
         return f"/axis-media/media.amp?camera={channel}"
+    if vendor == "holowits":
+        return f"/LiveMedia/ch{channel}/Media{2 if sub else 1}"
     return f"/stream{2 if sub else 1}"
 
 
@@ -600,6 +674,87 @@ def admin_nvr_import(body: NvrIn, _admin=Depends(require_admin)):
             "reachable": sum(1 for p in planned if p["ok"])}
 
 
+def _probe_many(ip: str, port: int, jobs: dict, username: str,
+                password: str) -> dict:
+    """Bir nechta RTSP yo'lni parallel tekshiradi: {kalit: probe natijasi}."""
+    results: dict = {}
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        futures = {
+            pool.submit(probe, ip, port, path, username, password): key
+            for key, path in jobs.items()
+        }
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+    return results
+
+
+@app.post("/api/admin/scan")
+def admin_scan(body: ScanIn, _admin=Depends(require_admin)):
+    """Qurilmani o'zi aniqlaydi: turi (kamera/NVR), shabloni va jonli kanallari.
+
+    Oddiy foydalanuvchi RTSP yo'lini ham, kanal raqamlarini ham bilmaydi —
+    IP va login/parol yetarli. Skaner mashhur shablonlarni sinab, qaysi
+    biri ishlashini topadi, so'ng kanallarni 8 talik bloklarda tekshiradi
+    va bo'sh blok kelganda to'xtaydi.
+    """
+    ip, port = body.ip.strip(), body.port
+    user, pw = body.username.strip(), body.password
+    if not pw and body.camera_id:
+        with get_db() as db:
+            row = db.execute("SELECT password_enc FROM cameras WHERE id = ?",
+                             (body.camera_id,)).fetchone()
+        if row:
+            pw = security.decrypt(row["password_enc"])
+
+    # 1) Shablonni aniqlash — har bir ishlab chiqaruvchining 1-kanali.
+    candidates = {v: channel_path(v, 1, "main") for v in CHANNEL_VENDORS}
+    candidates["boshqa"] = "/stream1"          # bitta oqimli oddiy kameralar
+    first = _probe_many(ip, port, candidates, user, pw)
+
+    # Hech biri ochilmadi-yu, parol xatosi bor — avval shuni aytamiz.
+    if not any(r["ok"] for r in first.values()):
+        for stage in ("parol", "oqim", "rtsp", "tarmoq"):
+            hit = next((r for r in first.values() if r.get("stage") == stage), None)
+            if hit:
+                return {"found": False, "message": hit["message"]}
+        return {"found": False, "message": "Qurilma javob bermadi"}
+
+    vendor = next(v for v in [*CHANNEL_VENDORS, "boshqa"]
+                  if first.get(v, {}).get("ok"))
+    vendor_name = next((v["name"] for v in VENDORS if v["id"] == vendor), vendor)
+
+    def entry(channel: int, result: dict) -> dict:
+        return {
+            "channel": channel,
+            "rtsp_path": channel_path(vendor, channel, "main"),
+            "codec": result.get("codec", ""),
+            "needs_transcode": bool(result.get("needs_transcode")),
+        }
+
+    channels = [entry(1, first[vendor])]
+
+    # 2) Kanallarni sanash — faqat kanal raqamini biladigan shablonlarda.
+    if vendor != "boshqa":
+        start = 2
+        while start <= body.max_channels:
+            block = range(start, min(start + 8, body.max_channels + 1))
+            jobs = {c: channel_path(vendor, c, "main") for c in block}
+            results = _probe_many(ip, port, jobs, user, pw)
+            live = [c for c in sorted(results) if results[c]["ok"]]
+            channels.extend(entry(c, results[c]) for c in live)
+            if not live:                       # bo'sh blok — qurilma tugadi
+                break
+            start += 8
+
+    return {
+        "found": True,
+        "vendor": vendor,
+        "vendor_name": vendor_name,
+        "device": "nvr" if len(channels) > 1 else "camera",
+        "channels": channels,
+    }
+
+
 @app.post("/api/admin/probe")
 def admin_probe(body: ProbeIn, _admin=Depends(require_admin)):
     """Kamera bilan aloqani va login/parolni tekshiradi."""
@@ -646,6 +801,10 @@ def admin_config_preview(_admin=Depends(require_admin)):
 
 def bootstrap() -> None:
     init_db()
+
+    # Kameralarning tirikligini fonda kuzatib boramiz — xaritada o'chiq
+    # kameralar qizil bo'lib ko'rinadi.
+    health.start()
 
     # Toza nusxada mediamtx.yml bo'lmaydi (u maxfiy ro'yxatda) — o'zimiz
     # yaratamiz, aks holda MediaMTX ishga tusha olmaydi.
