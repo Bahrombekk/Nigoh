@@ -217,9 +217,28 @@ def request_keyframe_async(ip: str, username: str, password: str,
 # ---------- JPEG surat (snapshot) ----------
 
 SNAPSHOT_TTL = 8.0                          # soniya — shu orada bitta surat yetadi
+_SNAP_CACHE_MAX = 500                       # surat ~200 KB: chegara ≈ 100 MB
 
 _snap_cache: dict[int, tuple[float, bytes | None]] = {}
 _snap_url: dict[int, str] = {}              # camera_id -> ishlagan URL
+
+
+def _snap_store(camera_id: int, expires: float, data: bytes | None) -> None:
+    """Keshga yozadi va hajmni chegarada ushlaydi.
+
+    5000 kamerada chegarasiz kesh gigabaytga o'sib ketardi. Avval muddati
+    o'tganlar, yetmasa eng eskilari chiqariladi.
+    """
+    _snap_cache[camera_id] = (expires, data)
+    if len(_snap_cache) <= _SNAP_CACHE_MAX:
+        return
+    now = time.monotonic()
+    for key, (ttl, _) in list(_snap_cache.items()):
+        if ttl <= now:
+            _snap_cache.pop(key, None)
+    while len(_snap_cache) > _SNAP_CACHE_MAX:
+        oldest = min(_snap_cache, key=lambda k: _snap_cache[k][0])
+        _snap_cache.pop(oldest, None)
 
 
 def _snapshot_candidates(vendor: str, ip: str, username: str,
@@ -312,17 +331,17 @@ def snapshot(camera_id: int, ip: str, username: str, password: str,
             except (urllib.error.URLError, OSError, ValueError):
                 continue
             if data:
-                _snap_cache[camera_id] = (now + SNAPSHOT_TTL, data)
+                _snap_store(camera_id, now + SNAPSHOT_TTL, data)
                 _snap_url[camera_id] = url
                 return data
 
     data = _ffmpeg_snapshot(slug)
     if data:
-        _snap_cache[camera_id] = (now + SNAPSHOT_TTL, data)
+        _snap_store(camera_id, now + SNAPSHOT_TTL, data)
         _snap_url[camera_id] = _FFMPEG_SENTINEL   # keyingi safar to'g'ri shu yo'l
         return data
 
     # Muvaffaqiyatsizlik ham keshlanadi — o'chiq kamerani qayta-qayta so'ramaslik uchun.
-    _snap_cache[camera_id] = (now + SNAPSHOT_TTL, None)
+    _snap_store(camera_id, now + SNAPSHOT_TTL, None)
     _snap_url.pop(camera_id, None)
     return None

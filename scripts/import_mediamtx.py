@@ -13,10 +13,13 @@ from pathlib import Path
 
 import yaml
 
-import security
-from db import get_db, init_db, slugify, unique_slug
+# Skript scripts/ ichidan ishga tushirilganda ham loyiha modullarini topsin.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-BASE_DIR = Path(__file__).resolve().parent
+from core import security                                        # noqa: E402
+from core.db import get_db, init_db, slugify, unique_slug        # noqa: E402
+
+BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_PATH = BASE_DIR / "mediamtx.yml"
 
 # Yangi kamera yaratilsa shu markazlardan koordinata olinadi.

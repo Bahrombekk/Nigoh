@@ -1,4 +1,8 @@
-"""Nigoh — MediaMTX bilan bog'lash.
+"""Nigoh — MediaMTX bilan bog'lash (media paketi).
+
+Backend MediaMTX bilan faqat shu modul orqali gaplashadi: konfiguratsiya
+yaratish (`write_config`), jonli API (`ensure_path`, `push_to_api`) va
+FFmpeg buyruqlari shu yerda.
 
 Konfiguratsiya kameralar soniga bog'liq emas. `mediamtx.yml` ichida
 kameralar ro'yxati ham, parollar ham yozilmaydi — bitta shablon yo'l
@@ -27,14 +31,17 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
-from rtsp_probe import build_rtsp_url
+from core.rtsp_probe import build_rtsp_url
 
 import yaml
 
-BASE_DIR = Path(__file__).resolve().parent
+# Loyiha ildizi — bu fayl media/ ichida turadi, mediamtx.yml esa ildizda
+# qoladi (ishga-tushirish.bat va MediaMTX shu yerdan o'qiydi).
+BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_PATH = BASE_DIR / "mediamtx.yml"
 API_BASE = os.environ.get("MEDIAMTX_API", "http://127.0.0.1:9997")
 API_TIMEOUT = 4.0
@@ -149,7 +156,11 @@ def source_path(cam: dict) -> dict:
     }
     if conf["sourceOnDemand"]:
         conf["sourceOnDemandStartTimeout"] = "20s"
-        conf["sourceOnDemandCloseAfter"] = "60s"
+        # MediaMTX davomiyliklarni normallashtirib saqlaydi ("60s" -> "1m0s").
+        # Taqqoslash (ensure_path/push_to_api) aynan mos kelishi uchun
+        # qiymatlar uning o'z shaklida yoziladi — aks holda har safar
+        # keraksiz PATCH ketadi.
+        conf["sourceOnDemandCloseAfter"] = "1m0s"
     return conf
 
 
@@ -166,7 +177,7 @@ def camera_paths(cameras: list[dict]) -> dict:
             "runOnDemand": _launcher("$MTX_PATH"),
             "runOnDemandRestart": True,
             "runOnDemandStartTimeout": "20s",
-            "runOnDemandCloseAfter": "60s",
+            "runOnDemandCloseAfter": "1m0s",   # MediaMTX normallashtirgan shakl
         }
     }
 
@@ -293,55 +304,91 @@ def ensure_transcode_path(cam: dict) -> bool:
         return False
 
 
-def ensure_paths(cameras: list[dict]) -> int:
-    """Bir nechta kamerani birdaniga ro'yxatga oladi (ishga tushishda)."""
-    count = 0
+def desired_paths(cameras: list[dict]) -> dict:
+    """MediaMTX'da (API orqali) turishi kerak bo'lgan to'liq holat.
+
+    Uch qatlam: o'girish shabloni, har bir yoqilgan kameraning manba yo'li
+    va "doim tayyor" o'girish yo'llari. `push_to_api` MediaMTX'ni aynan shu
+    ro'yxatga keltiradi — ortiqchasi o'chadi, kamisi qo'shiladi.
+    """
+    wanted = dict(camera_paths(cameras))
     for cam in cameras:
-        if not cam.get("enabled"):
+        if not (cam.get("enabled") and cam.get("ip")):
             continue
-        if ensure_path(cam):
-            count += 1
-        ensure_transcode_path(cam)
-    return count
+        wanted[cam["slug"]] = source_path(cam)
+        if cam.get("transcode") and cam.get("always_on"):
+            name = cam["slug"] + TRANSCODE_SUFFIX
+            wanted[name] = {"runOnInit": _launcher(name), "runOnInitRestart": True}
+    return wanted
+
+
+def _list_all_paths() -> dict[str, dict] | None:
+    """API'dagi barcha yo'l konfiguratsiyalari — sahifalab, to'liq.
+
+    Bitta so'rov 1000 tagacha qaytaradi; 5000 kamerada qolgani ko'rinmay
+    qolardi, shuning uchun `pageCount` tugaguncha o'qiladi.
+    """
+    paths: dict[str, dict] = {}
+    page = 0
+    while True:
+        try:
+            chunk = _api(
+                "GET", f"/v3/config/paths/list?itemsPerPage=500&page={page}"
+            ) or {}
+        except (urllib.error.URLError, OSError, ValueError):
+            return None
+        for item in chunk.get("items", []):
+            paths[item["name"]] = item
+        page += 1
+        if page >= int(chunk.get("pageCount") or 1):
+            return paths
 
 
 def push_to_api(cameras: list[dict]) -> dict:
-    """Yo'llarni ishlab turgan MediaMTX'ga yuboradi (qayta ishga tushirmasdan).
-
-    Eslatma: `runOnInit` bilan ishlaydigan yo'llar uchun MediaMTX'ni qayta
-    ishga tushirish ishonchliroq — shuning uchun bu yerda faqat oddiy
-    manba yo'llari yangilanadi.
+    """Ishlab turgan MediaMTX'ni kerakli holatga keltiradi (qayta ishga
+    tushirmasdan): yo'q yo'llar qo'shiladi, o'zgarganlari yangilanadi,
+    ortiqchalari o'chiriladi. O'zgarmaganlarga tegilmaydi, amallar parallel
+    yuboriladi — 5000 kamerada ham soniyalar ichida tugaydi.
     """
-    wanted = camera_paths(cameras)
-    try:
-        current = _api("GET", "/v3/config/paths/list?itemsPerPage=1000") or {}
-    except (urllib.error.URLError, OSError, ValueError):
+    wanted = desired_paths(cameras)
+    existing = _list_all_paths()
+    if existing is None:
         return {"ok": False, "added": 0, "updated": 0, "removed": 0,
                 "message": "MediaMTX ishlamayapti — fayl yangilandi, "
                            "MediaMTX'ni ishga tushiring"}
 
-    existing = {item["name"]: item for item in current.get("items", [])}
-    added = updated = removed = 0
-    errors = []
-
+    ops: list[tuple[str, str, dict | None]] = []
     for name, conf in wanted.items():
-        try:
-            if name in existing:
-                _api("PATCH", f"/v3/config/paths/patch/{name}", conf)
-                updated += 1
-            else:
-                _api("POST", f"/v3/config/paths/add/{name}", conf)
-                added += 1
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            errors.append(f"{name}: {exc}")
-
+        current = existing.get(name)
+        if current is None:
+            ops.append(("POST", f"/v3/config/paths/add/{name}", conf))
+        elif any(current.get(k) != v for k, v in conf.items()):
+            ops.append(("PATCH", f"/v3/config/paths/patch/{name}", conf))
     for name in existing:
         if name not in wanted:
-            try:
-                _api("DELETE", f"/v3/config/paths/delete/{name}")
+            ops.append(("DELETE", f"/v3/config/paths/delete/{name}", None))
+
+    def _run(op: tuple[str, str, dict | None]):
+        method, path, payload = op
+        try:
+            _api(method, path, payload)
+            return method, None
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            return method, f"{path.rsplit('/', 1)[-1]}: {exc}"
+
+    added = updated = removed = 0
+    errors: list[str] = []
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        for method, error in pool.map(_run, ops):
+            if error is not None:
+                if method != "DELETE":     # o'chirishdagi xato jiddiy emas
+                    errors.append(error)
+            elif method == "POST":
+                added += 1
+            elif method == "PATCH":
+                updated += 1
+            else:
                 removed += 1
-            except (urllib.error.URLError, OSError, ValueError):
-                pass
 
     if errors:
         return {"ok": False, "added": added, "updated": updated, "removed": removed,

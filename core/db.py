@@ -4,7 +4,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+# Loyiha ildizi — bu fayl core/ ichida, ma'lumotlar esa ildizda turadi.
+BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "cameras.db"
 
 DEMO_STREAM = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
@@ -46,8 +47,13 @@ INDEXES = [
 
 @contextmanager
 def get_db():
-    db = sqlite3.connect(DB_PATH)
+    # WAL rejimida yozish o'qishlarni qulflamaydi — fon kuzatuvi (health)
+    # har daqiqa yozayotganda ham so'rovlar "database is locked" olmaydi.
+    # timeout — baribir to'qnashilsa, xato o'rniga kutib beradi.
+    db = sqlite3.connect(DB_PATH, timeout=10)
     db.row_factory = sqlite3.Row
+    db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA synchronous=NORMAL")
     try:
         yield db
         db.commit()

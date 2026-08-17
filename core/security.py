@@ -16,7 +16,8 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-BASE_DIR = Path(__file__).resolve().parent
+# Loyiha ildizi — kalit fayli ildizda qoladi (paket ko'chsa ham o'zgarmaydi).
+BASE_DIR = Path(__file__).resolve().parent.parent
 KEY_PATH = BASE_DIR / "secret.key"
 
 SESSION_COOKIE = "nigoh_session"

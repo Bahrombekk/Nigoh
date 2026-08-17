@@ -18,7 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-from db import get_db
+from .db import get_db
 
 CHECK_INTERVAL = 60.0   # soniya — har qancha kamerada ham yetarli
 TIMEOUT = 2.0

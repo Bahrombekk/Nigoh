@@ -52,6 +52,17 @@ paneli ochiladi: kamera qo'shish, tahrirlash, ulanishni tekshirish, o'chirish.
 
 Hudud nomi bir xil yozilgan kameralar bitta guruh hisoblanadi.
 
+## Interfeys bo'limlari
+
+Pastki markazdagi dock orqali (yoki to'g'ridan-to'g'ri havola bilan):
+
+| Bo'lim | Havola | Nima bor |
+|---|---|---|
+| Xarita | `/` | klaster markerlar, qidiruv (Ctrl K), jonli ko'rish paneli |
+| Video devor | `/#wall` | 2×2–4×4 setka, hudud filtri, sahifalash, avto-aylanish, kadr rejimi, plitka to'liq ekranı, surat yuklab olish |
+| Dashboard | `/#dash` | holat donut'i, ochilish sparkline'i, hudud/texnik kesimlar, hodisalar — har 15 s yangilanadi |
+| Boshqaruv | `/#admin` | jadval: holat/hudud/kodek/rejim filtrlari, ustun saralash, NVR import, skaner |
+
 ## Tizim qanday ishlaydi
 
 ```
@@ -183,21 +194,45 @@ Kameralar bir necha manzilda bo'lsa, **har bir joyga alohida MediaMTX
 qo'ying** va sayt kerakli tugunga yo'naltirsin. Kamera trafigi lokal
 tarmoqda qoladi, magistralga faqat ko'rilayotgan oqim chiqadi.
 
-## Fayllar
+## Kod tuzilishi
 
-| Fayl | Vazifasi |
-|---|---|
-| `main.py` | FastAPI — API, autentifikatsiya, kamera boshqaruvi |
-| `db.py` | SQLite sxemasi va migratsiya |
-| `security.py` | Admin paroli (scrypt), kamera parollari (Fernet), sessiyalar |
-| `rtsp_probe.py` | Kamerani tekshirish: tarmoq, RTSP, login/parol, kodek |
-| `fast_start.py` | Tez ochilish: JPEG surat (poster) va darhol keyframe so'rash |
-| `health.py` | Kameralar tirikligini fonda kuzatish — o'chiqlari xaritada qizil |
-| `mediamtx_sync.py` | `mediamtx.yml` ni yaratish, FFmpeg buyruqlari |
-| `stream_launcher.py` | MediaMTX chaqiradi: bitta kamera oqimini ochadi |
-| `import_mediamtx.py` | Qo'lda yozilgan `mediamtx.yml` ni bazaga ko'chirish |
-| `static/index.html` | Xarita (Leaflet), WebRTC/HLS player, admin panel |
-| `ishga-tushirish.bat` | Hammasini birga ishga tushirish |
+Backend (web-qatlam) va MediaMTX qatlami ataylab ajratilgan — bir-biri
+bilan faqat `from media import sync` chegarasi orqali gaplashadi:
+
+```
+main.py                  kirish nuqtasi: CLI, bootstrap, uvicorn
+app/                     BACKEND (web-qatlam)
+  ├─ __init__.py         create_app() — ilovani yig'ish, static
+  ├─ config.py           portlar, RTSP shablonlari (muhit o'zgaruvchilari)
+  ├─ models.py           so'rov modellari (Pydantic)
+  ├─ helpers.py          baza qatori → brauzer/MediaMTX ko'rinishlari
+  ├─ bootstrap.py        birinchi ishga tushirish, admin yaratish
+  ├─ routes_auth.py      /api/auth/*    — kirish/chiqish
+  ├─ routes_public.py    /api/cameras/* — xarita, oqim, surat (kirishsiz)
+  └─ routes_admin.py     /api/admin/*   — CRUD, NVR import, skaner, MediaMTX
+media/                   MEDIAMTX QATLAMI
+  ├─ sync.py             mediamtx.yml yaratish, jonli API, FFmpeg buyruqlari
+  └─ launcher.py         talab bo'yicha o'girish jarayoni
+core/                    UMUMIY INFRATUZILMA (ikkala qatlam ishlatadi)
+  ├─ db.py               SQLite sxemasi va migratsiya
+  ├─ security.py         admin paroli (scrypt), kamera parollari (Fernet)
+  ├─ health.py           kameralar tirikligini fonda kuzatish
+  ├─ rtsp_probe.py       kamerani tekshirish: tarmoq, login, kodek
+  └─ fast_start.py       JPEG surat (poster) va keyframe so'rash
+scripts/
+  └─ import_mediamtx.py  qo'lda yozilgan mediamtx.yml ni bazaga ko'chirish
+stream_launcher.py       MediaMTX chaqiradigan yupqa qobiq (ildizda turishi shart)
+mediamtx/                MediaMTX'ning o'zi (exe) — yuklab olinadi, git'da yo'q
+static/
+  ├─ index.html          sahifa tuzilishi
+  ├─ style.css           barcha uslublar
+  ├─ app.js              xarita, player, video devor, dashboard, boshqaruv
+  └─ uz.geojson          O'zbekiston chegarasi (OSM)
+```
+
+Ildizda qoladigan ma'lumot fayllari (git'ga tushmaydi): `cameras.db`,
+`secret.key`, `mediamtx.yml`, `auto.crt/key` — yo'llari kod ko'chganda ham
+o'zgarmasligi uchun ataylab ildizda.
 
 ## Maxfiylik
 
