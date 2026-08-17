@@ -9,6 +9,7 @@ secret.key
 cameras.db
 cameras.db-journal
 cameras.db-wal
+cameras.db-shm
 
 # Ichida ochiq RTSP login/parollar bo'lishi mumkin
 mediamtx.yml
@@ -27,6 +28,9 @@ venv/
 mediamtx/
 __pycache__/
 *.pyc
+
+# Reconciler MediaMTX'ni qayta ishga tushirganda yozadigan log
+mediamtx.log
 
 # ---- Muhit ----
 .env
