@@ -2,7 +2,7 @@
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from core import health, security
 from core.db import get_db, unique_slug
@@ -11,11 +11,11 @@ from core.rtsp_probe import probe
 from media import reconciler
 from media import sync as mediamtx_sync
 
-from .config import CHANNEL_VENDORS, VENDORS
+from .config import CHANNEL_VENDORS, PORT, VENDORS
 from .helpers import (admin_camera, cameras_for_mediamtx, channel_path,
-                      detect_codec, detect_sub_path, mask_config,
-                      require_admin)
-from .models import CameraIn, NvrIn, ProbeIn, ScanIn
+                      clear_node_cache, detect_codec, detect_sub_path,
+                      mask_config, require_admin)
+from .models import CameraIn, NodeIn, NvrIn, ProbeIn, ScanIn
 
 router = APIRouter(prefix="/api/admin", tags=["admin"],
                    dependencies=[Depends(require_admin)])
@@ -61,8 +61,8 @@ def admin_create(cam: CameraIn, request: Request):
         db.execute(
             "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, ip, "
             "port, username, password_enc, rtsp_path, sub_path, vendor, enabled, "
-            "note, codec, transcode, always_on) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "note, codec, transcode, always_on, node_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 cam.name.strip(), cam.region.strip(), cam.lat, cam.lng,
                 cam.stream_url.strip() if cam.source_type == "manual" else "",
@@ -72,6 +72,7 @@ def admin_create(cam: CameraIn, request: Request):
                 security.encrypt(cam.password) if cam.password else "",
                 cam.rtsp_path.strip(), sub_path, cam.vendor, int(cam.enabled),
                 cam.note.strip(), codec, int(transcode), int(cam.always_on),
+                cam.node_id,
             ),
         )
         row = db.execute("SELECT * FROM cameras WHERE slug = ?", (slug,)).fetchone()
@@ -113,7 +114,7 @@ def admin_update(camera_id: int, cam: CameraIn, request: Request):
             "UPDATE cameras SET name=?, region=?, lat=?, lng=?, stream_url=?, "
             "slug=?, ip=?, port=?, username=?, password_enc=?, rtsp_path=?, "
             "sub_path=?, vendor=?, enabled=?, note=?, codec=?, transcode=?, "
-            "always_on=? WHERE id=?",
+            "always_on=?, node_id=? WHERE id=?",
             (
                 cam.name.strip(), cam.region.strip(), cam.lat, cam.lng,
                 cam.stream_url.strip() if cam.source_type == "manual" else "",
@@ -122,7 +123,7 @@ def admin_update(camera_id: int, cam: CameraIn, request: Request):
                 cam.port, cam.username.strip(), password_enc,
                 cam.rtsp_path.strip(), sub_path, cam.vendor, int(cam.enabled),
                 cam.note.strip(), codec, int(transcode), int(cam.always_on),
-                camera_id,
+                cam.node_id, camera_id,
             ),
         )
         row = db.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
@@ -275,13 +276,13 @@ def admin_nvr_import(body: NvrIn):
             db.execute(
                 "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, ip, "
                 "port, username, password_enc, rtsp_path, sub_path, vendor, enabled, "
-                "note, codec, transcode, always_on) "
-                "VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                "note, codec, transcode, always_on, node_id) "
+                "VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
                 (item["name"], body.region.strip(), item["lat"], item["lng"], slug,
                  body.ip.strip(), body.port, body.username.strip(), password_enc,
                  item["rtsp_path"], item["sub_path"], body.vendor, int(body.enabled),
                  f"{body.ip} · {item['channel']}-kanal",
-                 item["codec"], int(item["transcode"])),
+                 item["codec"], int(item["transcode"]), body.node_id),
             )
             created += 1
 
@@ -387,6 +388,92 @@ def admin_probe(body: ProbeIn):
 
 
 # ---------- MediaMTX ----------
+
+# ---------- MediaMTX tugunlari ----------
+
+@router.get("/nodes")
+def admin_nodes():
+    """Tugunlar ro'yxati: nechta kamera biriktirilgan, API tirikmi."""
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT n.*, (SELECT COUNT(*) FROM cameras c WHERE c.node_id = n.id) "
+            "AS cameras FROM nodes n ORDER BY n.id"
+        ).fetchall()
+    nodes = []
+    for row in rows:
+        node = dict(row)
+        node["online"] = mediamtx_sync.api_available(row["api_base"])
+        nodes.append(node)
+    return {"nodes": nodes}
+
+
+@router.post("/nodes", status_code=201)
+def admin_node_create(body: NodeIn):
+    with get_db() as db:
+        cur = db.execute(
+            "INSERT INTO nodes (name, api_base, public_host, rtsp_port, "
+            "hls_port, webrtc_port, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (body.name.strip(), body.api_base.strip().rstrip("/"),
+             body.public_host.strip(), body.rtsp_port, body.hls_port,
+             body.webrtc_port, int(body.enabled)),
+        )
+        row = db.execute("SELECT * FROM nodes WHERE id = ?",
+                         (cur.lastrowid,)).fetchone()
+    clear_node_cache()
+    return dict(row)
+
+
+@router.put("/nodes/{node_id}")
+def admin_node_update(node_id: int, body: NodeIn):
+    with get_db() as db:
+        cur = db.execute(
+            "UPDATE nodes SET name=?, api_base=?, public_host=?, rtsp_port=?, "
+            "hls_port=?, webrtc_port=?, enabled=? WHERE id=?",
+            (body.name.strip(), body.api_base.strip().rstrip("/"),
+             body.public_host.strip(), body.rtsp_port, body.hls_port,
+             body.webrtc_port, int(body.enabled), node_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Tugun topilmadi")
+        row = db.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+    clear_node_cache()
+    return dict(row)
+
+
+@router.delete("/nodes/{node_id}", status_code=204)
+def admin_node_delete(node_id: int):
+    if node_id == 1:
+        raise HTTPException(400, "Asosiy tugunni o'chirib bo'lmaydi")
+    with get_db() as db:
+        used = db.execute("SELECT COUNT(*) FROM cameras WHERE node_id = ?",
+                          (node_id,)).fetchone()[0]
+        if used:
+            raise HTTPException(400, f"Tugunda {used} ta kamera bor — avval "
+                                     f"ularni boshqa tugunga o'tkazing")
+        cur = db.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Tugun topilmadi")
+    clear_node_cache()
+
+
+@router.get("/nodes/{node_id}/config")
+def admin_node_config(node_id: int, request: Request):
+    """Tugun mashinasiga qo'yiladigan tayyor mediamtx.yml.
+
+    Ichida parol yo'q (kamera yo'llarini markaz API orqali yuboradi),
+    shuning uchun ochiq qaytariladi. Auth manzili — backend'ning tugun
+    ko'radigan manzili; kerak bo'lsa STREAM_AUTH_URL bilan almashtiring.
+    """
+    with get_db() as db:
+        row = db.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "Tugun topilmadi")
+    auth_url = f"http://{request.url.hostname}:{PORT}/api/auth/stream"
+    return Response(
+        mediamtx_sync.build_config([], auth_url=auth_url, node=dict(row)),
+        media_type="text/plain; charset=utf-8",
+    )
+
 
 @router.get("/status")
 def admin_status():

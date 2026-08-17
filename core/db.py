@@ -1,4 +1,5 @@
 """Nigoh — ma'lumotlar bazasi: ulanish, sxema va migratsiya."""
+import os
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -34,6 +35,7 @@ CAMERA_EXTRA_COLUMNS = {
     "transcode": "INTEGER NOT NULL DEFAULT 0",    # H.264 ga o'girish kerakmi
     "always_on": "INTEGER NOT NULL DEFAULT 0",    # doim tayyor tursinmi
     "last_seen": "TEXT",                          # oxirgi marta onlayn bo'lgan vaqt (UTC)
+    "node_id": "INTEGER NOT NULL DEFAULT 1",      # qaysi MediaMTX tuguni tortadi
 }
 
 # Kamera ko'payganda xaritani va ro'yxatni tez ushlab turadigan indekslar.
@@ -44,6 +46,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cameras_bbox ON cameras(lat, lng)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)",
     "CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)",
+    "CREATE INDEX IF NOT EXISTS idx_cameras_node ON cameras(node_id)",
 ]
 
 
@@ -152,6 +155,34 @@ def init_db() -> None:
             )
             """
         )
+
+        # MediaMTX tugunlari. Kameralar bir necha manzilda bo'lsa, har bir
+        # joyga alohida MediaMTX qo'yiladi — kamera trafigi lokal tarmoqda
+        # qoladi, magistralga faqat ko'rilayotgan oqim chiqadi. 1-tugun —
+        # backend bilan bitta mashinadagi "asosiy" MediaMTX.
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS nodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                api_base TEXT NOT NULL,               -- http://host:9997
+                public_host TEXT NOT NULL DEFAULT '', -- bo'sh = so'rov hostidan
+                rtsp_port INTEGER NOT NULL DEFAULT 8554,
+                hls_port INTEGER NOT NULL DEFAULT 8888,
+                webrtc_port INTEGER NOT NULL DEFAULT 8889,
+                enabled INTEGER NOT NULL DEFAULT 1
+            )
+            """
+        )
+        if db.execute("SELECT COUNT(*) FROM nodes").fetchone()[0] == 0:
+            db.execute(
+                "INSERT INTO nodes (id, name, api_base, public_host, rtsp_port, "
+                "hls_port, webrtc_port) VALUES (1, 'Asosiy', ?, '', ?, ?, ?)",
+                (os.environ.get("MEDIAMTX_API", "http://127.0.0.1:9997"),
+                 int(os.environ.get("MEDIAMTX_RTSP_PORT", "8554")),
+                 int(os.environ.get("HLS_PORT", "8888")),
+                 int(os.environ.get("WEBRTC_PORT", "8889"))),
+            )
 
         # Dashboard statistikasi: hudud kesimidagi 5 daqiqalik suratlar va
         # uzilish/ulanish hodisalari (core/stats.py yozadi).

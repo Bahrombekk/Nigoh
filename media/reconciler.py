@@ -1,15 +1,15 @@
-"""Nigoh — MediaMTX'ni tirik tutuvchi fon vazifasi (media paketi).
+"""Nigoh — MediaMTX tugunlarini tirik tutuvchi fon vazifasi (media paketi).
 
-Har 30 soniyada ikki ish qilinadi:
+Har 30 soniyada, har bir yoqilgan tugun (nodes jadvali) uchun:
 
-  1. MediaMTX yiqilgan bo'lsa — qayta ishga tushiriladi (faqat lokalda:
-     API manzili boshqa mashinaga ko'rsatsa, u yerdagi jarayonga aralasha
-     olmaymiz). `MEDIAMTX_AUTOSTART=0` bilan butunlay o'chiriladi.
+  1. Lokal MediaMTX yiqilgan bo'lsa — qayta ishga tushiriladi. Uzoq
+     tugundagi jarayonga aralasha olmaymiz — u yiqilsa faqat hodisa
+     yoziladi (API javob bermayapti). `MEDIAMTX_AUTOSTART=0` — o'chirish.
 
-  2. Yo'llar kerakli holat bilan kelishtiriladi (`push_to_api`). MediaMTX
-     qayta ishga tushganda API orqali qo'shilgan yo'llar yo'qoladi — shu
-     yerda o'z-o'zidan tiklanadi. Farq bo'lmasa hech narsa yuborilmaydi,
-     ya'ni tinch holatda bu bir necha o'n millisekundlik tekshiruv xolos.
+  2. Tugun yo'llari kerakli holat bilan kelishtiriladi (`push_to_api`).
+     MediaMTX qayta ishga tushganda API orqali qo'shilgan yo'llar
+     yo'qoladi — shu yerda o'z-o'zidan tiklanadi. Farq bo'lmasa hech
+     narsa yuborilmaydi, ya'ni tinch holatda bu arzon tekshiruv xolos.
 
   3. Faol oqimlarning bayt hisobi kuzatiladi — ikki tekshiruv orasida
      qo'zg'almagan tayyor oqim "muzlagan" deb belgilanadi (hodisa + alert).
@@ -41,25 +41,35 @@ _lock = threading.Lock()
 _process: subprocess.Popen | None = None
 _last_spawn = 0.0
 
-_prev_bytes: dict[str, int] = {}   # yo'l -> oxirgi ko'rilgan bytesReceived
-_stalled: set[str] = set()         # hozir muzlab turgan yo'llar
+_prev_bytes: dict[tuple[int, str], int] = {}   # (tugun, yo'l) -> bytesReceived
+_stalled: dict[tuple[int, str], str] = {}      # (tugun, yo'l) -> ko'rsatma nomi
 
 
 def stalled_paths() -> set[str]:
     """Ayni damda muzlagan (bayt kelmayotgan) faol yo'llar."""
     with _lock:
-        return set(_stalled)
+        return set(_stalled.values())
+
+
+def _nodes() -> list[dict]:
+    """Yoqilgan MediaMTX tugunlari; jadval bo'sh bo'lsa — lokal standart."""
+    try:
+        with get_db() as db:
+            rows = db.execute("SELECT * FROM nodes WHERE enabled = 1").fetchall()
+        nodes = [dict(r) for r in rows]
+    except Exception:
+        nodes = []
+    return nodes or [{"id": 1, "name": "Asosiy", "api_base": sync.API_BASE}]
 
 
 def _autostart_allowed() -> bool:
     if os.environ.get("MEDIAMTX_AUTOSTART", "1") == "0":
         return False
-    host = sync.API_BASE.split("//")[-1].split(":")[0]
-    return host in ("127.0.0.1", "localhost") and MEDIAMTX_EXE.exists()
+    return MEDIAMTX_EXE.exists()
 
 
 def _spawn() -> bool:
-    """MediaMTX'ni ishga tushiradi; log ildizdagi mediamtx.log ga boradi."""
+    """Lokal MediaMTX'ni ishga tushiradi; log ildizdagi mediamtx.log da."""
     global _process, _last_spawn
     now = time.monotonic()
     if now - _last_spawn < SPAWN_COOLDOWN:
@@ -93,7 +103,7 @@ def _spawn() -> bool:
     return False
 
 
-def _check_stalls() -> None:
+def _check_stalls(node: dict) -> None:
     """Faol oqimlarning bayt hisobi ikki tick orasida qo'zg'almasa — muzlagan.
 
     TCP tekshiruv (health) buni ko'rmaydi: registrator portga javob
@@ -101,51 +111,62 @@ def _check_stalls() -> None:
     esa yolg'on gapirmaydi — 30 soniyada bitta bayt ham kelmagan tayyor
     oqim aniq muzlagan.
     """
-    active = sync.list_active_paths()
+    node_id = node["id"]
+    active = sync.list_active_paths(node["api_base"])
     if active is None:
         return
-    changes: list[tuple[str, str]] = []
+    changes: list[tuple[str, str]] = []          # (ko'rsatma nomi, holat)
     with _lock:
         for name, item in active.items():
+            key = (node_id, name)
             if not item.get("ready"):
-                continue                      # hali ulanmagan — muzlash emas
+                continue                          # hali ulanmagan — muzlash emas
             got = int(item.get("bytesReceived") or 0)
-            prev = _prev_bytes.get(name)
+            prev = _prev_bytes.get(key)
             if prev is not None and got == prev:
-                if name not in _stalled:
-                    _stalled.add(name)
-                    changes.append((name, "stalled"))
-            elif name in _stalled:
-                _stalled.discard(name)
-                changes.append((name, "resumed"))
-        for name in list(_stalled):
-            if name not in active:            # oqim yopildi — muzlash tugadi
-                _stalled.discard(name)
-        _prev_bytes.clear()
-        _prev_bytes.update(
-            {n: int(i.get("bytesReceived") or 0) for n, i in active.items()})
+                if key not in _stalled:
+                    display = name if node_id == 1 else f"{name}@{node['name']}"
+                    _stalled[key] = display
+                    changes.append((display, "stalled"))
+            elif key in _stalled:
+                changes.append((_stalled.pop(key), "resumed"))
+        for key in list(_stalled):
+            if key[0] == node_id and key[1] not in active:
+                _stalled.pop(key)                 # oqim yopildi — muzlash tugadi
+        for key in [k for k in _prev_bytes if k[0] == node_id]:
+            _prev_bytes.pop(key)
+        _prev_bytes.update({(node_id, n): int(i.get("bytesReceived") or 0)
+                            for n, i in active.items()})
     if not changes:
         return
     with get_db() as db:
-        for name, kind in changes:
-            events.add(db, kind, slug=name,
+        for display, kind in changes:
+            events.add(db, kind, slug=display,
                        detail="oqim muzladi" if kind == "stalled" else "oqim tiklandi")
     alerts.send_async("\n".join(
-        f"{'🧊 muzladi' if kind == 'stalled' else '🟢 tiklandi'}: {name}"
-        for name, kind in changes))
+        f"{'🧊 muzladi' if kind == 'stalled' else '🟢 tiklandi'}: {display}"
+        for display, kind in changes))
 
 
 def _tick(load_cameras: Callable[[], list[dict]], announce: bool) -> bool:
-    """Bitta tekshiruv. Sinxronlash bajarilgan bo'lsa True qaytaradi."""
-    if not sync.api_available():
-        if not (_autostart_allowed() and _spawn()):
-            return False
-    result = sync.push_to_api(load_cameras())
-    changed = result["added"] + result["updated"] + result["removed"]
-    if announce or changed or not result["ok"]:
-        print(f"MediaMTX: {result['message']}", flush=True)
-    _check_stalls()
-    return result["ok"]
+    """Bitta tekshiruv (barcha tugunlar). Sinxron bajarilsa True qaytaradi."""
+    cameras = load_cameras()
+    synced = False
+    for node in _nodes():
+        api = node["api_base"]
+        local = sync.is_local_api(api)
+        if not sync.api_available(api):
+            if not (local and _autostart_allowed() and _spawn()):
+                continue
+        node_cams = [c for c in cameras
+                     if (c.get("node_id") or 1) == node["id"]]
+        result = sync.push_to_api(node_cams, api_base=api)
+        changed = result["added"] + result["updated"] + result["removed"]
+        if announce or changed or not result["ok"]:
+            print(f"MediaMTX [{node['name']}]: {result['message']}", flush=True)
+        _check_stalls(node)
+        synced = synced or result["ok"]
+    return synced
 
 
 def _loop(load_cameras: Callable[[], list[dict]]) -> None:
@@ -163,8 +184,8 @@ def start(load_cameras: Callable[[], list[dict]]) -> None:
     """Fon reconcilerini ishga tushiradi (bir marta).
 
     `load_cameras` — kameralarning MediaMTX ko'rinishini qaytaruvchi
-    funksiya; uni app qatlami uzatadi (media qatlami bazaga o'zi murojaat
-    qilmaydi — qatlamlar chegarasi buzilmasin).
+    funksiya; uni app qatlami uzatadi (media qatlami bazaga sxema
+    darajasida bog'lanmasin).
     """
     global _started
     with _lock:

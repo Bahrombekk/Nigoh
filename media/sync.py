@@ -203,36 +203,48 @@ def camera_paths(cameras: list[dict]) -> dict:
     }
 
 
-def build_config(cameras: list[dict]) -> str:
-    """To'liq mediamtx.yml matnini qaytaradi."""
+def build_config(cameras: list[dict], auth_url: str | None = None,
+                 node: dict | None = None) -> str:
+    """To'liq mediamtx.yml matnini qaytaradi.
+
+    `node` berilsa — o'sha tugun uchun konfiguratsiya: portlar tugundan
+    olinadi, API hamma interfeysda tinglaydi (markaziy backend yo'llarni
+    shu API orqali boshqaradi — portni faqat backend'ga oching) va
+    o'girish shabloni yozilmaydi (launcher u mashinada yo'q).
+    """
+    node = node or {}
+    remote = bool(node) and not is_local_api(node.get("api_base"))
+    rtsp_port = int(node.get("rtsp_port") or RTSP_PORT)
+    hls_port = int(node.get("hls_port") or HLS_PORT)
+    webrtc_port = int(node.get("webrtc_port") or WEBRTC_PORT)
     config = {
         "logLevel": "info",
         "api": True,
-        "apiAddress": "127.0.0.1:9997",
+        "apiAddress": ":9997" if remote else "127.0.0.1:9997",
 
         # Kirish nazorati: har bir o'qish so'rovini backend tekshiradi —
         # saytdan berilgan chiptasiz oqim ochilmaydi. Backend ishlamayotgan
         # bo'lsa MediaMTX hamma so'rovni rad etadi (yopiq holatda xavfsiz).
         # API lokal portda va shusiz ham faqat 127.0.0.1 dan ochiq.
         "authMethod": "http",
-        "authHTTPAddress": STREAM_AUTH_URL,
+        "authHTTPAddress": auth_url or STREAM_AUTH_URL,
         "authHTTPExclude": [
             {"action": "api"}, {"action": "metrics"}, {"action": "pprof"},
         ],
 
         "rtsp": True,
-        "rtspAddress": f":{RTSP_PORT}",
+        "rtspAddress": f":{rtsp_port}",
         "rtspTransports": ["tcp"],
 
         # WebRTC — asosiy yo'l, eng tez ochiladi.
         "webrtc": True,
-        "webrtcAddress": f":{WEBRTC_PORT}",
+        "webrtcAddress": f":{webrtc_port}",
         "webrtcAllowOrigins": ["*"],
         "webrtcLocalUDPAddress": ":8189",
 
         # HLS — WebRTC ishlamagan brauzerlar uchun zaxira.
         "hls": True,
-        "hlsAddress": f":{HLS_PORT}",
+        "hlsAddress": f":{hls_port}",
         "hlsVariant": "lowLatency",
         # Doimiy remux qilinsa xom H.265 yo'llari ham bekorga HLS'ga o'giriladi;
         # asosiy yo'l WebRTC bo'lgani uchun bunga hojat yo'q.
@@ -245,7 +257,7 @@ def build_config(cameras: list[dict]) -> str:
         "rtmp": False,
         "srt": False,
 
-        "paths": camera_paths(cameras) or {},
+        "paths": {} if remote else (camera_paths(cameras) or {}),
     }
     body = yaml.safe_dump(config, allow_unicode=True, sort_keys=False,
                           default_flow_style=False, width=10000)
@@ -259,9 +271,20 @@ def write_config(cameras: list[dict]) -> int:
 
 
 # ---------- ishlab turgan MediaMTX bilan aloqa ----------
+#
+# Barcha funksiyalar ixtiyoriy `api_base` oladi — ko'p tugunli rejimda
+# har bir tugunning o'z API manzili bo'ladi (nodes jadvali). Berilmasa
+# lokal (asosiy) tugun ishlatiladi.
 
-def _api(method: str, path: str, payload: dict | None = None):
-    url = f"{API_BASE.rstrip('/')}{path}"
+def is_local_api(api_base: str | None = None) -> bool:
+    """API manzili shu mashinadami — jarayonni faqat lokalda boshqaramiz."""
+    host = (api_base or API_BASE).split("//")[-1].split(":")[0]
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
+def _api(method: str, path: str, payload: dict | None = None,
+         api_base: str | None = None):
+    url = f"{(api_base or API_BASE).rstrip('/')}{path}"
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
@@ -271,15 +294,15 @@ def _api(method: str, path: str, payload: dict | None = None):
     return json.loads(raw) if raw else None
 
 
-def api_available() -> bool:
+def api_available(api_base: str | None = None) -> bool:
     try:
-        _api("GET", "/v3/config/global/get")
+        _api("GET", "/v3/config/global/get", api_base=api_base)
         return True
     except (urllib.error.URLError, OSError, ValueError):
         return False
 
 
-def ensure_path(cam: dict) -> bool:
+def ensure_path(cam: dict, api_base: str | None = None) -> bool:
     """Kamera yo'li MediaMTX'da borligiga ishonch hosil qiladi.
 
     Ko'rish so'ralganda chaqiriladi. Yo'l yo'q bo'lsa qo'shiladi, borligi
@@ -290,7 +313,7 @@ def ensure_path(cam: dict) -> bool:
         return False
     slug, wanted = cam["slug"], source_path(cam)
     try:
-        current = _api("GET", f"/v3/config/paths/get/{slug}")
+        current = _api("GET", f"/v3/config/paths/get/{slug}", api_base=api_base)
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             return False
@@ -300,9 +323,9 @@ def ensure_path(cam: dict) -> bool:
 
     try:
         if current is None:
-            _api("POST", f"/v3/config/paths/add/{slug}", wanted)
+            _api("POST", f"/v3/config/paths/add/{slug}", wanted, api_base=api_base)
         elif any(current.get(k) != v for k, v in wanted.items()):
-            _api("PATCH", f"/v3/config/paths/patch/{slug}", wanted)
+            _api("PATCH", f"/v3/config/paths/patch/{slug}", wanted, api_base=api_base)
         return True
     except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
         return False
@@ -335,14 +358,18 @@ def ensure_transcode_path(cam: dict) -> bool:
         return False
 
 
-def desired_paths(cameras: list[dict]) -> dict:
+def desired_paths(cameras: list[dict], with_transcode: bool = True) -> dict:
     """MediaMTX'da (API orqali) turishi kerak bo'lgan to'liq holat.
 
     Uch qatlam: o'girish shabloni, har bir yoqilgan kameraning manba yo'li
     va "doim tayyor" o'girish yo'llari. `push_to_api` MediaMTX'ni aynan shu
     ro'yxatga keltiradi — ortiqchasi o'chadi, kamisi qo'shiladi.
+
+    `with_transcode=False` — uzoq tugunlar uchun: o'girish yo'llari
+    `stream_launcher.py` ni chaqiradi, u esa faqat backend turgan
+    mashinada bor. Uzoq tugun kameralarini H.264 da tuting.
     """
-    wanted = dict(camera_paths(cameras))
+    wanted = dict(camera_paths(cameras)) if with_transcode else {}
     for cam in cameras:
         if not (cam.get("enabled") and cam.get("ip")):
             continue
@@ -350,13 +377,13 @@ def desired_paths(cameras: list[dict]) -> dict:
         sub = sub_variant(cam)
         if sub:
             wanted[sub["slug"]] = source_path(sub)
-        if cam.get("transcode") and cam.get("always_on"):
+        if with_transcode and cam.get("transcode") and cam.get("always_on"):
             name = cam["slug"] + TRANSCODE_SUFFIX
             wanted[name] = {"runOnInit": _launcher(name), "runOnInitRestart": True}
     return wanted
 
 
-def _paged_list(endpoint: str) -> dict[str, dict] | None:
+def _paged_list(endpoint: str, api_base: str | None = None) -> dict[str, dict] | None:
     """MediaMTX ro'yxatini sahifalab, to'liq o'qiydi.
 
     Bitta so'rov 1000 tagacha qaytaradi; 5000 kamerada qolgani ko'rinmay
@@ -366,7 +393,8 @@ def _paged_list(endpoint: str) -> dict[str, dict] | None:
     page = 0
     while True:
         try:
-            chunk = _api("GET", f"{endpoint}?itemsPerPage=500&page={page}") or {}
+            chunk = _api("GET", f"{endpoint}?itemsPerPage=500&page={page}",
+                         api_base=api_base) or {}
         except (urllib.error.URLError, OSError, ValueError):
             return None
         for item in chunk.get("items", []):
@@ -376,12 +404,12 @@ def _paged_list(endpoint: str) -> dict[str, dict] | None:
             return paths
 
 
-def _list_all_paths() -> dict[str, dict] | None:
+def _list_all_paths(api_base: str | None = None) -> dict[str, dict] | None:
     """API orqali sozlangan barcha yo'l konfiguratsiyalari."""
-    return _paged_list("/v3/config/paths/list")
+    return _paged_list("/v3/config/paths/list", api_base)
 
 
-def list_active_paths() -> dict[str, dict] | None:
+def list_active_paths(api_base: str | None = None) -> dict[str, dict] | None:
     """Ayni damda faol (runtime) yo'llar: ready, bytesReceived, o'quvchilar.
 
     Konfiguratsiyadan farqi — bu ro'yxatda faqat hozir ishlab turgan
@@ -389,17 +417,20 @@ def list_active_paths() -> dict[str, dict] | None:
     kamera portga javob bersa ham bayt hisobi joyidan qo'zg'almasa,
     tasvir kelmayapti degani.
     """
-    return _paged_list("/v3/paths/list")
+    return _paged_list("/v3/paths/list", api_base)
 
 
-def push_to_api(cameras: list[dict]) -> dict:
+def push_to_api(cameras: list[dict], api_base: str | None = None,
+                with_transcode: bool | None = None) -> dict:
     """Ishlab turgan MediaMTX'ni kerakli holatga keltiradi (qayta ishga
     tushirmasdan): yo'q yo'llar qo'shiladi, o'zgarganlari yangilanadi,
     ortiqchalari o'chiriladi. O'zgarmaganlarga tegilmaydi, amallar parallel
     yuboriladi — 5000 kamerada ham soniyalar ichida tugaydi.
     """
-    wanted = desired_paths(cameras)
-    existing = _list_all_paths()
+    if with_transcode is None:
+        with_transcode = is_local_api(api_base)   # o'girish faqat lokal tugunda
+    wanted = desired_paths(cameras, with_transcode)
+    existing = _list_all_paths(api_base)
     if existing is None:
         return {"ok": False, "added": 0, "updated": 0, "removed": 0,
                 "message": "MediaMTX ishlamayapti — fayl yangilandi, "
@@ -419,7 +450,7 @@ def push_to_api(cameras: list[dict]) -> dict:
     def _run(op: tuple[str, str, dict | None]):
         method, path, payload = op
         try:
-            _api(method, path, payload)
+            _api(method, path, payload, api_base=api_base)
             return method, None
         except (urllib.error.URLError, OSError, ValueError) as exc:
             return method, f"{path.rsplit('/', 1)[-1]}: {exc}"

@@ -6,6 +6,7 @@ Bu yerda ikkita "tarjima" qatlami yashaydi:
   * baza qatori → MediaMTX tushunadigan ko'rinish.
 """
 import re
+import time
 
 from fastapi import HTTPException, Request
 
@@ -27,6 +28,38 @@ def media_host(request: Request) -> str:
     return "localhost" if host == "0.0.0.0" else host
 
 
+# ---------- MediaMTX tugunlari ----------
+
+_node_cache: dict[int, tuple[float, dict | None]] = {}
+_NODE_TTL = 30.0
+
+
+def node_info(node_id: int | None) -> dict | None:
+    """Tugun ma'lumoti (qisqa keshlanadi).
+
+    1-tugun — backend bilan bitta mashinadagi asosiy MediaMTX: uning uchun
+    None qaytadi va muhit sozlamalari (portlar, so'rov hosti) ishlatiladi,
+    ya'ni bitta tugunli rejim bazaga umuman murojaat qilmaydi.
+    """
+    nid = node_id or 1
+    if nid == 1:
+        return None
+    now = time.monotonic()
+    cached = _node_cache.get(nid)
+    if cached and cached[0] > now:
+        return cached[1]
+    with get_db() as db:
+        row = db.execute("SELECT * FROM nodes WHERE id = ?", (nid,)).fetchone()
+    info = dict(row) if row else None
+    _node_cache[nid] = (now + _NODE_TTL, info)
+    return info
+
+
+def clear_node_cache() -> None:
+    """Tugun tahrirlanganda kesh darhol yangilansin."""
+    _node_cache.clear()
+
+
 def stream_urls(row, request: Request, hevc_ok: bool = False,
                 quality: str = "") -> dict:
     """Kameraning oqim manzillari — faqat kerak bo'lganda so'raladi.
@@ -43,6 +76,14 @@ def stream_urls(row, request: Request, hevc_ok: bool = False,
     if not row["ip"]:
         return {"stream_url": row["stream_url"] or "", "webrtc_url": "",
                 "mode": "manual"}
+
+    # Kamera boshqa tugunga biriktirilgan bo'lsa, brauzer o'sha tugunga
+    # to'g'ridan-to'g'ri ulanadi — trafik markaz orqali aylanib yurmaydi.
+    hls_port, webrtc_port = HLS_PORT, WEBRTC_PORT
+    node = node_info(row["node_id"])
+    if node:
+        host = node["public_host"] or host
+        hls_port, webrtc_port = node["hls_port"], node["webrtc_port"]
 
     # Xom yo'l — MediaMTX kameradan to'g'ridan-to'g'ri oladi, FFmpeg yo'q.
     #
@@ -65,9 +106,9 @@ def stream_urls(row, request: Request, hevc_ok: bool = False,
     # tekshiradi (routes_auth.stream_auth), chiptasiz oqim ochilmaydi.
     token = security.stream_token(slug)
     return {
-        "stream_url": f"http://{host}:{HLS_PORT}/{slug}/index.m3u8?token={token}",
+        "stream_url": f"http://{host}:{hls_port}/{slug}/index.m3u8?token={token}",
         # WebRTC ancha tez ochiladi — brauzer avval shuni sinaydi.
-        "webrtc_url": f"http://{host}:{WEBRTC_PORT}/{slug}/whep?token={token}",
+        "webrtc_url": f"http://{host}:{webrtc_port}/{slug}/whep?token={token}",
         "mode": mode,
     }
 
@@ -97,6 +138,7 @@ def admin_camera(row, request: Request) -> dict:
         "has_password": bool(row["password_enc"]),
         "rtsp_path": row["rtsp_path"] or "",
         "sub_path": row["sub_path"] or "",
+        "node_id": row["node_id"] or 1,
         "vendor": row["vendor"] or "boshqa",
         "enabled": bool(row["enabled"]),
         "note": row["note"] or "",
@@ -142,6 +184,7 @@ def camera_for_mediamtx(row) -> dict | None:
         "transcode": bool(row["transcode"]),
         "always_on": bool(row["always_on"]),
         "sub_path": row["sub_path"] or "",
+        "node_id": row["node_id"] or 1,
     }
 
 

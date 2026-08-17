@@ -5,7 +5,7 @@ from core import fast_start, health, security
 from core.db import get_db
 from media import sync as mediamtx_sync
 
-from .helpers import camera_for_mediamtx, stream_urls
+from .helpers import camera_for_mediamtx, node_info, stream_urls
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
 
@@ -70,15 +70,18 @@ def camera_stream(camera_id: int, request: Request, hevc: int = 0,
             raise HTTPException(404, "Kamera topilmadi")
         camera = camera_for_mediamtx(row)
 
-    # Yo'l MediaMTX'da borligiga ishonch hosil qilamiz — u qayta ishga
-    # tushgan bo'lsa ham ko'rish shu yerda tiklanadi.
+    # Yo'l o'z tugunidagi MediaMTX'da borligiga ishonch hosil qilamiz —
+    # u qayta ishga tushgan bo'lsa ham ko'rish shu yerda tiklanadi.
     if camera:
+        node = node_info(camera["node_id"])
+        api_base = node["api_base"] if node else None
         sub = mediamtx_sync.sub_variant(camera) if quality == "sub" else None
         if sub:
-            mediamtx_sync.ensure_path(sub)
+            mediamtx_sync.ensure_path(sub, api_base)
         else:
-            mediamtx_sync.ensure_path(camera)
-            mediamtx_sync.ensure_transcode_path(camera)
+            mediamtx_sync.ensure_path(camera, api_base)
+            if api_base is None:               # o'girish faqat lokal tugunda
+                mediamtx_sync.ensure_transcode_path(camera)
         # Kameradan darhol keyframe so'raymiz (ONVIF) — tasvir navbatdagi
         # keyframe'gacha (2-4 s) kutib qolmasin. Fonda ketadi, javobni
         # kechiktirmaydi; qo'llamaydigan kamera jim rad etadi.

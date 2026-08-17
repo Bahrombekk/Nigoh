@@ -14,6 +14,7 @@ class CameraIn(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     source_type: str = "rtsp"          # "rtsp" | "manual"
+    node_id: int = Field(default=1, ge=1)   # qaysi MediaMTX tuguni tortadi
     enabled: bool = True
     # Standart holda o'chiq: kamera faqat kimdir ko'rganda ulanadi. Aks holda
     # kameralar soni ortishi bilan tarmoq ham, GPU ham tugaydi.
@@ -66,9 +67,25 @@ class NvrIn(BaseModel):
     lng: float = Field(ge=-180, le=180)
     spread_m: int = Field(default=120, ge=0, le=5000)  # nuqtalar bir-birini bosmasin
     stream: str = Field(default="main")                # "main" | "sub"
+    node_id: int = Field(default=1, ge=1)              # qaysi MediaMTX tuguni
     enabled: bool = True
     probe: bool = True                                 # kodekni tekshirib olsinmi
     dry_run: bool = False                              # avval ko'rsatib bersin
+
+
+class NodeIn(BaseModel):
+    """MediaMTX tuguni — kameralar ko'p manzilda bo'lsa, har joyga bittadan.
+
+    Kamera trafigi lokal tarmoqda qoladi; magistralga faqat ayni damda
+    ko'rilayotgan oqim chiqadi.
+    """
+    name: str = Field(min_length=1, max_length=80)
+    api_base: str = Field(min_length=1, max_length=200)    # http://host:9997
+    public_host: str = Field(default="", max_length=100)   # brauzer ulanadigan host
+    rtsp_port: int = Field(default=8554, ge=1, le=65535)
+    hls_port: int = Field(default=8888, ge=1, le=65535)
+    webrtc_port: int = Field(default=8889, ge=1, le=65535)
+    enabled: bool = True
 
 
 class ProbeIn(BaseModel):
