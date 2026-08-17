@@ -22,12 +22,11 @@ def bootstrap() -> None:
     # kameralar qizil bo'lib ko'rinadi.
     health.start()
 
-    # Toza nusxada mediamtx.yml bo'lmaydi (u maxfiy ro'yxatda) — o'zimiz
-    # yaratamiz, aks holda MediaMTX ishga tusha olmaydi.
-    if not mediamtx_sync.CONFIG_PATH.exists():
-        with get_db() as db:
-            mediamtx_sync.write_config(cameras_for_mediamtx(db))
-        print(f"mediamtx.yml yaratildi: {mediamtx_sync.CONFIG_PATH}")
+    # mediamtx.yml har ishga tushishda qayta yoziladi: portlar va kirish
+    # nazorati sozlamalari kod bilan birga yangilansin. MediaMTX ishlab
+    # turgan bo'lsa faylni o'zi qayta o'qiydi — qo'lda hech narsa kerak emas.
+    with get_db() as db:
+        mediamtx_sync.write_config(cameras_for_mediamtx(db))
 
     # MediaMTX'ni fonda kuzatib turamiz: yiqilsa qayta ishga tushiriladi,
     # yo'llar (kamera qo'shildi/o'chirildi, MediaMTX qayta ko'tarildi)

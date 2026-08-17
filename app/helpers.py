@@ -53,10 +53,13 @@ def stream_urls(row, request: Request, hevc_ok: bool = False) -> dict:
     else:
         mode = "raw" if row["transcode"] else "direct"
 
+    # Chipta shu yo'lga bog'langan va muddatli — MediaMTX'ni backend
+    # tekshiradi (routes_auth.stream_auth), chiptasiz oqim ochilmaydi.
+    token = security.stream_token(slug)
     return {
-        "stream_url": f"http://{host}:{HLS_PORT}/{slug}/index.m3u8",
+        "stream_url": f"http://{host}:{HLS_PORT}/{slug}/index.m3u8?token={token}",
         # WebRTC ancha tez ochiladi — brauzer avval shuni sinaydi.
-        "webrtc_url": f"http://{host}:{WEBRTC_PORT}/{slug}/whep",
+        "webrtc_url": f"http://{host}:{WEBRTC_PORT}/{slug}/whep?token={token}",
         "mode": mode,
     }
 

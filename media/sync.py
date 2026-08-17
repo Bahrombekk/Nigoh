@@ -50,6 +50,13 @@ RTSP_PORT = int(os.environ.get("MEDIAMTX_RTSP_PORT", "8554"))
 HLS_PORT = int(os.environ.get("HLS_PORT", "8888"))
 WEBRTC_PORT = int(os.environ.get("WEBRTC_PORT", "8889"))
 
+# MediaMTX har bir ulanishda backend'dan ruxsat so'raydi. MediaMTX boshqa
+# mashinada bo'lsa, STREAM_AUTH_URL orqali backend'ning to'liq manzilini
+# bering (u mashinadan yetib boradigan qilib).
+APP_PORT = int(os.environ.get("PORT", "8010"))
+STREAM_AUTH_URL = os.environ.get(
+    "STREAM_AUTH_URL", f"http://127.0.0.1:{APP_PORT}/api/auth/stream")
+
 HEADER = """# Nigoh tomonidan avtomatik yaratilgan — qo'lda tahrirlamang.
 # Kameralarni saytdagi super-admin panelidan boshqaring; bu fayl
 # "MediaMTX" oynasidagi tugma bosilganda qayta yoziladi.
@@ -188,6 +195,16 @@ def build_config(cameras: list[dict]) -> str:
         "logLevel": "info",
         "api": True,
         "apiAddress": "127.0.0.1:9997",
+
+        # Kirish nazorati: har bir o'qish so'rovini backend tekshiradi —
+        # saytdan berilgan chiptasiz oqim ochilmaydi. Backend ishlamayotgan
+        # bo'lsa MediaMTX hamma so'rovni rad etadi (yopiq holatda xavfsiz).
+        # API lokal portda va shusiz ham faqat 127.0.0.1 dan ochiq.
+        "authMethod": "http",
+        "authHTTPAddress": STREAM_AUTH_URL,
+        "authHTTPExclude": [
+            {"action": "api"}, {"action": "metrics"}, {"action": "pprof"},
+        ],
 
         "rtsp": True,
         "rtspAddress": f":{RTSP_PORT}",

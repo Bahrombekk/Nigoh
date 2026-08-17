@@ -1,4 +1,6 @@
 """Nigoh — autentifikatsiya endpointlari."""
+from urllib.parse import parse_qs
+
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from core import security
@@ -7,6 +9,33 @@ from core.db import get_db
 from .models import LoginIn
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+@router.post("/stream")
+def stream_auth(body: dict):
+    """MediaMTX har bir ulanishda shu yerdan ruxsat so'raydi (authMethod: http).
+
+    Buni brauzer emas, MediaMTX'ning o'zi chaqiradi: 200 — ruxsat,
+    401 — rad. Shu bilan 8554/8888/8889-portlardagi oqimlarni saytdan
+    berilgan chiptasiz ko'rib bo'lmaydi.
+    """
+    ip = str(body.get("ip") or "")
+    action = str(body.get("action") or "")
+    path = str(body.get("path") or "")
+    query = str(body.get("query") or "")
+
+    # O'z jarayonlarimiz — MediaMTX bilan bitta mashinada: launcher'ning
+    # FFmpeg'i o'girilgan oqimni publish/read qiladi, snapshot zaxirasi
+    # RTSP o'qiydi. Ularga chipta kerak emas.
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        return {"ok": True}
+
+    # Tashqaridan faqat tomosha — va faqat chipta bilan.
+    if action in ("read", "playback"):
+        token = (parse_qs(query).get("token") or [""])[0]
+        if security.stream_access_ok(ip, path, token):
+            return {"ok": True}
+    raise HTTPException(401, "Oqimga ruxsat yo'q")
 
 
 @router.post("/login")

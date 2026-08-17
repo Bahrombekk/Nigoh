@@ -29,8 +29,10 @@ mediamtx/
 __pycache__/
 *.pyc
 
-# Reconciler MediaMTX'ni qayta ishga tushirganda yozadigan log
+# Ish vaqti loglari
 mediamtx.log
+backend.log
+backend.err.log
 
 # ---- Muhit ----
 .env

@@ -11,6 +11,8 @@ import hashlib
 import hmac
 import os
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -53,6 +55,66 @@ def decrypt(token: str | None) -> str:
     except InvalidToken:
         # Kalit almashtirilgan yoki yozuv buzilgan.
         return ""
+
+
+# ---------- oqim chiptalari (MediaMTX kirish nazorati) ----------
+#
+# MediaMTX portlari (8554/8888/8889) hammaga ochiq edi: slug'ni bilgan har
+# kim saytga kirmasdan kamerani ko'ra olardi. Endi MediaMTX har bir o'qish
+# so'rovini backend'dan so'raydi (authMethod: http), backend esa saytdan
+# berilgan qisqa muddatli chiptani tekshiradi.
+#
+# HLS'ning nozik joyi: brauzer tokenni faqat birinchi so'rovga (index.m3u8)
+# qo'shadi, segment so'rovlariga emas. Shuning uchun to'g'ri token kelganda
+# (ip, yo'l) juftligiga qisqa "sessiya" ochiladi — segmentlar shu sessiya
+# orqali yuradi va har ruxsatli so'rovda uzayadi.
+
+STREAM_TOKEN_TTL = 3600        # soniya — ulanishni boshlash uchun
+STREAM_SESSION_TTL = 600       # soniya — har ruxsatli so'rovda uzayadi
+
+# Kalit secret.key'dan hosil qilinadi — alohida fayl kerak emas.
+_stream_key = hashlib.sha256(b"nigoh-stream:" + _load_key()).digest()
+_stream_sessions: dict[tuple[str, str], float] = {}
+_stream_lock = threading.Lock()
+
+
+def _stream_sig(path: str, expires: int) -> str:
+    mac = hmac.new(_stream_key, f"{path}|{expires}".encode(), hashlib.sha256)
+    return base64.urlsafe_b64encode(mac.digest()[:20]).decode().rstrip("=")
+
+
+def stream_token(path: str) -> str:
+    """Bitta yo'l uchun imzolangan chipta — oqim manziliga ?token= bo'lib qo'shiladi."""
+    expires = int(time.time()) + STREAM_TOKEN_TTL
+    return f"{expires}.{_stream_sig(path, expires)}"
+
+
+def stream_access_ok(ip: str, path: str, token: str) -> bool:
+    """MediaMTX'dan kelgan o'qish so'rovini tekshiradi.
+
+    To'g'ri token — ruxsat + (ip, yo'l) sessiyasi. Tokensiz so'rov faqat
+    tirik sessiya bo'lsa o'tadi (HLS segmentlari, WHEP davomi).
+    """
+    now = time.time()
+    key = (ip, path)
+    if token:
+        expires_s, _, sig = token.partition(".")
+        try:
+            expires = int(expires_s)
+        except ValueError:
+            expires = 0
+        if expires > now and hmac.compare_digest(sig, _stream_sig(path, expires)):
+            with _stream_lock:
+                if len(_stream_sessions) > 10_000:      # chegara: eskilar chiqsin
+                    for k in [k for k, t in _stream_sessions.items() if t <= now]:
+                        _stream_sessions.pop(k, None)
+                _stream_sessions[key] = now + STREAM_SESSION_TTL
+            return True
+    with _stream_lock:
+        alive = _stream_sessions.get(key, 0.0) > now
+        if alive:
+            _stream_sessions[key] = now + STREAM_SESSION_TTL
+    return alive
 
 
 # ---------- admin paroli ----------
