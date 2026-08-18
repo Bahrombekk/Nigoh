@@ -11,6 +11,12 @@ PORT = int(os.environ.get("PORT", "8010"))
 # Standart — ha (hozirgi xatti-harakat). PUBLIC_VIEW=0 qilinsa faqat
 # tizimga kirganlar ko'radi: admin — hammasini, operator — o'z hududlarini.
 PUBLIC_VIEW = os.environ.get("PUBLIC_VIEW", "1") != "0"
+
+# Server-to-server kirish: tashqi backend `X-API-Key` sarlavhasi bilan
+# to'liq (admin darajasida) kiradi — cookie/login kerak emas. Bo'sh qolsa
+# mexanizm o'chiq. Uzun tasodifiy qiymat qo'ying (masalan,
+# `openssl rand -hex 32`).
+API_KEY = os.environ.get("NIGOH_API_KEY", "")
 HLS_PORT = int(os.environ.get("HLS_PORT", "8888"))
 WEBRTC_PORT = int(os.environ.get("WEBRTC_PORT", "8889"))
 MEDIA_HOST = os.environ.get("MEDIA_HOST", "")  # bo'sh bo'lsa so'rov manzilidan olinadi

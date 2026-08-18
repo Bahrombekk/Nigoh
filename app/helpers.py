@@ -5,6 +5,7 @@ Bu yerda ikkita "tarjima" qatlami yashaydi:
   * baza qatori → brauzerga xavfsiz ko'rinish (public/admin);
   * baza qatori → MediaMTX tushunadigan ko'rinish.
 """
+import hmac
 import re
 import time
 
@@ -17,7 +18,7 @@ from core.rtsp_probe import probe
 from media import reconciler
 from media import sync as mediamtx_sync
 
-from .config import HLS_PORT, MEDIA_HOST, PUBLIC_VIEW, WEBRTC_PORT
+from .config import API_KEY, HLS_PORT, MEDIA_HOST, PUBLIC_VIEW, WEBRTC_PORT
 from .models import CameraIn
 
 
@@ -190,6 +191,19 @@ def mask_config(text: str) -> str:
     return re.sub(r"(rtsp://[^:/@\s]+):[^@\s]+@", r"\1:•••@", text)
 
 
+def api_key_ok(request: Request) -> bool:
+    """Server-to-server kirish: `X-API-Key` sarlavhasi to'g'rimi.
+
+    Tashqi backend (o'z foydalanuvchi/rol tizimi bor tizim) Nigoh'ga shu
+    kalit bilan to'liq kiradi — ruxsatlarni o'zi hal qilib, bu yerdan
+    faqat chiptali oqim manzillari va kamera boshqaruvini oladi.
+    """
+    if not API_KEY:
+        return False
+    supplied = request.headers.get("x-api-key", "")
+    return bool(supplied) and hmac.compare_digest(supplied, API_KEY)
+
+
 def current_user(request: Request):
     """Sessiyadagi foydalanuvchi (admin yoki operator), bo'lmasa None."""
     token = request.cookies.get(security.SESSION_COOKIE)
@@ -198,7 +212,9 @@ def current_user(request: Request):
 
 
 def require_admin(request: Request):
-    """Boshqaruv endpointlari uchun: faqat 'admin' roli kiradi."""
+    """Boshqaruv endpointlari uchun: admin roli yoki to'g'ri API kalit."""
+    if api_key_ok(request):
+        return {"id": 0, "username": "api", "role": "admin"}
     user = current_user(request)
     if user is None:
         raise HTTPException(401, "Avval super-admin sifatida kiring")
@@ -210,10 +226,12 @@ def require_admin(request: Request):
 def allowed_regions(request: Request) -> list[str] | None:
     """Foydalanuvchi qaysi hududlarni ko'ra oladi.
 
-    None — cheklov yo'q (admin yoki, PUBLIC_VIEW yoqiq bo'lsa, anonim);
-    ro'yxat — operator: faqat shu hududlar (bo'sh ro'yxat = hech narsa);
+    None — cheklov yo'q (API kalit, admin yoki, PUBLIC_VIEW yoqiq bo'lsa,
+    anonim); ro'yxat — operator: faqat shu hududlar (bo'sh = hech narsa);
     anonim va PUBLIC_VIEW o'chiq bo'lsa ham bo'sh ro'yxat qaytadi.
     """
+    if api_key_ok(request):
+        return None
     user = current_user(request)
     if user is None:
         return None if PUBLIC_VIEW else []

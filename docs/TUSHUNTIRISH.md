@@ -270,6 +270,36 @@ tanlaydi. Amalda o'girish faqat zaxira bo'lib qoladi.
 
 ---
 
+## 9½. Tashqi tizimga ulanish modeli (asosiy ishlatilish)
+
+Nigoh alohida backend+frontend'li tizimga mikroservis bo'lib ulanadi.
+U tizimning o'z foydalanuvchilari, o'z rollari, o'z super-admini bo'ladi —
+Nigoh bunga aralashmaydi:
+
+```
+Foydalanuvchi ─▶ Ularning frontend ─▶ Ularning backend (o'z rollari)
+                                          │ X-API-Key (server-to-server)
+                                          ▼
+                                        NIGOH
+                                          ▼
+                     MediaMTX ──▶ video to'g'ridan brauzerga (chipta bilan)
+```
+
+- Ularning backend'i `.env` dagi `NIGOH_API_KEY` bilan to'liq kiradi;
+  `PUBLIC_VIEW=0` qo'yiladi — Nigoh'ga to'g'ridan kirgan begona hech
+  narsa ko'rmaydi.
+- Ruxsatni ular o'z rollarida tekshiradi, keyin Nigoh'dan **chiptali oqim
+  manzilini** olib frontend'iga uzatadi. Video baribir MediaMTX'dan
+  to'g'ridan boradi, lekin chiptasiz ochilmaydi — himoya Nigoh'da qoladi.
+- Kamera nomi/kategoriyasi/joyi kabi metadata'ni ular o'z bazasida
+  yuritishi mumkin (`nigoh_camera_id` bog'lash bilan); Nigoh uchun
+  majburiysi — ulanish ma'lumotlari (IP, parol, yo'l).
+- Nigoh'ning ichki `operator` roli va test UI bu rejimda ishlatilmaydi —
+  ular Nigoh'ni mustaqil ishlatish va birinchi kunlarda kamera kiritish
+  uchun turibdi.
+
+Batafsil, kod namunasi bilan: [BACKEND.md](BACKEND.md).
+
 ## 10. Ko'p tugun: kameralar har xil joyda bo'lsa
 
 Kameralar bir necha bino/shaharda bo'lsa, har joyga bitta MediaMTX

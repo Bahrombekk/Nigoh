@@ -43,6 +43,80 @@ Hammasi `/api/v1` ostida, resource-based:
 Eski `/api/...` manzillari ham ishlaydi (ichki test UI uchun), lekin yangi
 integratsiyada faqat `/api/v1` ni ishlating.
 
+## Asosiy integratsiya modeli: o'z tizimingiz + Nigoh
+
+Sizda o'z backend/frontend'ingiz, o'z foydalanuvchi va rol tizimingiz bor.
+Nigoh bunga **aralashmaydi** — u faqat kamera mikroservisi. Tavsiya
+etiladigan sxema:
+
+```
+Foydalanuvchi ─▶ Sizning frontend ─▶ Sizning backend (o'z rollaringiz)
+                                          │ X-API-Key
+                                          ▼
+                                        NIGOH
+                                          ▼
+                    MediaMTX ──▶ video TO'G'RIDAN brauzerga (chipta bilan)
+```
+
+Sozlash (Nigoh tomonda, `.env`):
+
+```
+PUBLIC_VIEW=0            # Nigoh'ga to'g'ridan kirgan anonim hech narsa ko'rmaydi
+NIGOH_API_KEY=<uzun tasodifiy kalit>
+```
+
+Sizning backend har so'rovga `X-API-Key: <kalit>` qo'shadi va **to'liq**
+kiradi — login, cookie, sessiya kerak emas.
+
+### Video qanday yetib boradi (muhim!)
+
+Video oqimi sizning backend orqali **o'tmaydi** (media trafikni proksilash
+og'ir va keraksiz). O'rniga chipta uzatiladi:
+
+```
+1. Frontend'ingiz:  "kamera X ni ochmoqchiman" → sizning backend
+2. Sizning backend: O'Z rolingiz bo'yicha ruxsatni tekshiradi
+3. Ruxsat bo'lsa:   GET nigoh:8010/api/v1/cameras/{id}/stream  (X-API-Key bilan)
+                    → {"webrtc_url": "...?token=...", "stream_url": "..."}
+4. Shu javobni frontend'ingizga qaytarasiz
+5. Brauzer chiptali manzil bilan videoni MediaMTX'dan to'g'ridan oladi
+```
+
+Chipta 1 soat yashaydi va faqat shu kameraga ishlaydi — manzilni bilgan
+begona odam ham chiptasiz videoni ocholmaydi. Shu sababli oqim manzilini
+**keshlamang** — har ochilishda 3-qadamni qaytaring (bu arzon so'rov).
+
+### Metadata kimda turadi
+
+Kamera nomi, kategoriyasi, xaritadagi o'rni kabi narsalarni **o'z
+bazangizda** yuritishingiz mumkin — o'z jadvalingizda `nigoh_camera_id`
+ustuni bilan bog'lang. Nigoh'dagi `name/region/lat/lng` maydonlarini
+xohlasangiz ishlatasiz (u yerda ham bor), xohlamasangiz e'tiborsiz
+qoldirasiz — Nigoh uchun majburiysi ulanish ma'lumotlari (IP, parol,
+yo'l) xolos. Nigoh'ning ichki `operator` roli ham sizga kerak emas —
+rollarni o'zingizda yuritasiz.
+
+Namuna (sizning backend'ingizda):
+
+```python
+import requests
+
+NIGOH = "http://nigoh:8010/api/v1"
+H = {"X-API-Key": "<kalit>"}
+
+# kamera qo'shish (sizning admin panelingizdan kelgan ma'lumot bilan)
+cam = requests.post(f"{NIGOH}/admin/cameras", headers=H, json={
+    "name": "Ombor 1", "region": "Toshkent", "lat": 41.31, "lng": 69.28,
+    "ip": "192.168.1.10", "username": "admin", "password": "...",
+    "vendor": "hikvision", "rtsp_path": "/Streaming/Channels/101",
+}).json()
+# cam["id"] ni o'z bazangizga saqlang
+
+# foydalanuvchi ko'rmoqchi bo'lganda (o'z ruxsatingizni tekshirib bo'lib):
+urls = requests.get(f"{NIGOH}/cameras/{cam['id']}/stream", headers=H).json()
+# urls ni frontend'ga qaytaring
+```
+
 ## Autentifikatsiya modeli
 
 - Sessiya **httponly cookie** (`nigoh_session`), 12 soat. Login:
@@ -54,9 +128,11 @@ integratsiyada faqat `/api/v1` ni ishlating.
   {"username": "op1", "password": "...", "role": "operator",
    "regions": ["Toshkent", "Buxoro"]}
   ```
-- Server-to-server chaqiriqlar uchun ham shu login ishlatiladi: bitta
-  texnik admin hisobi oching, login qilib cookie'ni saqlang (12 soat),
-  401 kelganda qayta login qiling.
+- Server-to-server chaqiriqlar uchun **API kalit** ishlating
+  (`NIGOH_API_KEY` + `X-API-Key` sarlavhasi, yuqoridagi bo'lim) — cookie
+  bilan o'ynashish shart emas. Nigoh'ning ichki `operator` roli — o'z rol
+  tizimi yo'q, Nigoh'ni to'g'ridan ishlatadigan holatlar uchun; alohida
+  backend qurayotgan bo'lsangiz unga ehtiyoj yo'q.
 
 **Oqim xavfsizligi haqida bilib qo'ying:** video portlari (8888/8889) ham
 himoyalangan — MediaMTX har bir tomosha so'rovini Nigoh'dan tekshirtiradi.
