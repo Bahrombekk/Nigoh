@@ -25,6 +25,7 @@ from typing import Callable
 
 from core import alerts, events
 from core.db import get_db
+from core.log import log
 
 from . import sync
 
@@ -85,9 +86,9 @@ def _spawn() -> bool:
             stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
         )
     except OSError as exc:
-        print(f"MediaMTX'ni ishga tushirib bo'lmadi: {exc}", flush=True)
+        log("reconciler", "mediamtx_spawn_failed", level="error", error=str(exc))
         return False
-    print(f"MediaMTX qayta ishga tushirildi (log: {LOG_PATH.name})", flush=True)
+    log("reconciler", "mediamtx_restarted", log_file=LOG_PATH.name)
     try:
         with get_db() as db:
             events.add(db, "mediamtx", detail="MediaMTX qayta ishga tushirildi")
@@ -143,6 +144,8 @@ def _check_stalls(node: dict) -> None:
         for display, kind in changes:
             events.add(db, kind, slug=display,
                        detail="oqim muzladi" if kind == "stalled" else "oqim tiklandi")
+            log("reconciler", f"stream_{kind}",
+                level="warning" if kind == "stalled" else "info", path=display)
     alerts.send_async("\n".join(
         f"{'🧊 muzladi' if kind == 'stalled' else '🟢 tiklandi'}: {display}"
         for display, kind in changes))
@@ -163,20 +166,32 @@ def _tick(load_cameras: Callable[[], list[dict]], announce: bool) -> bool:
         result = sync.push_to_api(node_cams, api_base=api)
         changed = result["added"] + result["updated"] + result["removed"]
         if announce or changed or not result["ok"]:
-            print(f"MediaMTX [{node['name']}]: {result['message']}", flush=True)
+            log("reconciler", "sync",
+                level="info" if result["ok"] else "warning",
+                node=node["name"], added=result["added"],
+                updated=result["updated"], removed=result["removed"],
+                message=result["message"])
         _check_stalls(node)
         synced = synced or result["ok"]
     return synced
 
 
+PRUNE_INTERVAL = 3600.0    # soniya — eski hodisalar soatiga bir tozalanadi
+
+
 def _loop(load_cameras: Callable[[], list[dict]]) -> None:
     announced = False              # birinchi muvaffaqiyatli sinxron logda ko'rinsin
+    last_prune = 0.0
     while True:
         try:
             if _tick(load_cameras, not announced):
                 announced = True
-        except Exception:          # kuzatuv hech qachon yiqilmasin
-            pass
+            if time.monotonic() - last_prune > PRUNE_INTERVAL:
+                last_prune = time.monotonic()
+                with get_db() as db:
+                    events.prune(db)
+        except Exception as exc:   # kuzatuv hech qachon yiqilmasin
+            log("reconciler", "tick_failed", level="error", error=str(exc))
         time.sleep(CHECK_INTERVAL)
 
 

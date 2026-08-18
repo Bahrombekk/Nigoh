@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 from . import stats
 from .db import get_db
+from .log import log
 
 CHECK_INTERVAL = 60.0   # soniya — har qancha kamerada ham yetarli
 TIMEOUT = 1.5
@@ -77,8 +78,8 @@ def _sweep() -> None:
     # uzildi/ulandi hodisalari. Yozilmasa ham kuzatuv to'xtamaydi.
     try:
         stats.record_sweep(fresh)
-    except Exception:
-        pass
+    except Exception as exc:
+        log("health", "stats_write_failed", level="error", error=str(exc))
 
     with _lock:
         _statuses.clear()               # o'chirilgan manzillar chiqib ketadi
@@ -105,8 +106,8 @@ def _loop() -> None:
     while True:
         try:
             _sweep()
-        except Exception:               # kuzatuv hech qachon yiqilmasin
-            pass
+        except Exception as exc:        # kuzatuv hech qachon yiqilmasin
+            log("health", "sweep_failed", level="error", error=str(exc))
         time.sleep(CHECK_INTERVAL)
 
 

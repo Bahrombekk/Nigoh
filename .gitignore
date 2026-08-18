@@ -33,6 +33,8 @@ __pycache__/
 mediamtx.log
 backend.log
 backend.err.log
+nigoh.log
+nigoh.log.*
 
 # ---- Muhit ----
 .env

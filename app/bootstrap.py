@@ -3,6 +3,7 @@ import os
 
 from core import health, security
 from core.db import get_db, init_db
+from core.log import log
 from media import reconciler
 from media import sync as mediamtx_sync
 
@@ -33,9 +34,13 @@ def bootstrap() -> None:
     # o'z-o'zidan kelishtiriladi. Sayt ochilishini kutdirmaydi.
     reconciler.start(_load_cameras)
 
+    log("app", "started")
+
     with get_db() as db:
         generated = security.ensure_admin(db)
     if generated:
+        log("app", "admin_created",
+            username=os.environ.get("ADMIN_LOGIN", "admin"))
         login_name = os.environ.get("ADMIN_LOGIN", "admin")
         print("\n" + "=" * 58)
         print("  SUPER-ADMIN YARATILDI — bu ma'lumotni saqlab qo'ying")
