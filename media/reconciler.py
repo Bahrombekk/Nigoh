@@ -52,6 +52,12 @@ def stalled_paths() -> set[str]:
         return set(_stalled.values())
 
 
+def stalled_count(node_id: int) -> int:
+    """Bitta tugundagi muzlagan oqimlar soni — tugun salomatligi uchun."""
+    with _lock:
+        return sum(1 for key in _stalled if key[0] == node_id)
+
+
 def _nodes() -> list[dict]:
     """Yoqilgan MediaMTX tugunlari; jadval bo'sh bo'lsa — lokal standart."""
     try:

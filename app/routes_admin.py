@@ -1,5 +1,6 @@
 """Nigoh — super-admin endpointlari: CRUD, NVR import, skaner, MediaMTX."""
 import math
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -15,7 +16,7 @@ from .config import CHANNEL_VENDORS, PORT, VENDORS
 from .helpers import (admin_camera, cameras_for_mediamtx, channel_path,
                       clear_node_cache, detect_codec, detect_sub_path,
                       mask_config, require_admin)
-from .models import CameraIn, NodeIn, NvrIn, ProbeIn, ScanIn
+from .models import CameraIn, NodeIn, NvrIn, ProbeIn, ScanIn, UserIn
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(prefix="/admin", tags=["admin"],
@@ -391,13 +392,119 @@ def admin_probe(body: ProbeIn):
                  body.username.strip(), password)
 
 
+# ---------- foydalanuvchilar ----------
+#
+# Rollar: 'admin' — hammasini boshqaradi (shu bo'lim ham faqat unga ochiq);
+# 'operator' — faqat o'ziga biriktirilgan hududlardagi kameralarni ko'radi
+# (xarita ro'yxati, oqim va surat shu ro'yxat bilan cheklanadi).
+
+def _user_view(db, row) -> dict:
+    return {
+        "id": row["id"], "username": row["username"], "role": row["role"],
+        "created_at": row["created_at"],
+        "regions": (security.user_regions(db, row["id"])
+                    if row["role"] == "operator" else []),
+    }
+
+
+def _check_password(password: str | None, required: bool) -> None:
+    if required and not password:
+        raise HTTPException(400, "Parol kiritilmagan")
+    if password and len(password) < 6:
+        raise HTTPException(400, "Parol kamida 6 belgidan iborat bo'lsin")
+
+
+@router.get("/users")
+def admin_users():
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT id, username, role, created_at FROM admins ORDER BY id"
+        ).fetchall()
+        return {"users": [_user_view(db, r) for r in rows]}
+
+
+@router.post("/users", status_code=201)
+def admin_user_create(body: UserIn):
+    _check_password(body.password, required=True)
+    pw_hash, salt = security.hash_password(body.password)
+    with get_db() as db:
+        try:
+            cur = db.execute(
+                "INSERT INTO admins (username, pw_hash, pw_salt, role) "
+                "VALUES (?, ?, ?, ?)",
+                (body.username.strip(), pw_hash, salt, body.role),
+            )
+        except sqlite3.IntegrityError:
+            raise HTTPException(400, "Bunday login allaqachon bor")
+        security.set_user_regions(
+            db, cur.lastrowid, body.regions if body.role == "operator" else [])
+        row = db.execute("SELECT id, username, role, created_at FROM admins "
+                         "WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return _user_view(db, row)
+
+
+@router.put("/users/{user_id}")
+def admin_user_update(user_id: int, body: UserIn):
+    _check_password(body.password, required=False)
+    with get_db() as db:
+        old = db.execute("SELECT * FROM admins WHERE id = ?",
+                         (user_id,)).fetchone()
+        if old is None:
+            raise HTTPException(404, "Foydalanuvchi topilmadi")
+        if old["role"] == "admin" and body.role != "admin":
+            admins = db.execute("SELECT COUNT(*) FROM admins "
+                                "WHERE role = 'admin'").fetchone()[0]
+            if admins <= 1:
+                raise HTTPException(400, "Oxirgi adminni operator qilib bo'lmaydi")
+        try:
+            db.execute("UPDATE admins SET username = ?, role = ? WHERE id = ?",
+                       (body.username.strip(), body.role, user_id))
+        except sqlite3.IntegrityError:
+            raise HTTPException(400, "Bunday login allaqachon bor")
+        if body.password:
+            pw_hash, salt = security.hash_password(body.password)
+            db.execute("UPDATE admins SET pw_hash = ?, pw_salt = ? WHERE id = ?",
+                       (pw_hash, salt, user_id))
+            # Parol almashdi — eski sessiyalar bekor.
+            db.execute("DELETE FROM sessions WHERE admin_id = ?", (user_id,))
+        security.set_user_regions(
+            db, user_id, body.regions if body.role == "operator" else [])
+        row = db.execute("SELECT id, username, role, created_at FROM admins "
+                         "WHERE id = ?", (user_id,)).fetchone()
+        return _user_view(db, row)
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def admin_user_delete(user_id: int, me=Depends(require_admin)):
+    if me["id"] == user_id:
+        raise HTTPException(400, "O'z hisobingizni o'chira olmaysiz")
+    with get_db() as db:
+        row = db.execute("SELECT role FROM admins WHERE id = ?",
+                         (user_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "Foydalanuvchi topilmadi")
+        if row["role"] == "admin":
+            admins = db.execute("SELECT COUNT(*) FROM admins "
+                                "WHERE role = 'admin'").fetchone()[0]
+            if admins <= 1:
+                raise HTTPException(400, "Oxirgi admin o'chirilmaydi")
+        db.execute("DELETE FROM admins WHERE id = ?", (user_id,))
+        db.execute("DELETE FROM sessions WHERE admin_id = ?", (user_id,))
+        db.execute("DELETE FROM user_regions WHERE user_id = ?", (user_id,))
+
+
 # ---------- MediaMTX ----------
 
 # ---------- MediaMTX tugunlari ----------
 
 @router.get("/nodes")
 def admin_nodes():
-    """Tugunlar ro'yxati: nechta kamera biriktirilgan, API tirikmi."""
+    """Tugunlar ro'yxati: kameralar soni, salomatlik va ish ko'rsatkichlari.
+
+    `status`: online — API tirik va muzlagan oqim yo'q; degraded — API tirik,
+    lekin kamida bitta faol oqim muzlagan; offline — API javob bermayapti
+    (yangi kameralarni bunday tugunga biriktirmang).
+    """
     with get_db() as db:
         rows = db.execute(
             "SELECT n.*, (SELECT COUNT(*) FROM cameras c WHERE c.node_id = n.id) "
@@ -406,7 +513,13 @@ def admin_nodes():
     nodes = []
     for row in rows:
         node = dict(row)
-        node["online"] = mediamtx_sync.api_available(row["api_base"])
+        runtime = mediamtx_sync.node_runtime(row["api_base"])
+        stalled = reconciler.stalled_count(row["id"])
+        node["online"] = runtime is not None
+        node["stalled"] = stalled
+        node["runtime"] = runtime
+        node["status"] = ("offline" if runtime is None else
+                          "degraded" if stalled else "online")
         nodes.append(node)
     return {"nodes": nodes}
 
@@ -483,11 +596,28 @@ def admin_node_config(node_id: int, request: Request):
 def admin_status():
     """Tizim salomatligi bir qarashda — 5000 kamerani ko'z bilan emas,
     raqam bilan kuzatish uchun: MediaMTX tirikmi, health sweep intervalga
-    sig'ayaptimi, qaysi faol oqimlar muzlagan."""
+    sig'ayaptimi, qaysi faol oqimlar muzlagan, tugunlar qay ahvolda."""
+    with get_db() as db:
+        node_rows = db.execute(
+            "SELECT id, name, api_base FROM nodes WHERE enabled = 1 ORDER BY id"
+        ).fetchall()
+    nodes = []
+    for row in node_rows:
+        runtime = mediamtx_sync.node_runtime(row["api_base"])
+        stalled = reconciler.stalled_count(row["id"])
+        nodes.append({
+            "name": row["name"],
+            "status": ("offline" if runtime is None else
+                       "degraded" if stalled else "online"),
+            "ready": runtime["ready"] if runtime else 0,
+            "readers": runtime["readers"] if runtime else 0,
+            "stalled": stalled,
+        })
     return {
         "mediamtx": mediamtx_sync.api_available(),
         "health": health.sweep_stats(),
         "stalled": sorted(reconciler.stalled_paths()),
+        "nodes": nodes,
     }
 
 

@@ -425,6 +425,27 @@ def list_active_paths(api_base: str | None = None) -> dict[str, dict] | None:
     return _paged_list("/v3/paths/list", api_base)
 
 
+def node_runtime(api_base: str | None = None) -> dict | None:
+    """Tugunning ish vaqti ko'rsatkichlari — bir qarashda salomatlik.
+
+    MediaMTX'ning faol yo'llar ro'yxatidan yig'iladi: nechta oqim sozlangan,
+    nechtasi tayyor (kameradan tasvir kelyapti), jami nechta tomoshabin va
+    qancha trafik o'tgan. API javob bermasa None.
+    """
+    paths = list_active_paths(api_base)
+    if paths is None:
+        return None
+    ready = sum(1 for p in paths.values() if p.get("ready"))
+    return {
+        "paths": len(paths),
+        "ready": ready,
+        "readers": sum(len(p.get("readers") or []) for p in paths.values()),
+        "bytes_received": sum(int(p.get("bytesReceived") or 0)
+                              for p in paths.values()),
+        "bytes_sent": sum(int(p.get("bytesSent") or 0) for p in paths.values()),
+    }
+
+
 def push_to_api(cameras: list[dict], api_base: str | None = None,
                 with_transcode: bool | None = None) -> dict:
     """Ishlab turgan MediaMTX'ni kerakli holatga keltiradi (qayta ishga
