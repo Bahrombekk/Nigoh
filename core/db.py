@@ -32,6 +32,7 @@ CAMERA_EXTRA_COLUMNS = {
     "enabled": "INTEGER NOT NULL DEFAULT 1",
     "note": "TEXT",
     "codec": "TEXT",                              # kameradan kelayotgan kodek
+    "resolution": "TEXT",                         # SDP'dan: "1920x1080" yoki bo'sh
     "transcode": "INTEGER NOT NULL DEFAULT 0",    # H.264 ga o'girish kerakmi
     "always_on": "INTEGER NOT NULL DEFAULT 0",    # doim tayyor tursinmi
     "last_seen": "TEXT",                          # oxirgi marta onlayn bo'lgan vaqt (UTC)

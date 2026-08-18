@@ -10,10 +10,11 @@ import time
 
 from fastapi import HTTPException, Request
 
-from core import security
+from core import health, security
 from core.db import get_db
 from core.fast_start import channel_from_path
 from core.rtsp_probe import probe
+from media import reconciler
 from media import sync as mediamtx_sync
 
 from .config import HLS_PORT, MEDIA_HOST, WEBRTC_PORT
@@ -65,9 +66,9 @@ def stream_urls(row, request: Request, hevc_ok: bool = False,
     """Kameraning oqim manzillari — faqat kerak bo'lganda so'raladi.
 
     `hevc_ok` — brauzer H.265 ni o'zi o'qiy oladi. Shunday bo'lsa, H.265
-    kamera o'girilmaydi: `<kamera>_raw` yo'li xom oqimni beradi va GPU
-    umuman ishlatilmaydi. Bunda WebRTC ishlamaydi (u H.265 ni bilmaydi),
-    shuning uchun faqat HLS manzili qaytariladi.
+    kamera o'girilmaydi: oddiy `<kamera>` yo'lining o'zi xom oqimni beradi
+    va GPU umuman ishlatilmaydi (mode: "raw"). Bunda WebRTC amalda
+    ishlamaydi (u H.265 ni bilmaydi) — brauzer HLS'ga o'tadi.
 
     `quality="sub"` — past sifatli ikkinchi oqim (video devor setkasi
     uchun). Kamerada sub yo'l bo'lmasa, jimgina asosiy oqim qaytadi.
@@ -113,6 +114,31 @@ def stream_urls(row, request: Request, hevc_ok: bool = False,
     }
 
 
+def camera_state(row) -> str:
+    """Kameraning yagona holati — sochilgan kuzatuvlar bitta maydonda.
+
+    disabled — admin o'chirib qo'ygan;
+    unknown  — IP'siz (tayyor oqim) yoki hali tekshirilmagan;
+    offline  — tarmoqdan javob yo'q (TCP tekshiruv);
+    stalled  — port ochiq, lekin faol oqimga bayt kelmayapti (reconciler);
+    online   — hammasi joyida.
+    """
+    if not row["enabled"]:
+        return "disabled"
+    if not row["ip"]:
+        return "unknown"
+    slug = row["slug"] or ""
+    variants = {slug, slug + mediamtx_sync.SUB_SUFFIX,
+                slug + mediamtx_sync.TRANSCODE_SUFFIX}
+    for display in reconciler.stalled_paths():
+        if display.split("@", 1)[0] in variants:
+            return "stalled"
+    alive = health.online(row["ip"], row["port"])
+    if alive is None:
+        return "unknown"
+    return "online" if alive else "offline"
+
+
 def public_camera(row, request: Request) -> dict:
     """Brauzerga yuboriladigan xavfsiz ko'rinish — parol/IP yo'q."""
     data = {
@@ -131,6 +157,8 @@ def admin_camera(row, request: Request) -> dict:
     data = public_camera(row, request)
     data.update({
         "slug": row["slug"],
+        "state": camera_state(row),
+        "resolution": row["resolution"] or "",
         "source_type": "rtsp" if row["ip"] else "manual",
         "ip": row["ip"] or "",
         "port": row["port"] or 554,
@@ -232,15 +260,16 @@ def detect_sub_path(cam: CameraIn, password: str) -> str:
     return candidate if result.get("ok") else ""
 
 
-def detect_codec(cam: CameraIn, password: str) -> tuple[str, bool]:
-    """Saqlashdan oldin kamera kodegini aniqlaydi.
+def detect_codec(cam: CameraIn, password: str) -> tuple[str, bool, str]:
+    """Saqlashdan oldin kamera kodegi va o'lchamini aniqlaydi.
 
     Kamera javob bermasa bo'sh qaytaradi — bu saqlashga to'sqinlik qilmaydi.
     """
     if cam.source_type != "rtsp" or not cam.ip.strip():
-        return "", False
+        return "", False, ""
     result = probe(cam.ip.strip(), cam.port, cam.rtsp_path.strip(),
                    cam.username.strip(), password)
     if not result.get("ok"):
-        return "", False
-    return result.get("codec", ""), bool(result.get("needs_transcode"))
+        return "", False, ""
+    return (result.get("codec", ""), bool(result.get("needs_transcode")),
+            result.get("resolution", ""))

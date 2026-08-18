@@ -5,9 +5,10 @@ from core import fast_start, health, security
 from core.db import get_db
 from media import sync as mediamtx_sync
 
-from .helpers import camera_for_mediamtx, node_info, stream_urls
+from .helpers import camera_for_mediamtx, camera_state, node_info, stream_urls
 
-router = APIRouter(prefix="/api/cameras", tags=["cameras"])
+# Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
+router = APIRouter(prefix="/cameras", tags=["cameras"])
 
 
 @router.get("")
@@ -21,8 +22,9 @@ def list_cameras(bbox: str = "", limit: int = 20000):
     `bbox` berilsa (minLat,minLng,maxLat,maxLng) faqat shu to'rtburchak
     ichidagilar qaytariladi.
     """
-    sql = ("SELECT id, name, region, lat, lng, ip, port, last_seen, codec, "
-           "transcode, always_on FROM cameras WHERE enabled = 1")
+    sql = ("SELECT id, name, region, lat, lng, ip, port, slug, enabled, "
+           "last_seen, codec, resolution, transcode, always_on "
+           "FROM cameras WHERE enabled = 1")
     params: list = []
     if bbox:
         try:
@@ -45,8 +47,12 @@ def list_cameras(bbox: str = "", limit: int = 20000):
             "id": r["id"], "name": r["name"], "region": r["region"],
             "lat": r["lat"], "lng": r["lng"],
             "online": health.online(r["ip"], r["port"]),
+            # Yagona holat: disabled / unknown / offline / stalled / online.
+            # `online` maydoni eski mijozlar uchun qoldirilgan.
+            "state": camera_state(r),
             "last_seen": r["last_seen"] or "",
             "codec": r["codec"] or "",
+            "resolution": r["resolution"] or "",
             "transcode": bool(r["transcode"]),
             "always_on": bool(r["always_on"]),
         } for r in rows],

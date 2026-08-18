@@ -63,6 +63,30 @@ Pastki markazdagi dock orqali (yoki to'g'ridan-to'g'ri havola bilan):
 | Dashboard | `/#dash` | holat donut'i, ochilish sparkline'i, hudud/texnik kesimlar, hodisalar — har 15 s yangilanadi |
 | Boshqaruv | `/#admin` | jadval: holat/hudud/kodek/rejim filtrlari, ustun saralash, NVR import, skaner |
 
+## API — tashqi mijozlar uchun
+
+Nigoh servis sifatida ishlaydi: frontend'chilar `/api/v1/...` bilan quradi.
+Interaktiv hujjat serverning o'zida: **`/docs`** (Swagger) va **`/redoc`**.
+
+| Bo'lim | Prefiks | Kirish |
+|---|---|---|
+| Kameralar (xarita, oqim, surat) | `/api/v1/cameras` | ochiq |
+| Dashboard tarixi | `/api/v1/stats` | ochiq |
+| Kirish/chiqish | `/api/v1/auth` | — |
+| Boshqaruv (CRUD, NVR, skaner, tugunlar) | `/api/v1/admin` | sessiya |
+
+Har bir kamerada yagona **`state`** maydoni bor:
+`disabled` (admin o'chirgan) · `unknown` (hali tekshirilmagan) ·
+`offline` (tarmoqdan javob yo'q) · `stalled` (port ochiq, tasvir kelmayapti) ·
+`online`. Probe kamera **kodeki bilan birga o'lchami, FPS va audio**
+borligini ham qaytaradi.
+
+Eski `/api/...` manzillari ham xuddi shu endpointlarga olib boradi (ichki
+test interfeys va MediaMTX auth uchun saqlangan), lekin hujjatda faqat v1.
+
+Fon xizmatlari hodisalarni **`nigoh.log`** ga JSON satrlar bilan yozadi
+(aylanma, 5 MB × 3) — keyinchalik Loki/OpenSearch'ga ulash mumkin.
+
 ## Tizim qanday ishlaydi
 
 ```
@@ -217,7 +241,8 @@ core/                    UMUMIY INFRATUZILMA (ikkala qatlam ishlatadi)
   ├─ db.py               SQLite sxemasi va migratsiya
   ├─ security.py         admin paroli (scrypt), kamera parollari (Fernet)
   ├─ health.py           kameralar tirikligini fonda kuzatish
-  ├─ rtsp_probe.py       kamerani tekshirish: tarmoq, login, kodek
+  ├─ rtsp_probe.py       kamerani tekshirish: tarmoq, login, kodek, o'lcham
+  ├─ log.py              strukturali jurnal (nigoh.log, JSON satrlar)
   └─ fast_start.py       JPEG surat (poster) va keyframe so'rash
 scripts/
   └─ import_mediamtx.py  qo'lda yozilgan mediamtx.yml ni bazaga ko'chirish

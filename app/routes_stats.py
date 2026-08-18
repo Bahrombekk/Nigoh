@@ -10,7 +10,8 @@ from fastapi import APIRouter
 
 from core.db import get_db
 
-router = APIRouter(prefix="/api/stats", tags=["stats"])
+# Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
+router = APIRouter(prefix="/stats", tags=["stats"])
 
 
 @router.get("/dashboard")

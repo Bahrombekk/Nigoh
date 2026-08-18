@@ -17,7 +17,8 @@ from .helpers import (admin_camera, cameras_for_mediamtx, channel_path,
                       mask_config, require_admin)
 from .models import CameraIn, NodeIn, NvrIn, ProbeIn, ScanIn
 
-router = APIRouter(prefix="/api/admin", tags=["admin"],
+# Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
+router = APIRouter(prefix="/admin", tags=["admin"],
                    dependencies=[Depends(require_admin)])
 
 
@@ -54,15 +55,15 @@ def admin_list(request: Request, q: str = "", limit: int = 100, offset: int = 0)
 @router.post("/cameras", status_code=201)
 def admin_create(cam: CameraIn, request: Request):
     cam.validate_complete()
-    codec, transcode = detect_codec(cam, cam.password or "")
+    codec, transcode, resolution = detect_codec(cam, cam.password or "")
     sub_path = detect_sub_path(cam, cam.password or "")
     with get_db() as db:
         slug = unique_slug(db, f"{cam.region}_{cam.name}")
         db.execute(
             "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, ip, "
             "port, username, password_enc, rtsp_path, sub_path, vendor, enabled, "
-            "note, codec, transcode, always_on, node_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "note, codec, resolution, transcode, always_on, node_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 cam.name.strip(), cam.region.strip(), cam.lat, cam.lng,
                 cam.stream_url.strip() if cam.source_type == "manual" else "",
@@ -71,8 +72,8 @@ def admin_create(cam: CameraIn, request: Request):
                 cam.port, cam.username.strip(),
                 security.encrypt(cam.password) if cam.password else "",
                 cam.rtsp_path.strip(), sub_path, cam.vendor, int(cam.enabled),
-                cam.note.strip(), codec, int(transcode), int(cam.always_on),
-                cam.node_id,
+                cam.note.strip(), codec, resolution, int(transcode),
+                int(cam.always_on), cam.node_id,
             ),
         )
         row = db.execute("SELECT * FROM cameras WHERE slug = ?", (slug,)).fetchone()
@@ -101,10 +102,11 @@ def admin_update(camera_id: int, cam: CameraIn, request: Request):
 
         # Kodekni qayta aniqlaymiz — kamera sozlamasi o'zgargan bo'lishi mumkin.
         password = cam.password or security.decrypt(password_enc)
-        codec, transcode = detect_codec(cam, password)
+        codec, transcode, resolution = detect_codec(cam, password)
         responded = bool(codec)
         if not responded:                   # kamera javob bermadi — eskisi qoladi
             codec, transcode = old["codec"] or "", bool(old["transcode"])
+            resolution = old["resolution"] or ""
 
         sub_path = detect_sub_path(cam, password)
         if not sub_path and not responded:  # kamera javob bermadi — eskisi qoladi
@@ -113,8 +115,8 @@ def admin_update(camera_id: int, cam: CameraIn, request: Request):
         db.execute(
             "UPDATE cameras SET name=?, region=?, lat=?, lng=?, stream_url=?, "
             "slug=?, ip=?, port=?, username=?, password_enc=?, rtsp_path=?, "
-            "sub_path=?, vendor=?, enabled=?, note=?, codec=?, transcode=?, "
-            "always_on=?, node_id=? WHERE id=?",
+            "sub_path=?, vendor=?, enabled=?, note=?, codec=?, resolution=?, "
+            "transcode=?, always_on=?, node_id=? WHERE id=?",
             (
                 cam.name.strip(), cam.region.strip(), cam.lat, cam.lng,
                 cam.stream_url.strip() if cam.source_type == "manual" else "",
@@ -122,8 +124,8 @@ def admin_update(camera_id: int, cam: CameraIn, request: Request):
                 cam.ip.strip() if cam.source_type == "rtsp" else "",
                 cam.port, cam.username.strip(), password_enc,
                 cam.rtsp_path.strip(), sub_path, cam.vendor, int(cam.enabled),
-                cam.note.strip(), codec, int(transcode), int(cam.always_on),
-                cam.node_id, camera_id,
+                cam.note.strip(), codec, resolution, int(transcode),
+                int(cam.always_on), cam.node_id, camera_id,
             ),
         )
         row = db.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
@@ -255,6 +257,7 @@ def admin_nvr_import(body: NvrIn):
         result = results.get((item["channel"], "main"))
         item["ok"] = result["ok"] if result else None
         item["codec"] = result.get("codec", "") if result else ""
+        item["resolution"] = result.get("resolution", "") if result else ""
         item["transcode"] = bool(result.get("needs_transcode")) if result else False
         item["message"] = result["message"] if result else "tekshirilmadi"
         if body.probe:
@@ -276,13 +279,14 @@ def admin_nvr_import(body: NvrIn):
             db.execute(
                 "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, ip, "
                 "port, username, password_enc, rtsp_path, sub_path, vendor, enabled, "
-                "note, codec, transcode, always_on, node_id) "
-                "VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+                "note, codec, resolution, transcode, always_on, node_id) "
+                "VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
                 (item["name"], body.region.strip(), item["lat"], item["lng"], slug,
                  body.ip.strip(), body.port, body.username.strip(), password_enc,
                  item["rtsp_path"], item["sub_path"], body.vendor, int(body.enabled),
                  f"{body.ip} · {item['channel']}-kanal",
-                 item["codec"], int(item["transcode"]), body.node_id),
+                 item["codec"], item["resolution"], int(item["transcode"]),
+                 body.node_id),
             )
             created += 1
 
@@ -501,15 +505,39 @@ def admin_events(limit: int = 100):
 
 @router.post("/mediamtx/sync")
 def admin_sync():
-    """mediamtx.yml faylini qayta yozadi va imkon bo'lsa jonli yangilaydi."""
+    """mediamtx.yml faylini qayta yozadi va har bir tugunni jonli yangilaydi.
+
+    Kameralar tugun bo'yicha ajratib yuboriladi — aks holda boshqa tugunga
+    biriktirilgan kameralar lokal MediaMTX'ga ham tushib, 30 soniyadan
+    keyin reconciler ularni qaytarib o'chirardi (keraksiz tebranish).
+    """
     with get_db() as db:
         cameras = cameras_for_mediamtx(db)
+        nodes = [dict(r) for r in db.execute(
+            "SELECT * FROM nodes WHERE enabled = 1 ORDER BY id").fetchall()]
     written = mediamtx_sync.write_config(cameras)
-    pushed = mediamtx_sync.push_to_api(cameras)
+    if not nodes:
+        nodes = [{"id": 1, "name": "Asosiy", "api_base": None}]
+
+    results = []
+    for node in nodes:
+        node_cams = [c for c in cameras if (c.get("node_id") or 1) == node["id"]]
+        pushed = mediamtx_sync.push_to_api(node_cams, api_base=node["api_base"])
+        results.append({"node": node["name"], **pushed})
+
+    ok = all(r["ok"] for r in results)
+    message = (results[0]["message"] if len(results) == 1 else
+               " · ".join(f"{r['node']}: {r['message']}" for r in results))
     return {
         "written": written,
         "config_path": str(mediamtx_sync.CONFIG_PATH),
-        "live": pushed,
+        "live": {
+            "ok": ok, "message": message,
+            "added": sum(r["added"] for r in results),
+            "updated": sum(r["updated"] for r in results),
+            "removed": sum(r["removed"] for r in results),
+            "nodes": results,
+        },
     }
 
 

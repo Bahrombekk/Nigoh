@@ -85,6 +85,32 @@ def sdp_codec(describe: str) -> str:
     return ""
 
 
+def sdp_resolution(describe: str) -> str:
+    """SDP'dan kadr o'lchamini ajratadi ("1920x1080" yoki bo'sh).
+
+    Kameralar buni har xil beradi: Hikvision `a=x-dimensions:1920,1080`,
+    boshqalar `a=framesize:96 1920-1080`; ba'zilari umuman bermaydi
+    (o'lcham H.264 SPS ichida yashiringan bo'ladi) — u holda bo'sh.
+    """
+    match = re.search(r"a=x-dimensions:\s*(\d+)\s*,\s*(\d+)", describe)
+    if not match:
+        match = re.search(r"a=framesize:\d+\s+(\d+)-(\d+)", describe)
+    return f"{match.group(1)}x{match.group(2)}" if match else ""
+
+
+def sdp_fps(describe: str) -> float:
+    """SDP'dan kadr tezligini ajratadi (bermagan kamerada 0)."""
+    match = re.search(r"a=(?:x-)?framerate:\s*([\d.]+)", describe)
+    try:
+        return float(match.group(1)) if match else 0.0
+    except ValueError:
+        return 0.0
+
+
+def sdp_has_audio(describe: str) -> bool:
+    return "m=audio" in describe
+
+
 def sdp_video_control(describe: str, request_uri: str) -> str:
     """SDP ichidan video trekning SETUP manzilini topadi.
 
@@ -116,14 +142,17 @@ def probe(ip: str, port: int, path: str, username: str = "",
           password: str = "") -> dict:
     """Kamerani bosqichma-bosqich tekshiradi.
 
-    Qaytaradi: {ok, stage, message, codec, needs_transcode}
+    Qaytaradi: {ok, stage, message, codec, needs_transcode,
+                resolution, fps, audio}
       stage — qaysi bosqichda to'xtagani: tarmoq / rtsp / parol / tayyor
       codec — kameradan kelayotgan video kodek
       needs_transcode — brauzer o'qishi uchun H.264 ga o'girish kerakmi
+      resolution/fps/audio — SDP'dan; kamera bermasa bo'sh/0/False
     """
     def fail(stage: str, message: str) -> dict:
         return {"ok": False, "stage": stage, "message": message,
-                "codec": "", "needs_transcode": False}
+                "codec": "", "needs_transcode": False,
+                "resolution": "", "fps": 0.0, "audio": False}
 
     if not ip:
         return fail("tarmoq", "IP manzil ko'rsatilmagan")
@@ -188,6 +217,9 @@ def probe(ip: str, port: int, path: str, username: str = "",
 
         codec = sdp_codec(describe)
         needs_transcode = codec in ("H265", "MP4V-ES", "JPEG")
+        resolution = sdp_resolution(describe)
+        fps = sdp_fps(describe)
+        audio = sdp_has_audio(describe)
 
         # Ba'zi qurilmalar istalgan (hatto mavjud bo'lmagan) yo'lga ham 200
         # qaytaradi, lekin videosiz bo'sh SDP beradi — bu ishlaydigan oqim
@@ -236,9 +268,16 @@ def probe(ip: str, port: int, path: str, username: str = "",
             message = f"Ulanish muvaffaqiyatli · kodek {codec}"
         else:
             message = "Ulanish muvaffaqiyatli"
+        if resolution:
+            message += f" · {resolution}"
+        if fps:
+            message += f" · {fps:g} fps"
+        if audio:
+            message += " · audio bor"
 
         return {"ok": True, "stage": "tayyor", "message": message,
-                "codec": codec, "needs_transcode": needs_transcode}
+                "codec": codec, "needs_transcode": needs_transcode,
+                "resolution": resolution, "fps": fps, "audio": audio}
     except (socket.timeout, OSError) as exc:
         # Ba'zi NVR'lar mavjud bo'lmagan kanal/oqim so'ralganda ulanishni
         # majburan uzadi (ConnectionReset) — bu tizim xatosi emas,

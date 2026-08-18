@@ -8,7 +8,8 @@ from core.db import get_db
 
 from .models import LoginIn
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+# Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/stream")
