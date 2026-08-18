@@ -11,8 +11,10 @@ class LoginIn(BaseModel):
 class CameraIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     region: str = Field(min_length=1, max_length=120)
-    lat: float = Field(ge=-90, le=90)
-    lng: float = Field(ge=-180, le=180)
+    # Koordinata ixtiyoriy: tashqi backend xarita/joylashuvni o'z bazasida
+    # yuritsa, bermasligi mumkin (0,0 — "joyi ko'rsatilmagan" degani).
+    lat: float = Field(default=0.0, ge=-90, le=90)
+    lng: float = Field(default=0.0, ge=-180, le=180)
     source_type: str = "rtsp"          # "rtsp" | "manual"
     node_id: int = Field(default=1, ge=1)   # qaysi MediaMTX tuguni tortadi
     enabled: bool = True
@@ -63,8 +65,8 @@ class NvrIn(BaseModel):
     channels: str = Field(default="1-16", max_length=200)   # "1-16" yoki "1,3,5-8"
     region: str = Field(min_length=1, max_length=120)
     name_prefix: str = Field(default="", max_length=100)
-    lat: float = Field(ge=-90, le=90)
-    lng: float = Field(ge=-180, le=180)
+    lat: float = Field(default=0.0, ge=-90, le=90)      # ixtiyoriy — 0,0 = joy yo'q
+    lng: float = Field(default=0.0, ge=-180, le=180)
     spread_m: int = Field(default=120, ge=0, le=5000)  # nuqtalar bir-birini bosmasin
     stream: str = Field(default="main")                # "main" | "sub"
     node_id: int = Field(default=1, ge=1)              # qaysi MediaMTX tuguni
