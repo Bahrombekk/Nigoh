@@ -17,7 +17,7 @@ from core.rtsp_probe import probe
 from media import reconciler
 from media import sync as mediamtx_sync
 
-from .config import HLS_PORT, MEDIA_HOST, WEBRTC_PORT
+from .config import HLS_PORT, MEDIA_HOST, PUBLIC_VIEW, WEBRTC_PORT
 from .models import CameraIn
 
 
@@ -190,14 +190,37 @@ def mask_config(text: str) -> str:
     return re.sub(r"(rtsp://[^:/@\s]+):[^@\s]+@", r"\1:•••@", text)
 
 
-def require_admin(request: Request):
-    """Himoyalangan endpointlar uchun: sessiya yaroqli bo'lishi shart."""
+def current_user(request: Request):
+    """Sessiyadagi foydalanuvchi (admin yoki operator), bo'lmasa None."""
     token = request.cookies.get(security.SESSION_COOKIE)
     with get_db() as db:
-        admin = security.session_admin(db, token)
-    if admin is None:
+        return security.session_admin(db, token)
+
+
+def require_admin(request: Request):
+    """Boshqaruv endpointlari uchun: faqat 'admin' roli kiradi."""
+    user = current_user(request)
+    if user is None:
         raise HTTPException(401, "Avval super-admin sifatida kiring")
-    return admin
+    if user["role"] != "admin":
+        raise HTTPException(403, "Bu bo'lim faqat admin uchun")
+    return user
+
+
+def allowed_regions(request: Request) -> list[str] | None:
+    """Foydalanuvchi qaysi hududlarni ko'ra oladi.
+
+    None — cheklov yo'q (admin yoki, PUBLIC_VIEW yoqiq bo'lsa, anonim);
+    ro'yxat — operator: faqat shu hududlar (bo'sh ro'yxat = hech narsa);
+    anonim va PUBLIC_VIEW o'chiq bo'lsa ham bo'sh ro'yxat qaytadi.
+    """
+    user = current_user(request)
+    if user is None:
+        return None if PUBLIC_VIEW else []
+    if user["role"] == "admin":
+        return None
+    with get_db() as db:
+        return security.user_regions(db, user["id"])
 
 
 def camera_for_mediamtx(row) -> dict | None:

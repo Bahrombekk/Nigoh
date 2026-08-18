@@ -5,27 +5,42 @@ from core import fast_start, health, security
 from core.db import get_db
 from media import sync as mediamtx_sync
 
-from .helpers import camera_for_mediamtx, camera_state, node_info, stream_urls
+from .helpers import (allowed_regions, camera_for_mediamtx, camera_state,
+                      node_info, stream_urls)
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(prefix="/cameras", tags=["cameras"])
 
 
 @router.get("")
-def list_cameras(bbox: str = "", limit: int = 20000):
+def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
     """Xarita uchun kameralar — yengil ro'yxat.
 
     Oqim manzillari bu yerda yuborilmaydi: 1000 ta kamerada ular javobning
     yarmini egallaydi, holbuki bir vaqtda faqat bittasi ochiladi.
-    Manzil `/api/cameras/{id}/stream` dan olinadi.
+    Manzil `/api/v1/cameras/{id}/stream` dan olinadi.
 
     `bbox` berilsa (minLat,minLng,maxLat,maxLng) faqat shu to'rtburchak
     ichidagilar qaytariladi.
+
+    Ko'rinish: admin (va PUBLIC_VIEW yoqiq bo'lsa anonim) hammasini ko'radi;
+    operator faqat o'ziga biriktirilgan hududlarni.
     """
+    regions = allowed_regions(request)
+    if regions is not None and not regions:
+        return {"total": 0, "shown": 0, "cameras": []}
+
     sql = ("SELECT id, name, region, lat, lng, ip, port, slug, enabled, "
            "last_seen, codec, resolution, transcode, always_on "
            "FROM cameras WHERE enabled = 1")
     params: list = []
+    if regions is not None:
+        sql += f" AND region IN ({','.join('?' * len(regions))})"
+        params += regions
+    count_sql, count_params = sql.replace(
+        "SELECT id, name, region, lat, lng, ip, port, slug, enabled, "
+        "last_seen, codec, resolution, transcode, always_on ",
+        "SELECT COUNT(*) "), list(params)
     if bbox:
         try:
             min_lat, min_lng, max_lat, max_lng = (float(v) for v in bbox.split(","))
@@ -38,7 +53,7 @@ def list_cameras(bbox: str = "", limit: int = 20000):
 
     with get_db() as db:
         rows = db.execute(sql, params).fetchall()
-        total = db.execute("SELECT COUNT(*) FROM cameras WHERE enabled = 1").fetchone()[0]
+        total = db.execute(count_sql, count_params).fetchone()[0]
     return {
         "total": total,
         "shown": len(rows),
@@ -76,6 +91,11 @@ def camera_stream(camera_id: int, request: Request, hevc: int = 0,
             raise HTTPException(404, "Kamera topilmadi")
         camera = camera_for_mediamtx(row)
 
+    # Chipta shu yerda beriladi — ko'rinish nazorati ham shu nuqtada.
+    regions = allowed_regions(request)
+    if regions is not None and row["region"] not in regions:
+        raise HTTPException(403, "Bu kamerani ko'rishga ruxsat yo'q")
+
     # Yo'l o'z tugunidagi MediaMTX'da borligiga ishonch hosil qilamiz —
     # u qayta ishga tushgan bo'lsa ham ko'rish shu yerda tiklanadi.
     if camera:
@@ -98,7 +118,7 @@ def camera_stream(camera_id: int, request: Request, hevc: int = 0,
 
 
 @router.get("/{camera_id}/snapshot")
-def camera_snapshot(camera_id: int):
+def camera_snapshot(camera_id: int, request: Request):
     """Kameraning JPEG surati — video ulangunicha darhol ko'rsatish uchun.
 
     Player suratni poster sifatida qo'yadi: his qilinadigan ochilish
@@ -110,6 +130,9 @@ def camera_snapshot(camera_id: int):
         ).fetchone()
     if row is None or not row["ip"]:
         raise HTTPException(404, "Kamera topilmadi")
+    regions = allowed_regions(request)
+    if regions is not None and row["region"] not in regions:
+        raise HTTPException(403, "Bu kamerani ko'rishga ruxsat yo'q")
     data = fast_start.snapshot(
         row["id"], row["ip"], row["username"] or "",
         security.decrypt(row["password_enc"]),

@@ -122,6 +122,9 @@ def init_db() -> None:
         )
         _migrate_cameras(db)
 
+        # Foydalanuvchilar. Tarixiy sabab bilan jadval nomi `admins` — endi
+        # rollar bor: 'admin' hammasini boshqaradi, 'operator' esa faqat
+        # o'ziga biriktirilgan hududlardagi kameralarni ko'radi.
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS admins (
@@ -130,6 +133,22 @@ def init_db() -> None:
                 pw_hash TEXT NOT NULL,
                 pw_salt TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        existing = {row["name"] for row in db.execute("PRAGMA table_info(admins)")}
+        if "role" not in existing:
+            db.execute("ALTER TABLE admins ADD COLUMN role TEXT NOT NULL "
+                       "DEFAULT 'admin'")
+
+        # Operator qaysi hududlarni ko'ra oladi (admin uchun yozuv bo'lmaydi —
+        # u hammasini ko'radi).
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_regions (
+                user_id INTEGER NOT NULL,
+                region TEXT NOT NULL,
+                UNIQUE (user_id, region)
             )
             """
         )

@@ -81,6 +81,30 @@ Har bir kamerada yagona **`state`** maydoni bor:
 `online`. Probe kamera **kodeki bilan birga o'lchami, FPS va audio**
 borligini ham qaytaradi.
 
+### Rollar
+
+Ikki rol bor: **admin** hammasini ko'radi va boshqaradi; **operator**
+faqat o'ziga biriktirilgan hududlardagi kameralarni ko'radi (xarita
+ro'yxati, oqim va surat shu ro'yxat bilan cheklanadi). Operatorlar
+`/api/v1/admin/users` orqali yaratiladi:
+
+```json
+{"username": "operator1", "password": "...", "role": "operator",
+ "regions": ["Toshkent", "Buxoro"]}
+```
+
+Anonim ko'rish standart holda ochiq (hozirgi xatti-harakat). Muhitga
+`PUBLIC_VIEW=0` qo'yilsa, xarita va oqimlar faqat tizimga kirganlarga
+ko'rinadi.
+
+### Tugun salomatligi
+
+`/api/v1/admin/nodes` har tugun uchun `status` (`online` — API tirik va
+muzlagan oqim yo'q; `degraded` — kamida bitta faol oqim muzlagan;
+`offline` — API javob bermayapti) va ish ko'rsatkichlarini qaytaradi:
+sozlangan/tayyor yo'llar, tomoshabinlar soni, o'tgan trafik. Xuddi shu
+qisqartma `/api/v1/admin/status` da ham bor.
+
 Eski `/api/...` manzillari ham xuddi shu endpointlarga olib boradi (ichki
 test interfeys va MediaMTX auth uchun saqlangan), lekin hujjatda faqat v1.
 

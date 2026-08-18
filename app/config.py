@@ -6,6 +6,11 @@ bitta kompyuterda ishga tushirishga mo'ljallangan.
 import os
 
 PORT = int(os.environ.get("PORT", "8010"))
+
+# Kirmagan (anonim) foydalanuvchi xarita va oqimlarni ko'ra oladimi.
+# Standart — ha (hozirgi xatti-harakat). PUBLIC_VIEW=0 qilinsa faqat
+# tizimga kirganlar ko'radi: admin — hammasini, operator — o'z hududlarini.
+PUBLIC_VIEW = os.environ.get("PUBLIC_VIEW", "1") != "0"
 HLS_PORT = int(os.environ.get("HLS_PORT", "8888"))
 WEBRTC_PORT = int(os.environ.get("WEBRTC_PORT", "8889"))
 MEDIA_HOST = os.environ.get("MEDIA_HOST", "")  # bo'sh bo'lsa so'rov manzilidan olinadi

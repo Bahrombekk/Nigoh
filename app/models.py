@@ -73,6 +73,22 @@ class NvrIn(BaseModel):
     dry_run: bool = False                              # avval ko'rsatib bersin
 
 
+class UserIn(BaseModel):
+    """Foydalanuvchi: admin hammasini boshqaradi, operator faqat o'ziga
+    biriktirilgan hududlardagi kameralarni ko'radi."""
+    username: str = Field(min_length=1, max_length=64)
+    password: str | None = Field(default=None, max_length=200)  # None = o'zgarmasin
+    role: str = Field(default="operator")
+    regions: list[str] = Field(default_factory=list)   # operator uchun
+
+    @field_validator("role")
+    @classmethod
+    def _check_role(cls, v: str) -> str:
+        if v not in ("admin", "operator"):
+            raise ValueError("role faqat 'admin' yoki 'operator' bo'lishi mumkin")
+        return v
+
+
 class NodeIn(BaseModel):
     """MediaMTX tuguni — kameralar ko'p manzilda bo'lsa, har joyga bittadan.
 

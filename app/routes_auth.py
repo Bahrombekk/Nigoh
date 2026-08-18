@@ -44,7 +44,8 @@ def login(body: LoginIn, response: Response):
     with get_db() as db:
         security.purge_expired_sessions(db)
         row = db.execute(
-            "SELECT id, username, pw_hash, pw_salt FROM admins WHERE username = ?",
+            "SELECT id, username, pw_hash, pw_salt, role FROM admins "
+            "WHERE username = ?",
             (body.username,),
         ).fetchone()
         if row is None or not security.verify_password(
@@ -52,13 +53,13 @@ def login(body: LoginIn, response: Response):
         ):
             raise HTTPException(401, "Login yoki parol noto'g'ri")
         token = security.create_session(db, row["id"])
-        username = row["username"]
+        username, role = row["username"], row["role"]
 
     response.set_cookie(
         security.SESSION_COOKIE, token, httponly=True, samesite="lax",
         max_age=security.SESSION_HOURS * 3600, path="/",
     )
-    return {"username": username}
+    return {"username": username, "role": role}
 
 
 @router.post("/logout")
@@ -73,7 +74,10 @@ def logout(request: Request, response: Response):
 def me(request: Request):
     token = request.cookies.get(security.SESSION_COOKIE)
     with get_db() as db:
-        admin = security.session_admin(db, token)
-    if admin is None:
+        user = security.session_admin(db, token)
+        regions = (security.user_regions(db, user["id"])
+                   if user is not None and user["role"] == "operator" else [])
+    if user is None:
         return {"authenticated": False}
-    return {"authenticated": True, "username": admin["username"]}
+    return {"authenticated": True, "username": user["username"],
+            "role": user["role"], "regions": regions}

@@ -45,10 +45,15 @@ Bo'limlar:
 * **stats** — ochiq: dashboard tarixi (24 soat / 7 kun).
 * **auth** — kirish/chiqish; `POST /auth/stream` ni MediaMTX'ning o'zi
   chaqiradi (oqimga ruxsat tekshiruvi), brauzer emas.
-* **admin** — sessiya talab qiladi: kameralar CRUD, NVR import, skaner,
-  MediaMTX tugunlari va sinxronlash.
+* **admin** — faqat `admin` roli: kameralar CRUD, NVR import, skaner,
+  foydalanuvchilar, MediaMTX tugunlari va sinxronlash.
+
+Rollar: `admin` hammasini ko'radi va boshqaradi; `operator` faqat o'ziga
+biriktirilgan hududlardagi kameralarni ko'radi. Anonim ko'rish standart
+holda ochiq (`PUBLIC_VIEW=0` — faqat tizimga kirganlar ko'radi).
 
 Kamera holati (`state`): `disabled / unknown / offline / stalled / online`.
+Tugun holati (`status`): `online / degraded / offline`.
 """
 
 
