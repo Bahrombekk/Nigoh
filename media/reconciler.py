@@ -35,7 +35,7 @@ STARTUP_WAIT = 8.0         # ishga tushirgandan keyin API'ni shuncha kutamiz
 
 MEDIAMTX_EXE = sync.BASE_DIR / "mediamtx" / (
     "mediamtx.exe" if os.name == "nt" else "mediamtx")
-LOG_PATH = sync.BASE_DIR / "mediamtx.log"
+LOG_PATH = sync.DATA_DIR / "mediamtx.log"
 
 _started = False
 _lock = threading.Lock()
@@ -85,11 +85,11 @@ def _spawn() -> bool:
         return False               # biz ochgan jarayon tirik — hali ko'tarilyapti
     _last_spawn = now
     try:
-        log = open(LOG_PATH, "ab")
+        log_file = open(LOG_PATH, "ab")
         _process = subprocess.Popen(
             [str(MEDIAMTX_EXE), str(sync.CONFIG_PATH)],
             cwd=str(sync.BASE_DIR),
-            stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            stdout=log_file, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
         )
     except OSError as exc:
         log("reconciler", "mediamtx_spawn_failed", level="error", error=str(exc))

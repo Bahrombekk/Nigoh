@@ -5,10 +5,26 @@ o'sha hududdagi kameralar ro'yxati ochiladi va tanlangan kameraning jonli
 tasviri ko'rsatiladi. Kameralar super-admin panelidan — IP, login, parol
 kiritib — qo'shiladi.
 
+Servis sifatida ishlatish uchun hujjatlar:
+
+| Kim uchun | Fayl |
+|---|---|
+| Serverga qo'yuvchi | [docs/DEPLOY.md](docs/DEPLOY.md) — Docker, portlar, HTTPS, zaxira |
+| Backendchi | [docs/BACKEND.md](docs/BACKEND.md) — API kontrakt, auth, integratsiya |
+| Frontendchi | [docs/FRONTEND.md](docs/FRONTEND.md) — endpointlar, tayyor player kodi |
+
 ## Ishga tushirish
 
-Eng oson yo'l: **`ishga-tushirish.bat`** faylini ikki marta bosing. U MediaMTX
-va saytni birga ishga tushiradi, brauzerni ochadi.
+Serverda (Docker):
+
+```bash
+cp .env.example .env       # ADMIN_PAROL ni to'ldiring
+docker compose up -d --build
+```
+
+Windows'da (lokal ishlab chiqish) eng oson yo'l: **`ishga-tushirish.bat`**
+faylini ikki marta bosing. U MediaMTX va saytni birga ishga tushiradi,
+brauzerni ochadi.
 
 Qo'lda:
 

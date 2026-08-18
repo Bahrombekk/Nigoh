@@ -14,13 +14,13 @@ import secrets
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-# Loyiha ildizi — kalit fayli ildizda qoladi (paket ko'chsa ham o'zgarmaydi).
-BASE_DIR = Path(__file__).resolve().parent.parent
-KEY_PATH = BASE_DIR / "secret.key"
+from .db import DATA_DIR
+
+# Kalit fayli ma'lumotlar katalogida — baza bilan yonma-yon turadi.
+KEY_PATH = DATA_DIR / "secret.key"
 
 SESSION_COOKIE = "nigoh_session"
 SESSION_HOURS = 12

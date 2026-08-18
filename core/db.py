@@ -5,9 +5,15 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-# Loyiha ildizi — bu fayl core/ ichida, ma'lumotlar esa ildizda turadi.
+# Loyiha ildizi — bu fayl core/ ichida turadi.
 BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "cameras.db"
+
+# Ma'lumot fayllari (baza, kalit, loglar, mediamtx.yml) qayerda saqlanadi.
+# Standart — loyiha ildizi (Windows'da hozirgidek). Konteynerda NIGOH_DATA
+# orqali alohida volume beriladi: kod almashsa ham ma'lumot joyida qoladi.
+DATA_DIR = Path(os.environ.get("NIGOH_DATA") or BASE_DIR)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = DATA_DIR / "cameras.db"
 
 DEMO_STREAM = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
 DEMO_CAMERAS = [

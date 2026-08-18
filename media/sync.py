@@ -35,14 +35,15 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
+from core.db import DATA_DIR
 from core.rtsp_probe import build_rtsp_url
 
 import yaml
 
-# Loyiha ildizi — bu fayl media/ ichida turadi, mediamtx.yml esa ildizda
-# qoladi (ishga-tushirish.bat va MediaMTX shu yerdan o'qiydi).
+# Loyiha ildizi — bu fayl media/ ichida turadi. mediamtx.yml ma'lumotlar
+# katalogida (standart — ildiz; konteynerda NIGOH_DATA volume).
 BASE_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = BASE_DIR / "mediamtx.yml"
+CONFIG_PATH = DATA_DIR / "mediamtx.yml"
 API_BASE = os.environ.get("MEDIAMTX_API", "http://127.0.0.1:9997")
 API_TIMEOUT = 4.0
 

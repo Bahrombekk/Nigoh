@@ -19,9 +19,9 @@ import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
-from .db import BASE_DIR
+from .db import DATA_DIR
 
-LOG_PATH = BASE_DIR / "nigoh.log"
+LOG_PATH = DATA_DIR / "nigoh.log"
 
 _logger: logging.Logger | None = None
 
