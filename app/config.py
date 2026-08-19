@@ -21,6 +21,13 @@ HLS_PORT = int(os.environ.get("HLS_PORT", "8888"))
 WEBRTC_PORT = int(os.environ.get("WEBRTC_PORT", "8889"))
 MEDIA_HOST = os.environ.get("MEDIA_HOST", "")  # bo'sh bo'lsa so'rov manzilidan olinadi
 
+# Sayt HTTPS proksi (nginx) ortida bo'lsa, oqim manzillari ham HTTPS bo'lishi
+# shart — aks holda brauzer videoni bloklaydi (mixed content). MEDIA_BASE
+# to'liq asos beradi (masalan, https://kamera.example.uz/media) va proksi
+# /hls/ ni 8888-ga, /whep/ ni 8889-ga o'tkazadi. Bo'sh qolsa eski usul:
+# http://MEDIA_HOST:port. Faqat markaziy (1-) tugunga taalluqli.
+MEDIA_BASE = os.environ.get("MEDIA_BASE", "").rstrip("/")
+
 # Kamerani qo'shishda tanlanadigan tayyor RTSP shablonlari.
 VENDORS = [
     {"id": "hikvision", "name": "Hikvision", "path": "/Streaming/Channels/101", "port": 554},

@@ -18,7 +18,8 @@ from core.rtsp_probe import probe
 from media import reconciler
 from media import sync as mediamtx_sync
 
-from .config import API_KEY, HLS_PORT, MEDIA_HOST, PUBLIC_VIEW, WEBRTC_PORT
+from .config import (API_KEY, HLS_PORT, MEDIA_BASE, MEDIA_HOST, PUBLIC_VIEW,
+                     WEBRTC_PORT)
 from .models import CameraIn
 
 
@@ -107,6 +108,16 @@ def stream_urls(row, request: Request, hevc_ok: bool = False,
     # Chipta shu yo'lga bog'langan va muddatli — MediaMTX'ni backend
     # tekshiradi (routes_auth.stream_auth), chiptasiz oqim ochilmaydi.
     token = security.stream_token(slug)
+
+    # HTTPS proksi rejimi: hamma oqim bitta domen ostidan yuradi, portlar
+    # tashqariga ko'rinmaydi. Uzoq tugunlar bunga kirmaydi — ular o'z
+    # manzilida qoladi.
+    if MEDIA_BASE and not node:
+        return {
+            "stream_url": f"{MEDIA_BASE}/hls/{slug}/index.m3u8?token={token}",
+            "webrtc_url": f"{MEDIA_BASE}/whep/{slug}/whep?token={token}",
+            "mode": mode,
+        }
     return {
         "stream_url": f"http://{host}:{hls_port}/{slug}/index.m3u8?token={token}",
         # WebRTC ancha tez ochiladi — brauzer avval shuni sinaydi.
