@@ -690,7 +690,7 @@ function saveWallPrefs() {
 function loadWallPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem("nigoh-wall") || "{}");
-    if ([2, 3, 4].includes(p.size)) state.wallSize = p.size;
+    if ([2, 3, 4, 6, 8].includes(p.size)) state.wallSize = p.size;
     if (p.fit === "cover" || p.fit === "contain") state.wallFit = p.fit;
     if (typeof p.region === "string") state.wallRegion = p.region;
     state.wallAuto = !!p.auto;
