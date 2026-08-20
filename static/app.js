@@ -518,12 +518,14 @@ function createPlayer(video, msgEl) {
       if (staleFn()) { pc.close(); return; }
       await pc.setRemoteDescription({ type: "answer", sdp: answer });
       await new Promise((resolve, reject) => {  // 6 s da tasvir kelmasa — HLS
+        // srcObject/"connected" yetarli emas: ular kadr kelmasa ham paydo
+        // bo'ladi (masalan, server UDP tashqariga yopiq bo'lsa). Haqiqiy
+        // belgi — vaqt yurishi, ya'ni dekodlangan kadrlar oqib kelyapti.
         const timer = setTimeout(() => {
-          if (video.srcObject) resolve();
+          if (video.currentTime > 0) resolve();
           else { pc.close(); reject(new Error("WebRTC jim")); }
         }, 6000);
         pc.addEventListener("connectionstatechange", () => {
-          if (pc.connectionState === "connected") { clearTimeout(timer); resolve(); }
           if (pc.connectionState === "failed") { clearTimeout(timer); pc.close(); reject(new Error("WebRTC uzildi")); }
         });
       });
@@ -531,6 +533,9 @@ function createPlayer(video, msgEl) {
 
     function playHls(url, staleFn, onFail) {
       if (!url) { msgEl.textContent = FAIL_MSG; return; }
+      // WebRTC'dan qolgan srcObject `src`dan ustun turadi — tozalanmasa
+      // brauzer o'lik oqimni ko'rsatishda davom etadi va HLS ulanmaydi.
+      video.srcObject = null;
       const isHls = url.includes(".m3u8");
       if (isHls && window.Hls && Hls.isSupported()) {
         const hls = new Hls({
