@@ -17,35 +17,16 @@ if not exist "venv\Scripts\python.exe" (
   exit /b 1
 )
 
-if not exist "mediamtx\mediamtx.exe" (
-  echo   [!] mediamtx\mediamtx.exe topilmadi.
-  echo       https://github.com/bluenviron/mediamtx/releases dan
-  echo       windows_amd64 arxivini yuklab, mediamtx papkasiga chiqaring.
+if not exist ".env" (
+  echo   [!] .env topilmadi. .env.example dan nusxa olib, kamera
+  echo       mikroservisining manzili va kalitini yozing:
+  echo         NIGOH_URL=https://...
+  echo         NIGOH_KEY=...
   echo.
   pause
   exit /b 1
 )
 
-if not exist "mediamtx.yml" (
-  echo   [*] mediamtx.yml yaratilmoqda...
-  venv\Scripts\python.exe -c "import main"
-)
-
-echo   [*] Eski jarayonlar to'xtatilmoqda...
-taskkill /IM mediamtx.exe /F >nul 2>&1
-taskkill /IM ffmpeg.exe /F >nul 2>&1
-
-echo   [*] MediaMTX ishga tushmoqda (video oqimlar)...
-start "MediaMTX" /min mediamtx\mediamtx.exe mediamtx.yml
-
-echo   [*] Kameralar ulanmoqda...
-timeout /t 6 /nobreak >nul
-
-echo   [*] Sayt ishga tushmoqda...
+echo   [*] Sayt ishga tushmoqda (kamera qatlami — mikroservisda)...
 start "" http://localhost:8010
 venv\Scripts\python.exe main.py
-
-echo.
-echo   Sayt to'xtatildi. MediaMTX ham yopilmoqda...
-taskkill /IM mediamtx.exe /F >nul 2>&1
-taskkill /IM ffmpeg.exe /F >nul 2>&1
