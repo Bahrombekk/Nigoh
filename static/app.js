@@ -39,13 +39,40 @@ const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 }[c]));
 
+/* Qabul buferi (soniya) — WebRTC tasvirni ko'rsatishdan oldin shuncha
+   ushlab turadi.
+
+   Nima uchun kerak: kamera kanalida paket yo'qolsa, RTSP/TCP uni qayta
+   yuborishni kutadi va oqim to'xtab qoladi, keyin to'p-to'p bo'lib
+   quvib yetadi. Bufersiz brauzer aynan shu tebranishni ko'rsatadi —
+   tasvir qotib-qotib ketadi. O'lchov (A1 kamerasi, kanalida ~3% paket
+   yo'qolishi bor):
+
+       bufersiz  — 30 soniyada 14 marta qotish, vaqtning 33-45 %i
+       0,5 s     — 10 marta, 14 %
+       1,0 s     —  3 marta,  3 %
+       1,5 s     —  3 marta,  4 %
+
+   Sog'lom kanaldagi kameraga zarari yo'q (A7: 0 qotish, 600/600 kadr).
+   Narxi — tasvir bir soniya kechikadi; kuzatuv uchun bu sezilmaydi,
+   shuning uchun silliqlik afzal ko'rilgan. */
+const PLAYOUT_DELAY = 1.0;
+
 /* Brauzer H.265 (HEVC) ni o'zi o'qiy oladimi? Olsa — server oqimni
-   o'girmaydi, xom holda beradi va GPU umuman ishlatilmaydi. */
+   o'girmaydi, xom holda beradi va GPU umuman ishlatilmaydi.
+
+   DIQQAT: bu savol WebRTC uchun so'raladi. Sababi — server bitta yo'l
+   qaytaradi, pleyer esa avval WebRTC'ni sinaydi. Brauzerning HLS (MSE)
+   tomoni H.265 ni bilishi, WebRTC tomoni esa ko'rsatmasligi mumkin;
+   Windows'dagi Edge aynan shunday. Ilgari "ikkisidan biri bilsa yetadi"
+   deb hisoblanardi — natijada xom H.265 WebRTC'ga berilib, baytlar oqib
+   turgan holda tasvir birinchi kadrda qotib qolardi. Endi WebRTC bor
+   bo'lsa hukmni faqat u chiqaradi. */
 const HEVC_OK = (() => {
   try {
     const caps = RTCRtpReceiver.getCapabilities("video");
-    if (caps && caps.codecs.some((c) => /H265|hevc/i.test(c.mimeType))) return true;
-  } catch (e) { /* WebRTC yo'q */ }
+    if (caps) return caps.codecs.some((c) => /H265|hevc/i.test(c.mimeType));
+  } catch (e) { /* WebRTC yo'q — quyida HLS bo'yicha hal qilinadi */ }
   const type = 'video/mp4; codecs="hvc1.1.6.L93.B0"';
   try {
     if (window.MediaSource && MediaSource.isTypeSupported(type)) return true;
@@ -73,12 +100,12 @@ async function api(path, options = {}) {
 }
 
 /* ---------- Mavzu ---------- */
-function setTheme(theme) {
+function setTheme(theme, persist = true) {
   document.documentElement.dataset.theme = theme;
-  localStorage.setItem("nigoh-theme", theme);
+  if (persist) localStorage.setItem("nigoh-theme", theme);
   $("theme-lt").classList.toggle("on", theme === "light");
   $("theme-dk").classList.toggle("on", theme === "dark");
-  setTiles();
+  if (!tiles) setTiles();
   // Hudud pardasi va chegara rangi ham mavzuga moslashadi.
   if (uzMask) uzMask.setStyle(uzMaskStyle());
   if (uzBorder) uzBorder.setStyle(uzBorderStyle());
@@ -93,11 +120,10 @@ const map = L.map("map", { zoomControl: false, maxZoom: 19 }).setView([41.35, 64
 let tiles = null;
 function setTiles() {
   if (tiles) map.removeLayer(tiles);
-  const dark = document.documentElement.dataset.theme === "dark";
-  tiles = L.tileLayer(dark
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  // OSM plitkalari — kalit talab qilmaydi (CARTO endi kalitsiz "API KEY
+  // REQUIRED" chizadi). Tungi mavzu CSS filtr bilan olinadi (style.css).
+  tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 19
   }).addTo(map);
 }
@@ -184,12 +210,16 @@ function visibleCams() {
   });
 }
 
+/* Ikonka "kaliti": holat + tanlanganlik. Kalit o'zgarmasa DOM'ga tegilmaydi. */
+const iconKey = (cam) => (cam.online === false ? "d" : "u") + (cam.id === state.selectedId ? "s" : "");
+
 function rebuildMarkers() {
   const cams = visibleCams();
   markersById.clear();
   const markers = cams.map((cam) => {
     const m = L.marker([cam.lat, cam.lng], {
-      icon: camIcon(cam), title: cam.name, camDown: cam.online === false
+      icon: camIcon(cam), title: cam.name, camDown: cam.online === false,
+      iconKey: iconKey(cam)
     });
     m.on("click", () => selectCamera(cam.id, false));
     m.on("mouseover", () => prewarm(cam));
@@ -200,13 +230,17 @@ function rebuildMarkers() {
   cluster.addLayers(markers);
 }
 
-/* Holat yangilanganda markerlar qayta chizilmaydi — faqat rangi
-   o'zgarganlarning belgisi almashadi. */
+/* Holat yangilanganda markerlar qayta chizilmaydi — faqat holati yoki
+   tanlanganligi o'zgarganlarning belgisi almashadi (minglab marker
+   bo'lganda ham 60 soniyalik yangilanish sezilmaydi). */
 function refreshMarkerIcons() {
   let dirty = false;
   markersById.forEach((m, id) => {
     const cam = state.byId.get(id);
     if (!cam) return;
+    const key = iconKey(cam);
+    if (m.options.iconKey === key) return;
+    m.options.iconKey = key;
     const down = cam.online === false;
     if (m.options.camDown !== down) { m.options.camDown = down; dirty = true; }
     m.setIcon(camIcon(cam));
@@ -230,23 +264,34 @@ function applyCameras(res) {
   if (state.selectedId && !state.byId.has(state.selectedId)) closeSel();
   renderList();
   renderStrip();
-  renderDash();
+  // Dashboard faqat ochiq bo'lsa chiziladi — yashirin oynaga statistika
+  // so'rab, grafik chizib o'tirmaymiz.
+  if (state.tab === "dash") renderDash();
   updateSelHead();
 }
 
+let refreshing = false;
 async function refreshStatus() {
+  if (refreshing || document.hidden) return;
+  refreshing = true;
   let res;
-  try { res = await api("/api/cameras"); } catch (e) { return; }
+  try { res = await api("/api/cameras"); } catch (e) { refreshing = false; return; }
+  refreshing = false;
   const changed = res.cameras.length !== state.cameras.length ||
                   res.cameras.some((c) => !state.byId.has(c.id));
   applyCameras(res);
   if (changed) rebuildMarkers(); else refreshMarkerIcons();
+  // Devorda holati o'zgargan kamera plitkasi yangilanadi (diff — qolganlar
+  // qayta ulanmaydi).
+  if (state.tab === "wall") buildWall();
   // Boshqaruv jadvali ochiq bo'lsa, undagi Holat ustuni ham yangilanadi.
   if (state.tab === "admin" && state.admin) {
     loadAdminCameras(state.adminOffset).catch(() => {});
   }
 }
-setInterval(refreshStatus, 60000);
+setInterval(refreshStatus, 30000);
+// Yashirin oynada yangilanish to'xtaydi; qaytib kelinganda darhol yangilanadi.
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshStatus(); });
 
 /* ---------- Chap ro'yxat ---------- */
 
@@ -254,12 +299,21 @@ setInterval(refreshStatus, 60000);
    yangilanish foydalanuvchi qarab turgan ro'yxatni "sakratmaydi". */
 let lastListSig = "";
 
+/* Faqat tanlov o'zgarganda butun ro'yxat qayta chizilmaydi — `.sel`
+   belgisi ko'chiriladi. */
+function syncListSel() {
+  document.querySelectorAll("#list-body .cam-row").forEach((row) => {
+    row.classList.toggle("sel", Number(row.dataset.id) === state.selectedId);
+  });
+}
+
 function renderList(force) {
   const cams = visibleCams();
-  const sig = [state.filter, state.q, state.selectedId,
+  const q = state.q.trim();
+  const sig = [state.filter, q,
     state.cameras.map((c) => c.id + (c.online === false ? "d" : c.online ? "u" : "?")).join("")
   ].join("|");
-  if (!force && sig === lastListSig) return;
+  if (!force && sig === lastListSig) { syncListSel(); return; }
   lastListSig = sig;
 
   $("list-count").textContent = cams.length + " / " + state.cameras.length;
@@ -283,7 +337,8 @@ function renderList(force) {
     const down = list.filter((c) => c.online === false).length;
     const known = list.some((c) => c.online === true);
     const grp = document.createElement("div");
-    grp.className = "grp" + (state.openRegions[region] ? " open" : "");
+    // Qidiruv paytida guruhlar ochiq — topilgan kamera darhol ko'rinadi.
+    grp.className = "grp" + (state.openRegions[region] || q ? " open" : "");
 
     const headRow = document.createElement("div");
     headRow.className = "grp-row";
@@ -307,6 +362,7 @@ function renderList(force) {
     wrap.className = "grp-cams";
     list.forEach((cam) => {
       const row = document.createElement("button");
+      row.dataset.id = cam.id;
       row.className = "cam-row" + (cam.online === false ? " down" : "") +
                       (cam.id === state.selectedId ? " sel" : "");
       row.innerHTML =
@@ -384,6 +440,9 @@ function setFilter(f) {
   state.filter = f;
   document.querySelectorAll("#filters button").forEach((x) =>
     x.classList.toggle("on", x.dataset.filter === f));
+  // Pastki chiplarda ham qaysi filtr faol ekani ko'rinadi.
+  $("chip-on").classList.toggle("on", f === "online");
+  $("chip-off").classList.toggle("on", f === "offline");
   renderList();
   rebuildMarkers();
 }
@@ -411,7 +470,16 @@ document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     $("q-input").focus();
+    $("q-input").select();
   }
+});
+// Qidiruvda Escape — matnni tozalaydi (panel yopilmaydi).
+$("q-input").addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !e.target.value) return;
+  e.stopPropagation();
+  e.target.value = "";
+  state.q = "";
+  renderList(); rebuildMarkers();
 });
 
 /* ---------- Pastki chiziqcha ---------- */
@@ -429,7 +497,21 @@ function renderStrip() {
 const FAIL_MSG = "Oqim ochilmadi — MediaMTX ishlayaptimi va kamera ulanganmi tekshiring";
 
 function createPlayer(video, msgEl) {
-  const p = { video, msgEl, hls: null, pc: null, token: 0, onOpen: null };
+  const p = { video, msgEl, hls: null, pc: null, token: 0, onOpen: null, last: null };
+  msgEl.classList.add("pmsg");
+
+  /* Xabar turi: "wait" — aylanma bilan; "fail" — bosilsa qayta uriniladi. */
+  const setMsg = (text, kind) => {
+    msgEl.textContent = text;
+    msgEl.classList.toggle("wait", kind === "wait");
+    msgEl.classList.toggle("fail", kind === "fail");
+  };
+  p.setMsg = setMsg;
+  msgEl.addEventListener("click", (e) => {
+    if (!msgEl.classList.contains("fail") || !p.last) return;
+    e.stopPropagation();
+    p.open(...p.last);
+  });
 
   p.stop = () => {
     p.token++;
@@ -439,19 +521,21 @@ function createPlayer(video, msgEl) {
     video.removeAttribute("src");
     video.srcObject = null;
     video.load();
+    setMsg("");
   };
 
   p.open = (cam, useHevc, quality) => {
     p.stop();
+    p.last = [cam, useHevc, quality];
     const my = ++p.token;
     const stale = () => p.token !== my;
     const t0 = performance.now();
-    msgEl.textContent = "Ulanmoqda…";
+    setMsg("Ulanmoqda…", "wait");
     if (!video.poster) video.poster = "/api/cameras/" + cam.id + "/snapshot";
 
     const opened = () => {
       if (stale()) return;
-      msgEl.textContent = "";
+      setMsg("");
       const ms = performance.now() - t0;
       state.openTimes.push(ms);
       if (state.openTimes.length > 50) state.openTimes.shift();
@@ -473,21 +557,21 @@ function createPlayer(video, msgEl) {
           ? () => { if (!stale()) p.open(cam, useHevc); }
           : urls.mode === "raw"
             ? () => { if (!stale()) p.open(cam, false); }
-            : () => { if (!stale()) msgEl.textContent = FAIL_MSG; };
+            : () => { if (!stale()) setMsg(FAIL_MSG, "fail"); };
         attach(urls, stale, onFail);
       })
-      .catch((e) => { if (!stale()) msgEl.textContent = e.message; });
+      .catch((e) => { if (!stale()) setMsg(e.message, "fail"); });
 
     function attach(urls, staleFn, onFail) {
       if (urls.webrtc_url) {
         playWebRtc(urls.webrtc_url, staleFn).catch(() => {
           if (staleFn()) return;
-          msgEl.textContent = "Zaxira yo'l orqali ulanmoqda…";
+          setMsg("Zaxira yo'l orqali ulanmoqda…", "wait");
           playHls(urls.stream_url, staleFn, onFail);
         });
         return;
       }
-      if (!urls.stream_url) { msgEl.textContent = "Oqim manzili sozlanmagan"; return; }
+      if (!urls.stream_url) { setMsg("Oqim manzili sozlanmagan", "fail"); return; }
       playHls(urls.stream_url, staleFn, onFail);
     }
 
@@ -497,6 +581,10 @@ function createPlayer(video, msgEl) {
       pc.addTransceiver("video", { direction: "recvonly" });
       pc.ontrack = (e) => {
         if (staleFn()) return;
+        // jitterBufferTarget — yangi nom (ms), playoutDelayHint — eskisi
+        // (soniya). Ikkisi ham beriladi: brauzer bilganini oladi.
+        try { e.receiver.jitterBufferTarget = PLAYOUT_DELAY * 1000; } catch (x) { /* qo'llamaydi */ }
+        try { e.receiver.playoutDelayHint = PLAYOUT_DELAY; } catch (x) { /* qo'llamaydi */ }
         video.srcObject = e.streams[0];
         video.play().catch(() => {});
       };
@@ -532,15 +620,19 @@ function createPlayer(video, msgEl) {
     }
 
     function playHls(url, staleFn, onFail) {
-      if (!url) { msgEl.textContent = FAIL_MSG; return; }
+      if (!url) { setMsg(FAIL_MSG, "fail"); return; }
       // WebRTC'dan qolgan srcObject `src`dan ustun turadi — tozalanmasa
       // brauzer o'lik oqimni ko'rsatishda davom etadi va HLS ulanmaydi.
       video.srcObject = null;
       const isHls = url.includes(".m3u8");
       if (isHls && window.Hls && Hls.isSupported()) {
+        // Zaxira: WebRTC'dagi PLAYOUT_DELAY ning HLS'dagi muqobili.
+        // Ilgari `liveSyncDurationCount: 1` va `maxBufferLength: 6` edi —
+        // ya'ni bir segmentlik (~1 s) zaxira. Kanal uzuq bo'lgan kamerada
+        // bu yetmaydi: pleyer to'xtaydi, keyin jonli chekkaga sakraydi.
         const hls = new Hls({
-          lowLatencyMode: true, maxBufferLength: 6, backBufferLength: 6,
-          liveSyncDurationCount: 1,
+          lowLatencyMode: true, maxBufferLength: 12, backBufferLength: 6,
+          liveSyncDurationCount: 3,
           manifestLoadingTimeOut: 25000     // sovuq start 5 soniyagacha cho'ziladi
         });
         p.hls = hls;
@@ -556,17 +648,17 @@ function createPlayer(video, msgEl) {
           if (onFail && (d.type === Hls.ErrorTypes.MEDIA_ERROR || p.mode === "sub")) {
             hls.destroy(); onFail(); return;
           }
-          msgEl.textContent = FAIL_MSG;
+          setMsg(FAIL_MSG, "fail");
         });
       } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
         video.src = url;
         video.addEventListener("loadedmetadata", () => {
           if (!staleFn()) video.play().catch(() => {});
         }, { once: true });
-        video.onerror = () => { if (!staleFn()) msgEl.textContent = FAIL_MSG; };
+        video.onerror = () => { if (!staleFn()) setMsg(FAIL_MSG, "fail"); };
       } else {
         video.src = url;
-        video.onerror = () => { if (!staleFn()) msgEl.textContent = FAIL_MSG; };
+        video.onerror = () => { if (!staleFn()) setMsg(FAIL_MSG, "fail"); };
         video.play().catch(() => {});
       }
     }
@@ -574,19 +666,32 @@ function createPlayer(video, msgEl) {
   return p;
 }
 
-/* Kamerani oldindan uyg'otish — sichqoncha kelganda oqim va surat tayyorlanadi. */
+/* Kamerani oldindan uyg'otish — sichqoncha kelganda yo'l va surat tayyorlanadi.
+   Ikkita qoida bor, ikkalasi ham tasvir qotishiga qarshi:
+
+   1. Oqimning O'ZI bu yerda ochilmaydi. Ilgari HLS pleylisti ham so'ralardi;
+      MediaMTX esa talab bo'yicha yo'lni shu so'rovda tortishni boshlaydi va
+      keyin uni ushlab turadi. Natijada markerlar yoki ro'yxat ustidan
+      sichqoncha o'tib ketishining o'zi o'nlab to'liq sifatli oqimni ochib
+      yuborardi: WAN kanali to'yinadi, registrator RTP paketlarini tashlaydi
+      va hamma kamerada tasvir qotadi. Chipta so'rovi esa arzon — u faqat
+      yo'lni sozlaydi va kameradan keyframe so'raydi.
+
+   2. Kutish (hover intent): sichqoncha shunchaki o'tib ketsa hech narsa
+      qilinmaydi — faqat bir joyda to'xtalganda uyg'otiladi. */
 const warmed = new Map();
+let warmTimer = null;
+const PREWARM_DELAY = 350;                    // ms — shunchaki o'tib ketish sanalmaydi
+
 function prewarm(cam) {
-  const last = warmed.get(cam.id) || 0;
-  if (Date.now() - last < 30000) return;      // MediaMTX 60 s ushlab turadi
-  warmed.set(cam.id, Date.now());
-  fetch("/api/cameras/" + cam.id + "/snapshot", { cache: "no-store" }).catch(() => {});
-  api("/api/cameras/" + cam.id + "/stream?hevc=" + (HEVC_OK ? 1 : 0))
-    .then((urls) => {
-      if (!urls.stream_url) return;
-      fetch(urls.stream_url, { cache: "no-store", mode: "no-cors" }).catch(() => {});
-    })
-    .catch(() => {});
+  clearTimeout(warmTimer);                    // oldingi nishon bekor qilinadi
+  warmTimer = setTimeout(() => {
+    const last = warmed.get(cam.id) || 0;
+    if (Date.now() - last < 30000) return;
+    warmed.set(cam.id, Date.now());
+    fetch("/api/cameras/" + cam.id + "/snapshot", { cache: "no-store" }).catch(() => {});
+    api("/api/cameras/" + cam.id + "/stream?hevc=" + (HEVC_OK ? 1 : 0)).catch(() => {});
+  }, PREWARM_DELAY);
 }
 
 /* ---------- Tanlangan kamera paneli ---------- */
@@ -634,8 +739,7 @@ function selectCamera(id, fly) {
   // O'chiq kamera — kutish o'rniga darhol sabab ko'rsatiladi (oqim baribir
   // sinab ko'riladi: tekshiruv 60 soniya eskirgan bo'lishi mumkin).
   if (cam.online === false) {
-    $("sel-msg").textContent =
-      "Kamera o'chiq · oxirgi onlayn: " + fmtLastSeen(cam.last_seen);
+    selPlayer.setMsg("Kamera o'chiq · oxirgi onlayn: " + fmtLastSeen(cam.last_seen), "wait");
   }
   renderFootStats();
 }
@@ -682,6 +786,7 @@ $("sel-wall").addEventListener("click", () => {
 /* ---------- Video devor ---------- */
 let wallPlayers = [];
 let wallAutoTimer = null;
+const wallTiles = new Map();   // kamera id → { tile, player, down }
 
 /* Devor sozlamalari brauzerda saqlanadi — qayta ochilganda tiklanadi. */
 function saveWallPrefs() {
@@ -735,7 +840,8 @@ function fillWallRegions() {
 }
 
 function buildWall() {
-  stopWall();
+  clearInterval(wallAutoTimer);
+  wallAutoTimer = null;
   fillWallRegions();
   const all = wallCams();
   const slots = state.wallSize * state.wallSize;
@@ -764,86 +870,114 @@ function buildWall() {
   $("wall-fit").textContent = state.wallFit === "cover" ? "Kadr: to'liq" : "Kadr: butun";
   $("wall-auto").classList.toggle("soft", state.wallAuto);
 
-  grid.innerHTML = cams.length ? "" :
-    '<div class="empty" style="grid-column:1/-1">Ko‘rsatiladigan kamera yo‘q.</div>';
-
-  cams.forEach((cam) => {
-    const down = cam.online === false;
-    const pinned = state.pinned.includes(cam.id);
-    const tile = document.createElement("div");
-    tile.className = "tile" + (down ? " down" : "") +
-                     (cam.id === state.selectedId ? " sel" : "");
-    tile.innerHTML =
-      '<video muted playsinline poster="/api/cameras/' + cam.id + '/snapshot"></video>' +
-      '<div class="t-msg"></div>' +
-      '<div class="t-head"><i></i><span class="nm">' + esc(cam.name) + "</span>" +
-        '<span class="st">' + (down ? "OFFLINE" : "LIVE") + "</span></div>" +
-      '<div class="t-btns">' +
-        '<button data-w="pin" class="' + (pinned ? "on" : "") +
-          '" title="Devorga biriktirish">&#9733;</button>' +
-        '<button data-w="shot" title="Suratini yuklab olish">&#8681;</button>' +
-        '<button data-w="full" title="To\'liq ekran">&#10530;</button>' +
-        '<button data-w="x" title="Devordan olish">&times;</button>' +
-      "</div>" +
-      '<div class="t-foot"><span>' + esc(cam.region) + "</span><span>" +
-        esc(cam.codec || "") + '</span><span style="margin-left:auto"></span></div>';
-
-    const on = (act, fn) => tile.querySelector('[data-w="' + act + '"]')
-      .addEventListener("click", (e) => { e.stopPropagation(); fn(); });
-    on("pin", () => {
-      state.pinned = pinned ? state.pinned.filter((x) => x !== cam.id)
-                            : [cam.id, ...state.pinned];
-      buildWall();
-    });
-    on("shot", async () => {
-      try {
-        const blob = await (await fetch("/api/cameras/" + cam.id + "/snapshot")).blob();
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = cam.name.replace(/[^\w\-]+/g, "_") + ".jpg";
-        a.click();
-        URL.revokeObjectURL(a.href);
-      } catch (e) { toast("Surat olinmadi", true); }
-    });
-    // Plitkaning o'zi to'liq ekranga chiqadi — nomi, LIVE belgisi va
-    // pastki ma'lumotlar saqlanib qoladi. Qayta bosish/ESC — chiqish.
-    const goFull = () => {
-      if (document.fullscreenElement) { document.exitFullscreen(); return; }
-      const v = tile.querySelector("video");
-      if (tile.requestFullscreen) tile.requestFullscreen();
-      else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
-    };
-    on("full", goFull);
-    on("x", () => {
-      state.wallHidden.add(cam.id);
-      state.pinned = state.pinned.filter((x) => x !== cam.id);
-      buildWall();
-    });
-    tile.addEventListener("click", () => selectCamera(cam.id, true));
-    tile.addEventListener("dblclick", goFull);
-    grid.appendChild(tile);
-
-    if (!down) {
-      const player = createPlayer(tile.querySelector("video"), tile.querySelector(".t-msg"));
-      const msEl = tile.querySelector(".t-foot span:last-child");
-      player.onOpen = (ms) => { msEl.textContent = (ms / 1000).toFixed(2) + "s"; };
-      // Setkada past sifatli 2-oqim (sub) — 16 plitka tarmoqni bo'g'masin.
-      // Sub bo'lmasa server asosiysini beradi; to'liq ekranda asosiyga o'tiladi.
-      player.open(cam, HEVC_OK, "sub");
-      tile.addEventListener("fullscreenchange", () => {
-        player.open(cam, HEVC_OK, document.fullscreenElement === tile ? "" : "sub");
-      });
-      wallPlayers.push(player);
-    } else {
-      tile.querySelector(".t-msg").textContent = "ulanish yo'q";
-    }
+  // Diff: bor plitkalar qayta ishlatiladi (oqim uzilmaydi), ketganlari
+  // to'xtatiladi, yangilari yaratiladi, tartib DOM'da to'g'rilanadi.
+  const want = new Set(cams.map((c) => c.id));
+  wallTiles.forEach((t, id) => {
+    const cam = state.byId.get(id);
+    const stillOk = want.has(id) && cam && (cam.online === false) === t.down;
+    if (!stillOk) { if (t.player) t.player.stop(); t.tile.remove(); wallTiles.delete(id); }
   });
+  grid.querySelectorAll(".empty").forEach((e) => e.remove());
+  if (!cams.length) {
+    grid.insertAdjacentHTML("beforeend",
+      '<div class="empty" style="grid-column:1/-1">Ko‘rsatiladigan kamera yo‘q.</div>');
+  }
+
+  cams.forEach((cam, i) => {
+    let t = wallTiles.get(cam.id);
+    if (!t) { t = makeTile(cam); wallTiles.set(cam.id, t); }
+    // Yengil yangilanishlar: biriktirilganlik va tanlanganlik.
+    t.tile.querySelector('[data-w="pin"]').classList.toggle("on", state.pinned.includes(cam.id));
+    t.tile.classList.toggle("sel", cam.id === state.selectedId);
+    if (grid.children[i] !== t.tile) grid.insertBefore(t.tile, grid.children[i] || null);
+  });
+  wallPlayers = [...wallTiles.values()].map((t) => t.player).filter(Boolean);
   renderFootStats();
   syncWallAuto();
 }
 
+/* Bitta plitka: video, ustki/ostki yozuvlar, tugmalar va pleyer. */
+function makeTile(cam) {
+  const down = cam.online === false;
+  const tile = document.createElement("div");
+  tile.className = "tile" + (down ? " down" : "");
+  tile.innerHTML =
+    '<video muted playsinline poster="/api/cameras/' + cam.id + '/snapshot"></video>' +
+    '<div class="t-msg"></div>' +
+    '<div class="t-head"><i></i><span class="nm">' + esc(cam.name) + "</span>" +
+      '<span class="st">' + (down ? "OFFLINE" : "LIVE") + "</span></div>" +
+    '<div class="t-btns">' +
+      '<button data-w="pin" title="Devorga biriktirish">&#9733;</button>' +
+      '<button data-w="map" title="Xaritada ko\'rsatish">&#9678;</button>' +
+      '<button data-w="shot" title="Suratini yuklab olish">&#8681;</button>' +
+      '<button data-w="full" title="To\'liq ekran">&#10530;</button>' +
+      '<button data-w="x" title="Devordan olish">&times;</button>' +
+    "</div>" +
+    '<div class="t-foot"><span>' + esc(cam.region) + "</span><span>" +
+      esc(cam.codec || "") + '</span><span style="margin-left:auto"></span></div>';
+
+  const on = (act, fn) => tile.querySelector('[data-w="' + act + '"]')
+    .addEventListener("click", (e) => { e.stopPropagation(); fn(); });
+  on("pin", () => {
+    state.pinned = state.pinned.includes(cam.id)
+      ? state.pinned.filter((x) => x !== cam.id) : [cam.id, ...state.pinned];
+    buildWall();
+  });
+  on("map", () => selectCamera(cam.id, true));
+  on("shot", async () => {
+    try {
+      const blob = await (await fetch("/api/cameras/" + cam.id + "/snapshot")).blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = cam.name.replace(/[^\w\-]+/g, "_") + ".jpg";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) { toast("Surat olinmadi", true); }
+  });
+  // Plitkaning o'zi to'liq ekranga chiqadi — nomi, LIVE belgisi va
+  // pastki ma'lumotlar saqlanib qoladi. Qayta bosish/ESC — chiqish.
+  const goFull = () => {
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    const v = tile.querySelector("video");
+    if (tile.requestFullscreen) tile.requestFullscreen();
+    else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+  };
+  on("full", goFull);
+  on("x", () => {
+    state.wallHidden.add(cam.id);
+    state.pinned = state.pinned.filter((x) => x !== cam.id);
+    buildWall();
+  });
+  // Bir bosish — devorda ajratib ko'rsatish (xaritaga o'tmaydi, oqimlar
+  // uzilmaydi); ikki bosish — to'liq ekran; xaritaga «◎» tugmasi.
+  tile.addEventListener("click", () => {
+    state.selectedId = cam.id;
+    wallTiles.forEach((t, id) => t.tile.classList.toggle("sel", id === cam.id));
+    refreshMarkerIcons();
+  });
+  tile.addEventListener("dblclick", goFull);
+
+  let player = null;
+  if (!down) {
+    player = createPlayer(tile.querySelector("video"), tile.querySelector(".t-msg"));
+    const msEl = tile.querySelector(".t-foot span:last-child");
+    player.onOpen = (ms) => { msEl.textContent = (ms / 1000).toFixed(2) + "s"; };
+    // Setkada past sifatli 2-oqim (sub) — 16 plitka tarmoqni bo'g'masin.
+    // Sub bo'lmasa server asosiysini beradi; to'liq ekranda asosiyga o'tiladi.
+    player.open(cam, HEVC_OK, "sub");
+    tile.addEventListener("fullscreenchange", () => {
+      player.open(cam, HEVC_OK, document.fullscreenElement === tile ? "" : "sub");
+    });
+  } else {
+    tile.querySelector(".t-msg").textContent = "ulanish yo'q";
+  }
+  return { tile, player, down };
+}
+
 function stopWall() {
-  wallPlayers.forEach((p) => p.stop());
+  wallTiles.forEach((t) => { if (t.player) t.player.stop(); t.tile.remove(); });
+  wallTiles.clear();
   wallPlayers = [];
   clearInterval(wallAutoTimer);
   wallAutoTimer = null;
@@ -897,6 +1031,13 @@ $("wall-next").addEventListener("click", () => {
   state.wallPage++;
   buildWall();
 });
+// Devorda ← → sahifalarni almashtiradi (matn maydonida bo'lmasa).
+document.addEventListener("keydown", (e) => {
+  if (state.tab !== "wall" || document.querySelector(".backdrop.open")) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  if (e.key === "ArrowRight" && !$("wall-next").disabled) $("wall-next").click();
+  if (e.key === "ArrowLeft" && !$("wall-prev").disabled) $("wall-prev").click();
+});
 
 /* ---------- Dashboard ---------- */
 function addEvent(text, kind) {
@@ -911,8 +1052,16 @@ function renderDashMetrics() {
   const off = state.cameras.filter((c) => c.online === false).length;
   $("m-total").textContent = total;
   $("m-total-note").textContent = new Set(state.cameras.map((c) => c.region)).size + " hududda";
-  $("m-online").textContent = total ? Math.round((on / total) * 100) + "%" : "—";
-  $("m-online-note").textContent = on + " ta javob beryapti";
+  const pctOn = total ? Math.round((on / total) * 100) : 0;
+  $("m-online").textContent = total ? pctOn + "%" : "—";
+  $("m-online-note").textContent = on + " / " + total + " ta javob beryapti";
+  $("m-online-bar").style.width = pctOn + "%";
+  $("m-ev").textContent = state.stats ? state.stats.events_today : "—";
+  $("m-ev-note").textContent = state.stats
+    ? (state.stats.events_today ? "bugun qayd etilgan" : "bugun uzilish yo'q")
+    : "tarix yuklanmoqda…";
+  const now = new Date(), pd = (n) => String(n).padStart(2, "0");
+  $("dash-upd").textContent = pd(now.getHours()) + ":" + pd(now.getMinutes()) + ":" + pd(now.getSeconds());
   const t = state.openTimes;
   $("m-open").textContent = t.length
     ? (t.reduce((s, v) => s + v, 0) / t.length / 1000).toFixed(2).replace(".", ",")
@@ -1129,6 +1278,22 @@ function renderTimeline() {
   const data = ((state.stats && state.stats.timeline) || [])
     .filter((p) => p.total > 0)
     .map((p) => ({ t: Date.parse(p.ts), online: p.online, total: p.total }));
+  // Grafik ustidagi yig'ma ko'rsatkichlar: hozir / o'rtacha / eng past / o'lchov soni.
+  const pcts = data.map((p) => (p.online / p.total) * 100);
+  const fmtPct = (v) => Math.round(v) + "%";
+  const setStat = (id, v, cls) => {
+    const el = $(id); el.textContent = v; el.className = "v" + (cls ? " " + cls : "");
+  };
+  if (pcts.length) {
+    const cur = pcts[pcts.length - 1], avg = pcts.reduce((a, b) => a + b, 0) / pcts.length,
+          min = Math.min(...pcts);
+    setStat("tl-now", fmtPct(cur), cur >= 90 ? "ok" : cur < 60 ? "bad" : "");
+    setStat("tl-avg", fmtPct(avg), avg >= 90 ? "ok" : avg < 60 ? "bad" : "");
+    setStat("tl-min", fmtPct(min), min < 60 ? "bad" : "");
+    setStat("tl-n", String(pcts.length));
+  } else {
+    ["tl-now", "tl-avg", "tl-min", "tl-n"].forEach((id) => setStat(id, "—"));
+  }
   if (data.length < 2) {
     svg.innerHTML = "";
     empty.textContent = "Tarix yig'ilmoqda — grafik dastlabki o'lchovlar to'plangach (~10 daqiqa) chiziladi.";
@@ -1377,11 +1542,26 @@ function showTab(tab) {
   if (tab === "dash") renderDash();
   if (tab === "admin") loadAdminCameras(0);
   if (tab === "map" && state.selectedId) selectCamera(state.selectedId, false);
+
+  // Bo'lim manzilda saqlanadi — yangilansa yoki havola ulashilsa o'sha yerga qaytadi.
+  const hash = tab === "map" ? "" : "#" + tab;
+  if (location.hash !== hash) history.replaceState(null, "", location.pathname + hash);
 }
+window.addEventListener("hashchange", () => {
+  const t = location.hash.replace("#", "") || "map";
+  if (["map", "wall", "dash", "admin"].includes(t) && t !== state.tab) showTab(t);
+});
 document.querySelectorAll("#tabs button").forEach((b) =>
   b.addEventListener("click", () => showTab(b.dataset.tab)));
 $("wall-back").addEventListener("click", () => showTab("map"));
 $("dash-back").addEventListener("click", () => showTab("map"));
+$("dash-refresh").addEventListener("click", async () => {
+  const b = $("dash-refresh");
+  b.disabled = true;
+  await refreshStatus();
+  renderDash();
+  b.disabled = false;
+});
 $("admin-back").addEventListener("click", () => showTab("map"));
 $("go-wall").addEventListener("click", () => showTab("wall"));
 
@@ -1416,8 +1596,8 @@ function setAdmin(admin) {
     av.textContent = admin.username.slice(0, 2).toUpperCase();
     av.title = admin.username + " — chiqish uchun bosing";
   } else {
-    av.textContent = "Kirish";
-    av.title = "Super-admin";
+    av.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+    av.title = "Super-admin sifatida kirish";
     if (state.tab === "admin") showTab("map");
     stopPicking(true);
   }
@@ -2207,7 +2387,8 @@ function toast(text, bad) {
 
 /* ---------- Ishga tushirish ---------- */
 (async function start() {
-  setTheme(localStorage.getItem("nigoh-theme") === "dark" ? "dark" : "light");
+  // index.html'dagi skript mavzuni allaqachon tanlagan (saqlangan yoki tizimniki).
+  setTheme(document.documentElement.dataset.theme || "light", false);
 
   // Server hali ko'tarilmagan bo'lsa (masalan, birga ishga tushirilganda)
   // sahifa bo'sh qolib ketmaydi — ulanguncha qayta urinamiz.

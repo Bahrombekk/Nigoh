@@ -70,13 +70,13 @@ Hudud nomi bir xil yozilgan kameralar bitta guruh hisoblanadi.
 
 ## Interfeys bo'limlari
 
-Pastki markazdagi dock orqali (yoki to'g'ridan-to'g'ri havola bilan):
+Chap navigatsiya reyli orqali (yoki to'g'ridan-to'g'ri havola bilan):
 
 | Bo'lim | Havola | Nima bor |
 |---|---|---|
 | Xarita | `/` | klaster markerlar, qidiruv (Ctrl K), jonli ko'rish paneli |
 | Video devor | `/#wall` | 2×2–4×4 setka, hudud filtri, sahifalash, avto-aylanish, kadr rejimi, plitka to'liq ekranı, surat yuklab olish |
-| Dashboard | `/#dash` | holat donut'i, ochilish sparkline'i, hudud/texnik kesimlar, hodisalar — har 15 s yangilanadi |
+| Dashboard | `/#dash` | KPI qatori, 24 soatlik onlayn grafigi, holat donut'i, hudud va hodisalar, kunlik kesimlar — har 15 s yangilanadi |
 | Boshqaruv | `/#admin` | jadval: holat/hudud/kodek/rejim filtrlari, ustun saralash, NVR import, skaner |
 
 ## API — tashqi mijozlar uchun
