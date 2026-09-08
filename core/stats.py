@@ -1,7 +1,8 @@
 """Nigoh — dashboard uchun tarixiy statistika.
 
-Kamera holatlarini mikroservis o'lchaydi (`state` maydoni), ammo u tarix
-yuritmaydi — bu modul har daqiqalik kuzatuv natijasini bazaga yozib boradi:
+health.py har daqiqada kameralarni tekshiradi, ammo natija faqat xotirada
+turadi — server qayta ishga tushsa tarix yo'qoladi. Bu modul o'sha
+tekshiruv natijalarini bazaga yozib boradi:
 
   * stats_region — har 5 daqiqada hudud kesimida nechta kamera onlayn edi
   * stats_event  — kamera uzildi/qayta ulandi hodisalari (aniq vaqti bilan)
@@ -25,28 +26,32 @@ _last_snapshot = 0.0
 _lock = threading.Lock()
 
 
-def record_states(cameras: list[dict]) -> None:
-    """Mikroservisdan olingan holatlarni tarixga yozadi (har daqiqa).
+def record_sweep(statuses: dict[tuple[str, int], bool]) -> None:
+    """health._sweep natijasini tarixga yozadi (har daqiqa chaqiriladi).
 
-    `cameras`: [{"id", "name", "region", "online": True|False|None}].
-    `online=None` — holati o'lchanmaydiganlar (unknown/disabled), ular
-    statistikaga kirmaydi — foizlar faqat kuzatiladigan kameralar ustidan
-    hisoblanadi.
+    IP'siz (tayyor oqim) kameralarning tirikligi o'lchanmaydi, shuning
+    uchun ular statistikaga kirmaydi — foizlar faqat kuzatiladigan
+    kameralar ustidan hisoblanadi.
     """
     global _last_snapshot
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
 
     with get_db() as db:
+        cams = db.execute(
+            "SELECT id, name, region, ip, port FROM cameras "
+            "WHERE enabled = 1 AND ip IS NOT NULL AND ip != ''"
+        ).fetchall()
+
         # 1) Holat o'zgarishlari — hodisa sifatida (aniq vaqti bilan).
         events: list[tuple] = []
         with _lock:
-            ids = {cam["id"] for cam in cameras}
+            ids = {cam["id"] for cam in cams}
             for cam_id in list(_prev):
                 if cam_id not in ids:
                     _prev.pop(cam_id)
-            for cam in cameras:
-                online = cam["online"]
+            for cam in cams:
+                online = statuses.get((cam["ip"], cam["port"] or 554))
                 if online is None:
                     continue
                 prev = _prev.get(cam["id"])
@@ -60,7 +65,7 @@ def record_states(cameras: list[dict]) -> None:
                 "INSERT INTO stats_event (ts, camera_id, name, region, kind) "
                 "VALUES (?, ?, ?, ?, ?)", events)
             # Telegram sozlangan bo'lsa (TELEGRAM_BOT_TOKEN/CHAT_ID) —
-            # bitta kuzatuvdagi barcha o'zgarishlar bitta xabarda ketadi.
+            # bitta sweep'dagi barcha o'zgarishlar bitta xabarda ketadi.
             alerts.send_async("\n".join(
                 f"{'🟢 qaytdi' if kind == 'online' else '🔴 uzildi'}: "
                 f"{name} ({region})"
@@ -72,10 +77,11 @@ def record_states(cameras: list[dict]) -> None:
         _last_snapshot = time.time()
 
         by_region: dict[str, list[bool]] = {}
-        for cam in cameras:
-            if cam["online"] is None:
+        for cam in cams:
+            online = statuses.get((cam["ip"], cam["port"] or 554))
+            if online is None:
                 continue
-            by_region.setdefault(cam["region"], []).append(cam["online"])
+            by_region.setdefault(cam["region"], []).append(online)
         if by_region:
             db.executemany(
                 "INSERT INTO stats_region (ts, region, total, online) "

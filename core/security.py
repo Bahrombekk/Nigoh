@@ -83,6 +83,41 @@ def _stream_sig(path: str, expires: int) -> str:
     return base64.urlsafe_b64encode(mac.digest()[:20]).decode().rstrip("=")
 
 
+def _sig_matches(sig: str, path: str, expires: int) -> bool:
+    """Chipta shu yo'lga (yoki uning ichki resursiga) tegishlimi.
+
+    Chipta oqim yo'liga imzolanadi ("kamera_1"), lekin MediaMTX ba'zi
+    so'rovlarda ICHKI resurs bilan murojaat qiladi — HLS variant
+    playlisti "kamera_1/video1_stream.m3u8" yoki segment
+    "kamera_1/video1_seg7.mp4". Aynan tekshirilsa bunday so'rov rad
+    etiladi va tomosha o'rtasida video uziladi.
+
+    Prefiks bo'yicha moslik xavfsiz: "kamera_1" chiptasi faqat
+    "kamera_1" va uning ichidagi resurslarga ruxsat beradi. Yondosh
+    "kamera_10" ga o'tmaydi — chegara sifatida "/" talab qilinadi.
+    """
+    if hmac.compare_digest(sig, _stream_sig(path, expires)):
+        return True
+    base = path.split("/", 1)[0]
+    if base and base != path:
+        return hmac.compare_digest(sig, _stream_sig(base, expires))
+    return False
+
+
+def _session_key(ip: str, path: str) -> tuple[str, str]:
+    """Sessiya kaliti — HAR DOIM oqim yo'lining o'zi bo'yicha.
+
+    Brauzer tokenni faqat birinchi so'rovga qo'shadi; segmentlar
+    tokensiz keladi va ular uchun (ip, yo'l) sessiyasi bor. Kalit to'liq
+    yo'l bo'yicha olinsa mexanizm ishlamaydi: "kamera_1" uchun ochilgan
+    sessiya "kamera_1/video1_seg7.mp4" ni qoplamaydi va segment 401
+    oladi. Imzo tekshiruvi ham, sessiya ham bir xil normallashtirilishi
+    shart.
+    """
+    base = path.split("/", 1)[0]
+    return (ip, base or path)
+
+
 def stream_token(path: str) -> str:
     """Bitta yo'l uchun imzolangan chipta — oqim manziliga ?token= bo'lib qo'shiladi."""
     expires = int(time.time()) + STREAM_TOKEN_TTL
@@ -96,14 +131,14 @@ def stream_access_ok(ip: str, path: str, token: str) -> bool:
     tirik sessiya bo'lsa o'tadi (HLS segmentlari, WHEP davomi).
     """
     now = time.time()
-    key = (ip, path)
+    key = _session_key(ip, path)
     if token:
         expires_s, _, sig = token.partition(".")
         try:
             expires = int(expires_s)
         except ValueError:
             expires = 0
-        if expires > now and hmac.compare_digest(sig, _stream_sig(path, expires)):
+        if expires > now and _sig_matches(sig, path, expires):
             with _stream_lock:
                 if len(_stream_sessions) > 10_000:      # chegara: eskilar chiqsin
                     for k in [k for k, t in _stream_sessions.items() if t <= now]:

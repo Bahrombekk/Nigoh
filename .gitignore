@@ -38,5 +38,7 @@ nigoh.log.*
 
 # ---- Muhit ----
 .env
+.env.*
+!.env.example
 .vscode/
 .idea/

@@ -1,13 +1,12 @@
-"""Nigoh — ochiq (kirishsiz) endpointlar: xarita ro'yxati, oqim, surat.
-
-Ma'lumot manbai — kamera mikroservisi. Bu qatlamning vazifasi: kim nimani
-ko'rishini hal qilish (PUBLIC_VIEW, operator hududlari) va javobni
-frontend kutgan ko'rinishda uzatish.
-"""
+"""Nigoh — ochiq (kirishsiz) endpointlar: xarita ro'yxati, oqim, surat."""
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from . import nigoh
-from .helpers import allowed_regions
+from core import fast_start, health, security
+from core.db import get_db
+from media import sync as mediamtx_sync
+
+from .helpers import (allowed_regions, camera_for_mediamtx, camera_state,
+                      node_info, stream_urls)
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(prefix="/cameras", tags=["cameras"])
@@ -31,22 +30,48 @@ def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
     if regions is not None and not regions:
         return {"total": 0, "shown": 0, "cameras": []}
 
-    cameras = nigoh.cameras_cached()
+    sql = ("SELECT id, name, region, lat, lng, ip, port, slug, enabled, "
+           "last_seen, codec, resolution, transcode, always_on "
+           "FROM cameras WHERE enabled = 1")
+    params: list = []
     if regions is not None:
-        cameras = [c for c in cameras if c.get("region") in regions]
-    total = len(cameras)
-
+        sql += f" AND region IN ({','.join('?' * len(regions))})"
+        params += regions
+    count_sql, count_params = sql.replace(
+        "SELECT id, name, region, lat, lng, ip, port, slug, enabled, "
+        "last_seen, codec, resolution, transcode, always_on ",
+        "SELECT COUNT(*) "), list(params)
     if bbox:
         try:
             min_lat, min_lng, max_lat, max_lng = (float(v) for v in bbox.split(","))
         except ValueError:
             raise HTTPException(400, "bbox formati: minLat,minLng,maxLat,maxLng")
-        cameras = [c for c in cameras
-                   if min_lat <= (c.get("lat") or 0) <= max_lat
-                   and min_lng <= (c.get("lng") or 0) <= max_lng]
+        sql += " AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?"
+        params += [min_lat, max_lat, min_lng, max_lng]
+    sql += " ORDER BY region, name LIMIT ?"
+    params.append(max(1, min(limit, 50000)))
 
-    cameras = cameras[: max(1, min(limit, 50000))]
-    return {"total": total, "shown": len(cameras), "cameras": cameras}
+    with get_db() as db:
+        rows = db.execute(sql, params).fetchall()
+        total = db.execute(count_sql, count_params).fetchone()[0]
+    return {
+        "total": total,
+        "shown": len(rows),
+        # IP tashqariga chiqmaydi — undan faqat tiriklik holati hisoblanadi.
+        "cameras": [{
+            "id": r["id"], "name": r["name"], "region": r["region"],
+            "lat": r["lat"], "lng": r["lng"],
+            "online": health.online(r["ip"], r["port"]),
+            # Yagona holat: disabled / unknown / offline / stalled / online.
+            # `online` maydoni eski mijozlar uchun qoldirilgan.
+            "state": camera_state(r),
+            "last_seen": r["last_seen"] or "",
+            "codec": r["codec"] or "",
+            "resolution": r["resolution"] or "",
+            "transcode": bool(r["transcode"]),
+            "always_on": bool(r["always_on"]),
+        } for r in rows],
+    }
 
 
 @router.get("/{camera_id}/stream")
@@ -57,37 +82,62 @@ def camera_stream(camera_id: int, request: Request, hevc: int = 0,
     `hevc=1` — brauzer H.265 ni o'zi o'qiy oladi, o'girish kerak emas.
     `quality=sub` — past sifatli 2-oqim (video devor setkasi uchun);
     kamerada sub yo'l bo'lmasa asosiy oqim qaytadi.
-
-    Chipta mikroservisdan keladi — ko'rinish nazorati shu nuqtada.
     """
-    nigoh.check_region(camera_id, allowed_regions(request))
-    return nigoh.get_json(f"/api/v1/cameras/{camera_id}/stream",
-                          params={"hevc": hevc, "quality": quality})
+    with get_db() as db:
+        row = db.execute(
+            "SELECT * FROM cameras WHERE id = ? AND enabled = 1", (camera_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Kamera topilmadi")
+        camera = camera_for_mediamtx(row)
+
+    # Chipta shu yerda beriladi — ko'rinish nazorati ham shu nuqtada.
+    regions = allowed_regions(request)
+    if regions is not None and row["region"] not in regions:
+        raise HTTPException(403, "Bu kamerani ko'rishga ruxsat yo'q")
+
+    # Yo'l o'z tugunidagi MediaMTX'da borligiga ishonch hosil qilamiz —
+    # u qayta ishga tushgan bo'lsa ham ko'rish shu yerda tiklanadi.
+    if camera:
+        node = node_info(camera["node_id"])
+        api_base = node["api_base"] if node else None
+        sub = mediamtx_sync.sub_variant(camera) if quality == "sub" else None
+        if sub:
+            mediamtx_sync.ensure_path(sub, api_base)
+        else:
+            mediamtx_sync.ensure_path(camera, api_base)
+            if api_base is None:               # o'girish faqat lokal tugunda
+                mediamtx_sync.ensure_transcode_path(camera)
+        # Kameradan darhol keyframe so'raymiz (ONVIF) — tasvir navbatdagi
+        # keyframe'gacha (2-4 s) kutib qolmasin. Fonda ketadi, javobni
+        # kechiktirmaydi; qo'llamaydigan kamera jim rad etadi.
+        fast_start.request_keyframe_async(
+            camera["ip"], camera["username"], camera["password"],
+            camera["rtsp_path"], row["vendor"] or "")
+    return stream_urls(row, request, hevc_ok=bool(hevc), quality=quality)
 
 
 @router.get("/{camera_id}/snapshot")
-def camera_snapshot(camera_id: int, request: Request, stale: int = 0):
+def camera_snapshot(camera_id: int, request: Request):
     """Kameraning JPEG surati — video ulangunicha darhol ko'rsatish uchun.
 
     Player suratni poster sifatida qo'yadi: his qilinadigan ochilish
-    ~100 ms bo'ladi, video esa orqa fonda ulanadi. Surat mikroservis
-    diskida turadi; ETag/304 va yosh sarlavhalari o'zgarishsiz uzatiladi.
+    ~100 ms bo'ladi, video esa orqa fonda ulanadi.
     """
-    nigoh.check_region(camera_id, allowed_regions(request))
-    fwd_headers = {}
-    if request.headers.get("if-none-match"):
-        fwd_headers["If-None-Match"] = request.headers["if-none-match"]
-    r = nigoh.request("GET", f"/api/v1/cameras/{camera_id}/snapshot",
-                      params={"stale": stale} if stale else None,
-                      headers=fwd_headers)
-    if r.status_code == 404:
+    with get_db() as db:
+        row = db.execute(
+            "SELECT * FROM cameras WHERE id = ? AND enabled = 1", (camera_id,)
+        ).fetchone()
+    if row is None or not row["ip"]:
+        raise HTTPException(404, "Kamera topilmadi")
+    regions = allowed_regions(request)
+    if regions is not None and row["region"] not in regions:
+        raise HTTPException(403, "Bu kamerani ko'rishga ruxsat yo'q")
+    data = fast_start.snapshot(
+        row["id"], row["ip"], row["username"] or "",
+        security.decrypt(row["password_enc"]),
+        row["vendor"] or "", row["rtsp_path"] or "", row["slug"] or "")
+    if not data:
         raise HTTPException(404, "Kameradan surat olib bo'lmadi")
-    if r.status_code >= 400:
-        raise HTTPException(r.status_code, "Kamera servisi xatosi")
-    headers = {k: v for k, v in r.headers.items()
-               if k.lower() in ("etag", "cache-control",
-                                "x-snapshot-at", "x-snapshot-age")}
-    if r.status_code == 304:
-        return Response(status_code=304, headers=headers)
-    return Response(content=r.content, media_type="image/jpeg",
-                    headers=headers)
+    return Response(content=data, media_type="image/jpeg",
+                    headers={"Cache-Control": "max-age=5"})

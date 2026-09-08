@@ -44,6 +44,9 @@ _last_spawn = 0.0
 
 _prev_bytes: dict[tuple[int, str], int] = {}   # (tugun, yo'l) -> bytesReceived
 _stalled: dict[tuple[int, str], str] = {}      # (tugun, yo'l) -> ko'rsatma nomi
+_foreign: dict[int, float] = {}                # tugun -> oxirgi "begona" vaqti
+_foreign_warned: dict[int, float] = {}         # tugun -> oxirgi ogohlantirish
+FOREIGN_WARN_EVERY = 300.0                     # soniya — logni to'ldirmaslik
 
 
 def stalled_paths() -> set[str]:
@@ -110,6 +113,39 @@ def _spawn() -> bool:
     return False
 
 
+def _warn_foreign(node: dict, api: str) -> None:
+    """Tugun begona MediaMTX'ga qarab turibdi — operatorni ogohlantiradi.
+
+    Bu jimgina o'tkazib yuboriladigan holat emas: shu mashinada ikkinchi
+    Nigoh o'rnatmasi ishga tushsa (yoki mikroservis nusxasi yoqilsa)
+    ikkala backend bitta API portiga qaraydi va har 30 soniyada
+    bir-birining yo'llarini o'chirib turadi. Tashqaridan bu "kamera bir
+    necha soniya ishlab to'xtab qoldi" bo'lib ko'rinadi, HLS esa 500
+    qaytaradi — sababini jurnalsiz topish deyarli imkonsiz.
+    """
+    now = time.monotonic()
+    with _lock:
+        _foreign[node["id"]] = now
+        if now - _foreign_warned.get(node["id"], 0.0) < FOREIGN_WARN_EVERY:
+            return
+        _foreign_warned[node["id"]] = now
+    message = sync.foreign_message(api)
+    log("reconciler", "mediamtx_begona", level="error",
+        node=node["name"], message=message)
+    try:
+        with get_db() as db:
+            events.add(db, "mediamtx", detail=message)
+    except Exception:
+        pass
+
+
+def foreign_nodes() -> int:
+    """Begona MediaMTX'ga qarab turgan tugunlar soni — /health uchun."""
+    cutoff = time.monotonic() - 2 * CHECK_INTERVAL
+    with _lock:
+        return sum(1 for t in _foreign.values() if t > cutoff)
+
+
 def _check_stalls(node: dict) -> None:
     """Faol oqimlarning bayt hisobi ikki tick orasida qo'zg'almasa — muzlagan.
 
@@ -164,7 +200,15 @@ def _tick(load_cameras: Callable[[], list[dict]], announce: bool) -> bool:
     for node in _nodes():
         api = node["api_base"]
         local = sync.is_local_api(api)
-        if not sync.api_available(api):
+        status = sync.api_status(api)
+        if status == sync.FOREIGN:
+            # Begona instansiya: kelishtirmaymiz HAM, o'zimiznikini
+            # ko'tarmaymiz ham. Ko'targanda ham foyda yo'q — API porti
+            # band, yangi jarayon darhol o'lardi va biz uni har tsiklda
+            # qayta urintirardik.
+            _warn_foreign(node, api)
+            continue
+        if status != "ok":
             if not (local and _autostart_allowed() and _spawn()):
                 continue
         node_cams = [c for c in cameras

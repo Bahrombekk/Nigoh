@@ -2,10 +2,9 @@
 
 Qatlamlar:
 
-    app/config.py         sozlamalar (.env, mikroservis manzili)
-    app/nigoh.py          kamera mikroservisi mijozi (X-API-Key, kesh, kuzatuv)
+    app/config.py         sozlamalar (portlar, shablonlar)
     app/models.py         so'rov modellari (Pydantic)
-    app/helpers.py        kirish nazorati: sessiya, rollar, hududlar
+    app/helpers.py        umumiy tarjima qatlami (baza → brauzer/MediaMTX)
     app/routes_auth.py    /api/v1/auth/*
     app/routes_public.py  /api/v1/cameras/*   (kirishsiz)
     app/routes_stats.py   /api/v1/stats/*     (kirishsiz — dashboard tarixi)
@@ -16,13 +15,12 @@ API ikki prefiksda tinglaydi:
     /api/v1/...   asosiy, hujjatlangan manzil — tashqi mijozlar shu bilan
                   ishlasin; hujjat: /docs (Swagger) va /redoc.
     /api/...      eski manzillar aynan shu endpointlarga olib boradi —
-                  ichki test interfeys buzilmasin deb saqlab qolingan;
-                  hujjatda ko'rinmaydi.
+                  ichki test interfeys va MediaMTX auth (STREAM_AUTH_URL)
+                  buzilmasin deb saqlab qolingan; hujjatda ko'rinmaydi.
 
-Kamera/media qatlami (RTSP, MediaMTX, chiptalar, suratlar) alohida
-mikroservisda — unga `app/nigoh.py` orqali murojaat qilinadi. Bu tizimda
-xarita, rollar va dashboard qoladi. Umumiy infratuzilma (db, security,
-stats) `core/` paketida.
+MediaMTX bilan aloqa alohida `media/` paketida — backend unga faqat
+`from media import sync` orqali murojaat qiladi. Umumiy infratuzilma
+(db, security, health, rtsp_probe, fast_start) `core/` paketida.
 """
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -37,10 +35,9 @@ from .routes_public import router as public_router
 from .routes_stats import router as stats_router
 
 API_DESCRIPTION = """\
-Kamera xaritasi va boshqaruv paneli — asosiy tizim. Kamera/media qatlami
-(RTSP, MediaMTX, oqim chiptalari, suratlar) alohida Nigoh mikroservisida;
-bu tizim rollar, xarita va dashboardni yuritadi, kamera so'rovlarini esa
-mikroservisga uzatadi.
+IP kameralarni boshqarish va tarqatish servisi. MediaMTX ustidagi
+boshqaruv qatlami: kameralar bazada, oqim yo'llari MediaMTX Control API
+orqali dinamik boshqariladi, restart hech qachon kerak emas.
 
 Bo'limlar:
 
