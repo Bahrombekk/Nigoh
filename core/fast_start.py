@@ -15,7 +15,6 @@ ikkalasi ham ixtiyoriy va xatoga chidamli — kamera qo'llamasa jim o'tiladi:
 """
 import base64
 import hashlib
-import json
 import os
 import re
 import shutil
@@ -283,55 +282,17 @@ def _ffmpeg_exe() -> str:
     return shutil.which("ffmpeg") or ""
 
 
-# MediaMTX API — faqat "yo'l ayni damda tayyormi" degan savol uchun.
-# (media.sync ni import qilmaymiz: core -> media bog'lanishi aylanma bo'ladi.)
-_MEDIAMTX_API = os.environ.get("MEDIAMTX_API", "http://127.0.0.1:9997")
-
-
-def _path_ready(name: str) -> bool:
-    """Yo'l MediaMTX'da hozir tortilib turibdimi (kameradan tasvir kelyaptimi)."""
-    try:
-        with urllib.request.urlopen(
-                f"{_MEDIAMTX_API}/v3/paths/get/{urllib.parse.quote(name)}",
-                timeout=2.0) as res:
-            return bool(json.loads(res.read()).get("ready"))
-    except (urllib.error.URLError, OSError, ValueError):
-        return False
-
-
-def _active_path(slug: str) -> str:
-    """Suratni olish uchun ayni damda ALLAQACHON tortilib turgan yo'l.
-
-    Avval past sifatli sub-oqim, keyin asosiy. Hech biri tortilmayotgan
-    bo'lsa bo'sh satr — ya'ni surat olinmaydi.
-
-    Nima uchun shunday: ilgari bu yerda asosiy yo'l shartsiz ochilardi.
-    MediaMTX esa `sourceOnDemand` yo'lini so'rov kelishi bilan tortishni
-    boshlaydi — natijada xaritada sichqoncha markerlar ustidan o'tib
-    ketishining o'zi bir necha to'liq sifatli oqimni ochib yuborardi.
-    O'nlab shunday oqim WAN kanalini to'ydiradi, registrator RTP
-    paketlarini tashlay boshlaydi va HAMMA kamerada tasvir qotadi.
-    Surat — qulaylik, uning uchun kanalni band qilish arzimaydi.
-    """
-    if not slug:
-        return ""
-    for name in (slug + "_sub", slug):
-        if _path_ready(name):
-            return name
-    return ""
-
-
 def _ffmpeg_snapshot(slug: str) -> bytes | None:
-    """Zaxira yo'l: MediaMTX'da tayyor turgan oqimdan bitta kadr olinadi.
+    """Zaxira yo'l: MediaMTX'dagi oqimdan bitta kadr olinadi.
 
-    HTTP-snapshot bermaydigan kameralar uchun. Yangi oqim OCHILMAYDI —
-    tortilib turgani bo'lmasa surat berilmaydi (`_active_path`).
+    HTTP-snapshot bermaydigan kameralar uchun — MediaMTX kamerani baribir
+    talab bo'yicha tortadi, biz undan lokal ulanish orqali kadr olamiz
+    (kameraga qo'shimcha ulanish ochilmaydi).
     """
     exe = _ffmpeg_exe()
-    name = _active_path(slug)
-    if not exe or not name:
+    if not exe or not slug:
         return None
-    url = f"rtsp://127.0.0.1:{os.environ.get('MEDIAMTX_RTSP_PORT', '8554')}/{name}"
+    url = f"rtsp://127.0.0.1:{os.environ.get('MEDIAMTX_RTSP_PORT', '8554')}/{slug}"
     try:
         out = subprocess.run(
             [exe, "-hide_banner", "-loglevel", "error",

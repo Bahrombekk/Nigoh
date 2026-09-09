@@ -35,6 +35,14 @@ backend.log
 backend.err.log
 nigoh.log
 nigoh.log.*
+*-ishga-tushirish.log
+geo-import.log
+
+# Geo import oldidan olingan zaxira (mashinaga xos)
+geo-zaxira.json
+
+# Skrinshotlar (suhbat uchun vaqtinchalik)
+image*.png
 
 # ---- Muhit ----
 .env

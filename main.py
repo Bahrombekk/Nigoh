@@ -11,11 +11,12 @@ Admin parolini almashtirish:
 
 Kod tuzilishi:
     main.py            shu fayl — faqat kirish nuqtasi
-    app/               BACKEND: config, modellar, endpointlar
-    media/             MEDIAMTX QATLAMI: sync (konfiguratsiya/API), launcher
-    core/              UMUMIY: db, security, health, rtsp_probe, fast_start
-    scripts/           yordamchi skriptlar (import_mediamtx)
-    stream_launcher.py MediaMTX chaqiradigan yupqa qobiq (ildizda turishi shart)
+    app/               BACKEND: config, nigoh (mikroservis mijozi), endpointlar
+    core/              UMUMIY: db, security, stats, log
+    scripts/           yordamchi skriptlar
+
+Kamera/media qatlami alohida mikroservisda (nigoh-servis) — manzil va
+kalit `.env` da: NIGOH_URL, NIGOH_KEY.
 """
 import os
 import sys

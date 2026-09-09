@@ -50,33 +50,6 @@ API_TIMEOUT = 4.0
 RTSP_PORT = int(os.environ.get("MEDIAMTX_RTSP_PORT", "8554"))
 HLS_PORT = int(os.environ.get("HLS_PORT", "8888"))
 WEBRTC_PORT = int(os.environ.get("WEBRTC_PORT", "8889"))
-# WebRTC ICE (media) porti. Bitta mashinada ikkinchi MediaMTX
-# turadigan bo'lsa bunga ham bo'sh port bering — aks holda
-# ikkinchi jarayon "bind: only one usage" bilan yiqiladi.
-WEBRTC_UDP_PORT = int(os.environ.get("WEBRTC_UDP_PORT", "8189"))
-
-
-def api_port(api_base: str | None = None) -> int:
-    """MediaMTX API porti — `mediamtx.yml` ga aynan shu yoziladi.
-
-    Bitta mashinada ikki tugun turishi mumkin (masalan asosiy tizim va
-    mikroservis). Port qotib qolsa ikkinchisi o'z MediaMTX'ini ko'tara
-    olmaydi: port band bo'lgani uchun ishga tushmaydi, `api_available`
-    esa birinchisining API'sini ko'rib "hammasi joyida" deydi. Natijada
-    ikkinchi tugunning reconcileri begona MediaMTX'ni boshqara boshlaydi
-    va har tickda birinchisining yo'llarini o'chirib tashlaydi — tomosha
-    bir necha soniyada uziladi. Shuning uchun manba yagona: MEDIAMTX_API.
-    """
-    tail = (api_base or API_BASE).split("//")[-1]
-    _, _, port = tail.partition(":")
-    port = port.split("/")[0].strip()
-    return int(port) if port.isdigit() else 9997
-
-
-API_PORT = api_port()
-# Metrikalar porti ham tugun bilan birga suriladi — aks holda ikkinchi
-# MediaMTX 9998 ni band deb topib yiqiladi.
-METRICS_PORT = int(os.environ.get("MEDIAMTX_METRICS_PORT", str(API_PORT + 1)))
 
 # MediaMTX har bir ulanishda backend'dan ruxsat so'raydi. MediaMTX boshqa
 # mashinada bo'lsa, STREAM_AUTH_URL orqali backend'ning to'liq manzilini
@@ -165,16 +138,6 @@ def transcode_args(src_url: str, dst_url: str, gpu: bool = True,
 TRANSCODE_SUFFIX = "_h264"
 SUB_SUFFIX = "_sub"
 
-# Oxirgi tomoshabin ketgandan keyin oqim qancha ushlab turiladi.
-#
-# Uzun tutish kamerani qayta ochishni tezlashtiradi, lekin bekorga ochilib
-# qolgan oqim ham shuncha vaqt kanalni band qiladi. WAN ortidagi
-# registratorlarda bu og'riqli: kanal to'yinsa registrator RTP paketlarini
-# tashlaydi va tasvir hamma kamerada qotadi. Shuning uchun 1 daqiqa emas,
-# 15 soniya — kamerani u yoqdan-bu yoqqa almashtirishga yetadi, tasodifiy
-# ochilishning bahosi esa to'rt barobar arzon.
-ON_DEMAND_CLOSE_AFTER = "15s"
-
 
 def sub_variant(cam: dict) -> dict | None:
     """Kameraning past sifatli ikkinchi oqimi (`<slug>_sub` yo'li).
@@ -219,7 +182,7 @@ def source_path(cam: dict) -> dict:
         # Taqqoslash (ensure_path/push_to_api) aynan mos kelishi uchun
         # qiymatlar uning o'z shaklida yoziladi — aks holda har safar
         # keraksiz PATCH ketadi.
-        conf["sourceOnDemandCloseAfter"] = ON_DEMAND_CLOSE_AFTER
+        conf["sourceOnDemandCloseAfter"] = "1m0s"
     return conf
 
 
@@ -236,7 +199,7 @@ def camera_paths(cameras: list[dict]) -> dict:
             "runOnDemand": _launcher("$MTX_PATH"),
             "runOnDemandRestart": True,
             "runOnDemandStartTimeout": "20s",
-            "runOnDemandCloseAfter": ON_DEMAND_CLOSE_AFTER,
+            "runOnDemandCloseAfter": "1m0s",   # MediaMTX normallashtirgan shakl
         }
     }
 
@@ -255,19 +218,15 @@ def build_config(cameras: list[dict], auth_url: str | None = None,
     rtsp_port = int(node.get("rtsp_port") or RTSP_PORT)
     hls_port = int(node.get("hls_port") or HLS_PORT)
     webrtc_port = int(node.get("webrtc_port") or WEBRTC_PORT)
-    # Uzoq tugunda API porti tugunning o'z manzilidan olinadi.
-    api_prt = api_port(node.get("api_base")) if remote else API_PORT
-    metrics_prt = api_prt + 1 if remote else METRICS_PORT
     config = {
         "logLevel": "info",
         "api": True,
-        "apiAddress": f":{api_prt}" if remote else f"127.0.0.1:{api_prt}",
+        "apiAddress": ":9997" if remote else "127.0.0.1:9997",
 
         # Prometheus metrikalari (oqimlar, tomoshabinlar, baytlar) —
         # keyinchalik Grafana ulash uchun tayyor turadi.
         "metrics": True,
-        "metricsAddress": (f":{metrics_prt}" if remote
-                           else f"127.0.0.1:{metrics_prt}"),
+        "metricsAddress": ":9998" if remote else "127.0.0.1:9998",
 
         # Kirish nazorati: har bir o'qish so'rovini backend tekshiradi —
         # saytdan berilgan chiptasiz oqim ochilmaydi. Backend ishlamayotgan
@@ -287,7 +246,7 @@ def build_config(cameras: list[dict], auth_url: str | None = None,
         "webrtc": True,
         "webrtcAddress": f":{webrtc_port}",
         "webrtcAllowOrigins": ["*"],
-        "webrtcLocalUDPAddress": f":{WEBRTC_UDP_PORT}",
+        "webrtcLocalUDPAddress": ":8189",
 
         # HLS — WebRTC ishlamagan brauzerlar uchun zaxira.
         "hls": True,
@@ -341,49 +300,12 @@ def _api(method: str, path: str, payload: dict | None = None,
     return json.loads(raw) if raw else None
 
 
-FOREIGN = "begona"
-
-
-def api_status(api_base: str | None = None) -> str:
-    """`ok` | `yoq` (javob bermayapti) | `begona` (boshqa o'rnatmaniki).
-
-    Egalik `authHTTPAddress` bo'yicha aniqlanadi: MediaMTX har ulanishda
-    ruxsatni AYNAN SHU manzildan so'raydi, ya'ni u qaysi backend'ga
-    bo'ysunishini ochiq aytib turadi. Bizniki bo'lsa — o'zimiz yozgan
-    `STREAM_AUTH_URL`. Boshqa manzil — boshqa backend'ning MediaMTX'i,
-    unga tegishga haqqimiz yo'q: `push_to_api` "ro'yxatimda yo'q" degan
-    yo'llarni o'chiradi, ya'ni qo'shni o'rnatmaning kameralarini uzardi.
-    """
-    try:
-        conf = _api("GET", "/v3/config/global/get", api_base=api_base)
-    except (urllib.error.URLError, OSError, ValueError):
-        return "yoq"
-    theirs = (conf or {}).get("authHTTPAddress") or ""
-    # Bo'sh qiymat — auth umuman sozlanmagan (eski yoki qo'lda yozilgan
-    # konfiguratsiya). Bunda egalikni bilib bo'lmaydi; ilgarigidek
-    # ishonamiz, aks holda ishlab turgan o'rnatmalar to'satdan to'xtardi.
-    if theirs and theirs != STREAM_AUTH_URL:
-        return FOREIGN
-    return "ok"
-
-
 def api_available(api_base: str | None = None) -> bool:
-    """MediaMTX javob beryaptimi VA u bizniki mi."""
-    return api_status(api_base) == "ok"
-
-
-def foreign_message(api_base: str | None = None) -> str:
-    """Operatorga aniq ko'rsatma — taxmin qilishga o'rin qolmasin."""
     try:
-        conf = _api("GET", "/v3/config/global/get", api_base=api_base) or {}
+        _api("GET", "/v3/config/global/get", api_base=api_base)
+        return True
     except (urllib.error.URLError, OSError, ValueError):
-        conf = {}
-    return (f"{api_base or API_BASE} dagi MediaMTX boshqa o'rnatmaniki "
-            f"(ruxsatni {conf.get('authHTTPAddress') or '?'} dan so'rayapti, "
-            f"bizniki {STREAM_AUTH_URL}) — unga tegilmadi. Yo shu ikkinchi "
-            f"xizmatni to'xtating, yo bu o'rnatmaga o'z MediaMTX'ini bering "
-            f"(MEDIAMTX_API va MEDIAMTX_RTSP_PORT/HLS_PORT/WEBRTC_PORT "
-            f"boshqa portlarga)")
+        return False
 
 
 def ensure_path(cam: dict, api_base: str | None = None) -> bool:

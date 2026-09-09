@@ -1,40 +1,33 @@
 """Nigoh — birinchi ishga tushirish tayyorgarligi."""
 import os
+import sys
 
-from core import health, security
+from core import security
 from core.db import get_db, init_db
 from core.log import log
-from media import reconciler
-from media import sync as mediamtx_sync
 
-from .helpers import cameras_for_mediamtx
-
-
-def _load_cameras() -> list[dict]:
-    """Reconciler uchun: kameralarning MediaMTX ko'rinishi, har safar bazadan."""
-    with get_db() as db:
-        return cameras_for_mediamtx(db)
+from . import nigoh
+from .config import NIGOH_KEY, NIGOH_URL
 
 
 def bootstrap() -> None:
+    # Kamera qatlami mikroservisda — manzil va kalitsiz tizim ma'nosiz,
+    # shuning uchun darhol, tushunarli xabar bilan to'xtaymiz.
+    if not NIGOH_URL or not NIGOH_KEY:
+        sys.exit(
+            "NIGOH_URL va NIGOH_KEY sozlanmagan.\n"
+            "Loyiha ildizidagi .env fayliga yozing:\n"
+            "    NIGOH_URL=https://kamera-servis-manzili\n"
+            "    NIGOH_KEY=<mikroservisning NIGOH_API_KEY qiymati>"
+        )
+
     init_db()
 
-    # Kameralarning tirikligini fonda kuzatib boramiz — xaritada o'chiq
-    # kameralar qizil bo'lib ko'rinadi.
-    health.start()
+    # Kamera holatlarini mikroservisdan fonda so'rab, dashboard tarixini
+    # (stats_region/stats_event) yozib boramiz. Sayt ochilishini kutdirmaydi.
+    nigoh.start_poller()
 
-    # mediamtx.yml har ishga tushishda qayta yoziladi: portlar va kirish
-    # nazorati sozlamalari kod bilan birga yangilansin. MediaMTX ishlab
-    # turgan bo'lsa faylni o'zi qayta o'qiydi — qo'lda hech narsa kerak emas.
-    with get_db() as db:
-        mediamtx_sync.write_config(cameras_for_mediamtx(db))
-
-    # MediaMTX'ni fonda kuzatib turamiz: yiqilsa qayta ishga tushiriladi,
-    # yo'llar (kamera qo'shildi/o'chirildi, MediaMTX qayta ko'tarildi)
-    # o'z-o'zidan kelishtiriladi. Sayt ochilishini kutdirmaydi.
-    reconciler.start(_load_cameras)
-
-    log("app", "started")
+    log("app", "started", nigoh_url=NIGOH_URL)
 
     with get_db() as db:
         generated = security.ensure_admin(db)
