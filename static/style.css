@@ -172,6 +172,10 @@
   .cam-row.sel::before{content:"";position:absolute;left:5px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--accent)}
   .cam-row .dot{flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:var(--ok)}
   .cam-row.down .dot{background:var(--danger);animation:blink 1.6s infinite}
+  /* Tarmoqda bor, lekin oqim bermayapti — uzilgandan boshqa holat:
+     kamera javob beryapti, RTSP esa kodek qaytarmagan. */
+  .cam-row.nostream .dot{background:var(--warn,#d98324)}
+  .cam-row.nostream .cdx{color:var(--warn,#d98324);opacity:.85}
   .cam-row .nm{flex:1;min-width:0;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
   .cam-row.sel .nm{color:var(--accent)}
   .cam-row .cdx{font-family:var(--mono);font-size:10px;color:var(--faint)}

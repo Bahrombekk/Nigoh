@@ -363,12 +363,23 @@ function renderList(force) {
     list.forEach((cam) => {
       const row = document.createElement("button");
       row.dataset.id = cam.id;
+      // "Tirik, lekin oqimsiz" — alohida holat. Kameraning porti ochiq
+      // (health uni ONLINE deb belgilaydi), ammo RTSP kodek bermagan:
+      // login/parol yoki yo'l xato. Bunday kamera hech qachon ochilmaydi.
+      // Ilgari u ro'yxatda oddiy yashil bo'lib turardi va foydalanuvchi
+      // bosib, kutib, sababsiz xato olardi — servisda 4 tasi shunday.
+      const oqimsiz = cam.online !== false && !cam.codec;
       row.className = "cam-row" + (cam.online === false ? " down" : "") +
+                      (oqimsiz ? " nostream" : "") +
                       (cam.id === state.selectedId ? " sel" : "");
+      if (oqimsiz) {
+        row.title = "Tarmoqda ko'rinadi, lekin oqim bermayapti — "
+                  + "RTSP login/parol yoki yo'l xato bo'lishi mumkin";
+      }
       row.innerHTML =
         '<span class="dot"></span>' +
         '<span class="nm">' + esc(cam.name) + "</span>" +
-        '<span class="cdx">' + esc(cam.codec || "") + "</span>";
+        '<span class="cdx">' + esc(cam.codec || "oqim yo'q") + "</span>";
       row.addEventListener("click", () => { hideCamTip(); selectCamera(cam.id, true); });
       row.addEventListener("mouseenter", (e) => { prewarm(cam); showCamTip(cam, row); });
       row.addEventListener("mouseleave", hideCamTip);
@@ -491,6 +502,36 @@ function renderStrip() {
   $("strip-reg").textContent = new Set(state.cameras.map((c) => c.region)).size;
 }
 
+/* WebRTC serverda umuman ishlamasligi mumkin — va bu tasodifiy emas.
+
+   MediaMTX ICE nomzodlari sifatida faqat o'z interfeys manzillarini
+   (127.0.0.1, 192.168.x, docker0) e'lon qilsa, internetdagi brauzer
+   ularning birortasiga yeta olmaydi: signalizatsiya muvaffaqiyatli
+   o'tadi, kadr esa hech qachon kelmaydi. Serverda o'lchandi — 5 ta
+   kameradan 5 tasi 12 soniyada bitta ham kadr bermadi.
+
+   Bunda har ochilish 6 soniyani behuda kutishga sarflardi: pleyer
+   WebRTC'ni sinaydi, jim qoladi, keyin HLS'ga tushadi. Kamera almashsa
+   yana 6 soniya. Ketma-ket ikki marta jim qolgandan keyin bu seansda
+   WebRTC sinalmaydi — HLS darhol boshlanadi.
+
+   Bir marta jim qolish sabab emas: kamera ayni damda uyg'onayotgan
+   bo'lishi mumkin. Muvaffaqiyatli ochilish hisobni nolga qaytaradi. */
+const WEBRTC_JIM_CHEGARA = 2;
+let webrtcJim = 0;
+
+function webrtcDead() { return webrtcJim >= WEBRTC_JIM_CHEGARA; }
+
+function noteWebRtc(ok) {
+  if (ok) { webrtcJim = 0; return; }
+  webrtcJim++;
+  if (webrtcJim === WEBRTC_JIM_CHEGARA) {
+    console.warn("Nigoh: WebRTC kadr bermayapti — bu seansda faqat HLS " +
+                 "ishlatiladi. Serverda webrtcAdditionalHosts sozlanmagan " +
+                 "yoki ICE porti yopiq bo'lishi mumkin.");
+  }
+}
+
 /* ---------- Video pleyer (WebRTC -> HLS) ----------
    Har bir pleyer o'z holatini olib yuradi — devorda bir nechta birga ishlaydi. */
 
@@ -515,6 +556,8 @@ function createPlayer(video, msgEl) {
 
   p.stop = () => {
     p.token++;
+    // Kutish yozuvining taymerlari — pleyer yopilgach xabar yangilanmasin.
+    if (p.onCleanup) { p.onCleanup(); p.onCleanup = null; }
     if (p.hls) { p.hls.destroy(); p.hls = null; }
     if (p.pc) { p.pc.close(); p.pc = null; }
     video.pause();
@@ -563,8 +606,11 @@ function createPlayer(video, msgEl) {
       .catch((e) => { if (!stale()) setMsg(e.message, "fail"); });
 
     function attach(urls, staleFn, onFail) {
-      if (urls.webrtc_url) {
-        playWebRtc(urls.webrtc_url, staleFn).catch(() => {
+      if (urls.webrtc_url && !webrtcDead()) {
+        playWebRtc(urls.webrtc_url, staleFn).then(() => {
+          noteWebRtc(true);
+        }).catch(() => {
+          noteWebRtc(false);
           if (staleFn()) return;
           setMsg("Zaxira yo'l orqali ulanmoqda…", "wait");
           playHls(urls.stream_url, staleFn, onFail);
@@ -630,19 +676,47 @@ function createPlayer(video, msgEl) {
         // Ilgari `liveSyncDurationCount: 1` va `maxBufferLength: 6` edi —
         // ya'ni bir segmentlik (~1 s) zaxira. Kanal uzuq bo'lgan kamerada
         // bu yetmaydi: pleyer to'xtaydi, keyin jonli chekkaga sakraydi.
+        // Sovuq start byudjeti. Ilgari bu yerda 25 000 ms turardi va
+        // izohda "sovuq start 5 soniyagacha cho'ziladi" deb yozilgandi.
+        // Ishlab chiqarishda o'lchandi — haqiqat boshqa: talab bo'yicha
+        // ochilayotgan yo'lda birinchi pleylist 14-65 soniyada keladi
+        // (MediaMTX manbani <1 s da ochadi, vaqt HLS muxeri birinchi
+        // segmentni yopishiga ketadi — kameraning keyframe oralig'i uzun).
+        //
+        // 25 s chegara shu taqsimotning o'rtasidan kesib o'tardi: sekin
+        // kameralar UMUMAN ochilmasdi va foydalanuvchiga "xato" deb
+        // ko'rinardi, holbuki oqim yo'lda edi. Byudjet kengaytirildi va
+        // kutish jim emas — quyida holat yozuvi yangilanib turadi.
         const hls = new Hls({
           lowLatencyMode: true, maxBufferLength: 12, backBufferLength: 6,
           liveSyncDurationCount: 3,
-          manifestLoadingTimeOut: 25000     // sovuq start 5 soniyagacha cho'ziladi
+          manifestLoadingTimeOut: 30000,
+          manifestLoadingMaxRetry: 2,
+          manifestLoadingRetryDelay: 2000
         });
         p.hls = hls;
+        // Uzoq kutishda ekran jim qolmasin: birinchi ochilish sekinligi
+        // nosozlik emas, kamerani uyg'otish narxi. Buni aytib turish
+        // "ishlamayapti" degan xulosaning oldini oladi.
+        const bosqichlar = [
+          [6000, "Kamera uyg'otilmoqda…"],
+          [15000, "Kamera uyg'onmoqda — birinchi ochilish sekinroq…"],
+          [30000, "Hali ham kutilmoqda (uzoq keyframe oralig'i)…"]
+        ];
+        const kutishTimerlari = bosqichlar.map(([ms, matn]) =>
+          setTimeout(() => { if (!staleFn()) setMsg(matn, "wait"); }, ms));
+        const kutishniTozala = () => kutishTimerlari.forEach(clearTimeout);
+        p.onCleanup = kutishniTozala;
+
         hls.loadSource(url);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          kutishniTozala();
           if (!staleFn()) video.play().catch(() => {});
         });
         hls.on(Hls.Events.ERROR, (_, d) => {
           if (!d.fatal || staleFn()) return;
+          kutishniTozala();
           // Sub oqimda har qanday jiddiy xato — asosiyga qaytish sababi
           // (sub yo'l NVR'da o'chirilgan bo'lishi mumkin).
           if (onFail && (d.type === Hls.ErrorTypes.MEDIA_ERROR || p.mode === "sub")) {
