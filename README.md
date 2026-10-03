@@ -10,8 +10,8 @@ Servis sifatida ishlatish uchun hujjatlar:
 | Kim uchun | Fayl |
 |---|---|
 | Serverga qo'yuvchi | [docs/DEPLOY.md](docs/DEPLOY.md) — Docker, portlar, HTTPS, zaxira |
-| Backendchi | [docs/BACKEND.md](docs/BACKEND.md) — API kontrakt, auth, integratsiya |
-| Frontendchi | [docs/FRONTEND.md](docs/FRONTEND.md) — endpointlar, tayyor player kodi |
+| Backendchi | [backend/README.md](backend/README.md) — tuzilma, API, kirish; batafsil: [docs/BACKEND.md](docs/BACKEND.md) |
+| Frontendchi | [frontend/README.md](frontend/README.md) — modullar, video oqimi; batafsil: [docs/FRONTEND.md](docs/FRONTEND.md) |
 
 ## Ishga tushirish
 
@@ -28,8 +28,8 @@ faylini ikki marta bosing. U saytni ishga tushiradi va brauzerni ochadi.
 Qo'lda:
 
 ```powershell
-venv\Scripts\python.exe -m pip install -r requirements.txt
-venv\Scripts\python.exe main.py
+venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+venv\Scripts\python.exe backend\main.py
 ```
 
 MediaMTX'ni (`mediamtx\mediamtx.exe`) alohida ishga tushirish shart emas:
@@ -42,7 +42,7 @@ Port band bo'lsa (Windows'da 8000/8080 ni ko'pincha Docker Desktop yoki tizim
 xizmatlari egallaydi — `WinError 10013` shundan chiqadi):
 
 ```powershell
-$env:PORT = "8020"; venv\Scripts\python.exe main.py
+$env:PORT = "8020"; venv\Scripts\python.exe backend\main.py
 ```
 
 ## Super-admin
@@ -51,7 +51,7 @@ Birinchi ishga tushirishda admin yaratiladi va paroli konsolga chiqadi.
 Parolni istalgan payt almashtirish mumkin:
 
 ```powershell
-venv\Scripts\python.exe main.py --admin-parol YangiParol
+venv\Scripts\python.exe backend\main.py --admin-parol YangiParol
 ```
 
 Login sahifadagi **"Super admin"** tugmasi orqali. Kirgach chapda boshqaruv
@@ -262,40 +262,26 @@ tarmoqda qoladi, magistralga faqat ko'rilayotgan oqim chiqadi.
 
 ## Kod tuzilishi
 
-Backend (web-qatlam) va MediaMTX qatlami ataylab ajratilgan — bir-biri
-bilan faqat `from media import sync` chegarasi orqali gaplashadi:
+Loyiha uch qismga bo'lingan — har biri o'z README'si bilan, alohida
+odamga topshirish mumkin:
 
 ```
-main.py                  kirish nuqtasi: CLI, bootstrap, uvicorn
-app/                     BACKEND (web-qatlam)
-  ├─ __init__.py         create_app() — ilovani yig'ish, static
-  ├─ config.py           portlar, RTSP shablonlari (muhit o'zgaruvchilari)
-  ├─ models.py           so'rov modellari (Pydantic)
-  ├─ helpers.py          baza qatori → brauzer/MediaMTX ko'rinishlari
-  ├─ bootstrap.py        birinchi ishga tushirish, admin yaratish
-  ├─ routes_auth.py      /api/auth/*    — kirish/chiqish
-  ├─ routes_public.py    /api/cameras/* — xarita, oqim, surat (kirishsiz)
-  └─ routes_admin.py     /api/admin/*   — CRUD, NVR import, skaner, MediaMTX
-media/                   MEDIAMTX QATLAMI
-  ├─ sync.py             mediamtx.yml yaratish, jonli API, FFmpeg buyruqlari
-  └─ launcher.py         talab bo'yicha o'girish jarayoni
-core/                    UMUMIY INFRATUZILMA (ikkala qatlam ishlatadi)
-  ├─ db.py               SQLite sxemasi va migratsiya
-  ├─ security.py         admin paroli (scrypt), kamera parollari (Fernet)
-  ├─ health.py           kameralar tirikligini fonda kuzatish
-  ├─ rtsp_probe.py       kamerani tekshirish: tarmoq, login, kodek, o'lcham
-  ├─ log.py              strukturali jurnal (nigoh.log, JSON satrlar)
-  └─ fast_start.py       JPEG surat (poster) va keyframe so'rash
-scripts/
-  └─ import_mediamtx.py  qo'lda yozilgan mediamtx.yml ni bazaga ko'chirish
-stream_launcher.py       MediaMTX chaqiradigan yupqa qobiq (ildizda turishi shart)
-mediamtx/                MediaMTX'ning o'zi (exe) — yuklab olinadi, git'da yo'q
-static/
-  ├─ index.html          sahifa tuzilishi
-  ├─ style.css           barcha uslublar
-  ├─ app.js              xarita, player, video devor, dashboard, boshqaruv
-  └─ uz.geojson          O'zbekiston chegarasi (OSM)
+frontend/            INTERFEYS — frontendchi (frontend/README.md)
+  ├─ index.html  css/  assets/
+  └─ js/             ES modullar: xarita, pleyer, devor, dashboard, admin ...
+backend/             SERVER — backendchi (backend/README.md)
+  ├─ main.py         kirish nuqtasi: CLI, bootstrap, uvicorn
+  ├─ api/            HTTP qatlami: endpointlar, kirish, rollar
+  ├─ kamera/         KAMERA QATLAMI: MediaMTX, holat kuzatuvi, RTSP, suratlar
+  ├─ core/           umumiy: baza, xavfsizlik, log, statistika
+  ├─ tests/  scripts/
+  └─ stream_launcher.py   MediaMTX chaqiradigan qobiq
+mediamtx/            MediaMTX'ning o'zi (exe) — yuklab olinadi, git'da yo'q
+deploy/  docs/  Dockerfile  docker-compose.yml
 ```
+
+Bog'lanish yo'nalishi: `api/` -> `kamera/` -> `core/`. Frontend backend
+bilan faqat HTTP (`/api/...`) orqali gaplashadi.
 
 Ildizda qoladigan ma'lumot fayllari (git'ga tushmaydi): `cameras.db`,
 `secret.key`, `mediamtx.yml`, `auto.crt/key` — yo'llari kod ko'chganda ham
@@ -321,7 +307,7 @@ ulanadi (8888 va 8889-portlar), shuning uchun ular ham ochiq bo'lsin.
 MediaMTX boshqa kompyuterda bo'lsa:
 
 ```powershell
-$env:MEDIA_HOST = "192.168.1.50"; venv\Scripts\python.exe main.py
+$env:MEDIA_HOST = "192.168.1.50"; venv\Scripts\python.exe backend\main.py
 ```
 
 ## Keyingi qadamlar
