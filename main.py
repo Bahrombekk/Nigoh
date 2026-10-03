@@ -1,4 +1,4 @@
-"""Nigoh — kamera xaritasi va super-admin paneli.
+"""Nigoh — kamera xaritasi, video devor, dashboard va kamera/media qatlami.
 
 Ishga tushirish:
     pip install -r requirements.txt
@@ -6,17 +6,24 @@ Ishga tushirish:
 Keyin brauzerda:  http://localhost:8010
 (Portni o'zgartirish:  set PORT=8020  &&  python main.py)
 
+Sozlamalar muhitdan yoki loyiha ildizidagi `.env` dan o'qiladi
+(namuna: `.env.example`).
+
 Admin parolini almashtirish:
     python main.py --admin-parol YangiParol123
 
 Kod tuzilishi:
     main.py            shu fayl — faqat kirish nuqtasi
-    app/               BACKEND: config, nigoh (mikroservis mijozi), endpointlar
-    core/              UMUMIY: db, security, stats, log
+    app/               BACKEND: config, kirish (rollar, hududlar), endpointlar
+    media/             MEDIAMTX QATLAMI: sync, reconciler, launcher,
+                       transport (RTSP transportini o'lchash), devor
+    core/              UMUMIY: db, security, health, snapshots, rtsp_probe,
+                       device_info, fast_start, bus, events, metrics, stats,
+                       alerts, log, watchdog
+    static/            interfeys (xarita, devor, dashboard, boshqaruv)
+    tests/             pytest (pytest.ini: testpaths=tests)
     scripts/           yordamchi skriptlar
-
-Kamera/media qatlami alohida mikroservisda (nigoh-servis) — manzil va
-kalit `.env` da: NIGOH_URL, NIGOH_KEY.
+    stream_launcher.py MediaMTX chaqiradigan yupqa qobiq (ildizda turishi shart)
 """
 import os
 import sys
@@ -26,6 +33,18 @@ import uvicorn
 from app import create_app
 from app.bootstrap import bootstrap, change_admin_password
 from app.config import PORT
+from core import watchdog
+
+# Uvicorn to'xtatish signalini olganda ochiq ulanishlarni shuncha kutadi,
+# keyin majburan uzadi.
+#
+# NIMA UCHUN CHEGARA BOR. Standart holda uvicorn CHEKSIZ kutadi, SSE
+# (`/api/v1/events`) ulanishi esa hech qachon o'z-o'zidan yopilmaydi —
+# ishlab chiqarishda aynan shu bo'ldi: bitta SSE ulanishi tufayli jarayon
+# "Waiting for connections to close" holatida qotib qoldi, tinglash soketi
+# yopildi va butun xizmat (HLS auth, RTSP auth, API) muddatsiz o'ldi.
+# Tafsiloti: core/watchdog.py.
+SHUTDOWN_GRACE = float(os.environ.get("SHUTDOWN_GRACE", "5"))
 
 if "--admin-parol" in sys.argv:
     index_of = sys.argv.index("--admin-parol")
@@ -52,4 +71,8 @@ if __name__ == "__main__":
     else:
         # Tayyor obyekt beriladi — modul qayta import qilinmaydi,
         # bootstrap ham ikki marta ishlamaydi.
-        uvicorn.run(app, host="0.0.0.0", port=PORT)
+        # Port o'lib, jarayon tirik qolgan holat uchun oxirgi chegara
+        # (konteynerda o'zini tugatadi, Docker qaytaradi).
+        watchdog.start(PORT)
+        uvicorn.run(app, host="0.0.0.0", port=PORT,
+                    timeout_graceful_shutdown=SHUTDOWN_GRACE)

@@ -46,8 +46,16 @@ _CHANNEL_PATTERNS = (
 )
 
 
-def channel_from_path(rtsp_path: str) -> int:
-    """NVR'dagi kanal raqami — snapshot va ONVIF profilini tanlash uchun."""
+def channel_marked(rtsp_path: str) -> int | None:
+    """Yo'lda kanal ATAYLAB ko'rsatilgan bo'lsa — o'sha raqam, aks holda None.
+
+    `channel_from_path` topmaganda 1 qaytaradi (snapshot va ONVIF uchun
+    shunday qulay), lekin takror kamerani aniqlashda "1-kanal deb
+    yozilgan" bilan "kanal umuman ko'rsatilmagan" ni ajratish kerak:
+    `/stream1` da kanal yo'q, `/cam/realmonitor?channel=1&subtype=0` da
+    esa bor. Ikki xil yozuvni bitta kamera deb tanish uchun mezon aynan
+    shu — ular bir xil kanalni ataylab ko'rsatgani.
+    """
     path = rtsp_path or ""
     for pattern in _CHANNEL_PATTERNS:
         match = re.search(pattern, path, re.IGNORECASE)
@@ -56,7 +64,13 @@ def channel_from_path(rtsp_path: str) -> int:
             if pattern is _CHANNEL_PATTERNS[0] and n >= 100:
                 n //= 100        # 101 -> 1-kanal, 1602 -> 16-kanal
             return max(1, n)
-    return 1
+    return None
+
+
+def channel_from_path(rtsp_path: str) -> int:
+    """NVR'dagi kanal raqami — snapshot va ONVIF profilini tanlash uchun."""
+    marked = channel_marked(rtsp_path)
+    return marked if marked is not None else 1
 
 
 # ---------- ONVIF: darhol keyframe so'rash ----------
@@ -69,7 +83,14 @@ _service_cache: dict[str, str] = {}        # ip -> javob bergan service yo'li
 # lekin muddatli — ONVIF keyinroq yoqilsa, qayta ishga tushirish shart emas.
 _profile_cache: dict[str, tuple[list[str], float]] = {}
 _NO_ONVIF_TTL = 600.0
-_last_keyframe: dict[tuple, float] = {}    # (ip, path) -> oxirgi so'rov vaqti
+# (ip, path, oqim) -> oxirgi so'rovlar vaqti. Ro'yxat, chunki har ochilishda
+# ketma-ket ikkita so'rov ketadi (`request_keyframe_async` izohiga qarang).
+_last_keyframe: dict[tuple, list[float]] = {}
+KEYFRAME_WINDOW = 2.0          # soniya — bosim oynasi
+KEYFRAME_BURST = 2             # shu oynada ruxsat etilgan so'rovlar
+# Ikkinchi so'rov shuncha kechikadi. WHEP signalizatsiyasining p95 qiymati
+# 418 ms (o'lchov), ya'ni bu vaqtga tomoshabin ulanib bo'lgan bo'ladi.
+KEYFRAME_AFTER_SIGNAL = float(os.environ.get("KEYFRAME_AFTER_SIGNAL", "0.7"))
 _lock = threading.Lock()
 
 
@@ -139,13 +160,15 @@ def _media_profiles(ip: str, username: str, password: str) -> list[str]:
 
 
 def _onvif_keyframe(ip: str, username: str, password: str,
-                    rtsp_path: str) -> bool:
+                    rtsp_path: str, stream: str = "main") -> bool:
     tokens = _media_profiles(ip, username, password)
     if not tokens:
         return False
 
     # Profillar odatda kanal tartibida keladi: 1-main, 1-sub, 2-main, ...
-    index = (channel_from_path(rtsp_path) - 1) * 2
+    # Sub oqim so'ralganda keyframe ham sub profilga ketishi kerak — aks
+    # holda so'rov asosiy oqimga tegib, plitka ochilishiga foyda bermaydi.
+    index = (channel_from_path(rtsp_path) - 1) * 2 + (1 if stream == "sub" else 0)
     token = tokens[index] if index < len(tokens) else tokens[0]
 
     body = (
@@ -173,10 +196,11 @@ def _auth_opener(url: str, username: str, password: str):
 
 
 def _isapi_keyframe(ip: str, username: str, password: str,
-                    channel: int) -> bool:
+                    channel: int, stream: str = "main") -> bool:
     """Hikvision'ning o'z usuli — ONVIF o'chirilgan bo'lsa ham ishlaydi."""
+    # ISAPI'da oqim raqami kanalga qo'shib yoziladi: 101 — asosiy, 102 — sub.
     url = (f"http://{ip}:{HTTP_PORT}/ISAPI/Streaming/channels/"
-           f"{channel}01/requestKeyFrame")
+           f"{channel}{'02' if stream == 'sub' else '01'}/requestKeyFrame")
     req = urllib.request.Request(url, data=b"", method="PUT")
     try:
         with _auth_opener(url, username, password).open(req, timeout=TIMEOUT):
@@ -186,38 +210,83 @@ def _isapi_keyframe(ip: str, username: str, password: str,
 
 
 def request_keyframe(ip: str, username: str, password: str,
-                     rtsp_path: str = "", vendor: str = "") -> bool:
-    """Kameradan darhol keyframe (I-frame) yuborishni so'raydi."""
+                     rtsp_path: str = "", vendor: str = "",
+                     stream: str = "main") -> bool:
+    """Kameradan darhol keyframe (I-frame) yuborishni so'raydi.
+
+    `stream="sub"` — so'rov kanalning sub (past sifatli) oqimiga ketadi;
+    devor plitkalari shu oqimni ko'rsatadi.
+    """
     if not ip:
         return False
-    key = (ip, rtsp_path or "")
+    key = (ip, rtsp_path or "", stream)
     now = time.monotonic()
     with _lock:
-        if now - _last_keyframe.get(key, 0.0) < 2.0:   # bosimdan saqlanish
+        # Bosimdan saqlanish, lekin BITTA emas, KETMA-KET IKKITAGA ruxsat.
+        # Sababi `request_keyframe_async` izohida: bitta so'rov ko'pincha
+        # tomoshabin ulanishidan oldin ishlaydi va bekorga ketadi.
+        urinishlar = [t for t in _last_keyframe.get(key, ())
+                      if now - t < KEYFRAME_WINDOW]
+        if len(urinishlar) >= KEYFRAME_BURST:
             return False
-        _last_keyframe[key] = now
+        _last_keyframe[key] = urinishlar + [now]
+        if len(_last_keyframe) > 5_000:               # xotira chegarasi
+            for k, ts in list(_last_keyframe.items()):
+                if not ts or now - ts[-1] > KEYFRAME_WINDOW:
+                    _last_keyframe.pop(k, None)
 
-    if _onvif_keyframe(ip, username, password, rtsp_path):
+    if _onvif_keyframe(ip, username, password, rtsp_path, stream):
         return True
     if vendor == "hikvision":
         return _isapi_keyframe(ip, username, password,
-                               channel_from_path(rtsp_path))
+                               channel_from_path(rtsp_path), stream)
     return False
 
 
 def request_keyframe_async(ip: str, username: str, password: str,
-                           rtsp_path: str = "", vendor: str = "") -> None:
-    """Keyframe so'rovi fonda ketadi — oqim manzili javobini kechiktirmaydi."""
-    threading.Thread(
-        target=request_keyframe,
-        args=(ip, username, password, rtsp_path, vendor),
-        daemon=True,
-    ).start()
+                           rtsp_path: str = "", vendor: str = "",
+                           stream: str = "main") -> None:
+    """Keyframe so'rovi fonda ketadi — oqim manzili javobini kechiktirmaydi.
+
+    IKKI MARTA yuboriladi va sababi o'lchovda. Ishlab chiqarish
+    ko'rsatkichlari (293 ta haqiqiy WebRTC sessiyasi, /health -> open_ms):
+
+        stream_ms (backend)      p50   14 ms
+        signal_ms (WHEP)         p50  345 ms,  p95 418 ms
+        frame_ms  (birinchi kadr) p50 2329 ms, p95 8925 ms
+
+    Ya'ni butun kechikish birinchi kadrni kutishda. Bizning ONVIF so'rovimiz
+    esa ~190 ms da bajariladi — tomoshabin WebRTC bilan ULANMASDAN OLDIN.
+    Kamera IDR'ni o'sha zahoti yuboradi, uni hali hech kim o'qimayapti, va
+    tomoshabin baribir navbatdagi keyframe'ni (butun GOP) kutadi. Shuning
+    uchun bitta so'rov o'lchovda hech narsa o'zgartirmagan.
+
+    Ikkinchi so'rov signalizatsiya tugaganiga ishonch hosil qilingandan
+    keyin ketadi (p95 = 418 ms, zaxira bilan olindi), ya'ni IDR endi
+    ulangan tomoshabinga tushadi. Kamera ortiqcha so'rovni jimgina
+    e'tiborsiz qoldiradi, narxi — bitta yengil HTTP so'rov.
+    """
+    def yubor():
+        request_keyframe(ip, username, password, rtsp_path, vendor, stream)
+        time.sleep(KEYFRAME_AFTER_SIGNAL)
+        request_keyframe(ip, username, password, rtsp_path, vendor, stream)
+
+    threading.Thread(target=yubor, daemon=True).start()
 
 
 # ---------- JPEG surat (snapshot) ----------
 
 SNAPSHOT_TTL = 8.0                          # soniya — shu orada bitta surat yetadi
+# RTSP orqali kadr olish (FFmpeg zaxirasi) HTTP-snapshot bilan tenglashtirib
+# bo'lmaydigan darajada qimmat: MediaMTX'da yangi o'quvchi sessiyasi ochilib
+# yopiladi. Issiq kamerada bu har 10 soniyada takrorlanardi — ya'ni tirik
+# oqim ustida sekundiga bir necha marta sessiya qurilishi, jurnal esa
+# "created / destroyed: torn down" bilan to'lardi. Bu yo'l uchun kesh
+# ancha uzun: surat "jonli" bo'lishi shart emas.
+FFMPEG_TTL = 120.0
+# Yo'l umuman sozlanmagan bo'lsa (kamerani hech kim ochmagan) urinish
+# albatta muvaffaqiyatsiz. Buni tez-tez takrorlashning ma'nosi yo'q.
+FFMPEG_FAIL_TTL = 300.0
 _SNAP_CACHE_MAX = 500                       # surat ~200 KB: chegara ≈ 100 MB
 
 _snap_cache: dict[int, tuple[float, bytes | None]] = {}
@@ -282,23 +351,17 @@ def _ffmpeg_exe() -> str:
     return shutil.which("ffmpeg") or ""
 
 
-def _ffmpeg_snapshot(slug: str) -> bytes | None:
-    """Zaxira yo'l: MediaMTX'dagi oqimdan bitta kadr olinadi.
-
-    HTTP-snapshot bermaydigan kameralar uchun — MediaMTX kamerani baribir
-    talab bo'yicha tortadi, biz undan lokal ulanish orqali kadr olamiz
-    (kameraga qo'shimcha ulanish ochilmaydi).
-    """
+def _ffmpeg_frame(url: str, timeout: float = 10) -> bytes | None:
+    """Istalgan RTSP manzildan bitta JPEG kadr (FFmpeg bilan)."""
     exe = _ffmpeg_exe()
-    if not exe or not slug:
+    if not exe or not url:
         return None
-    url = f"rtsp://127.0.0.1:{os.environ.get('MEDIAMTX_RTSP_PORT', '8554')}/{slug}"
     try:
         out = subprocess.run(
             [exe, "-hide_banner", "-loglevel", "error",
              "-rtsp_transport", "tcp", "-i", url,
              "-frames:v", "1", "-q:v", "4", "-f", "image2", "-"],
-            capture_output=True, timeout=10,
+            capture_output=True, timeout=timeout,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -306,13 +369,54 @@ def _ffmpeg_snapshot(slug: str) -> bytes | None:
     return data if data[:2] == b"\xff\xd8" else None
 
 
+def _ffmpeg_snapshot(slug: str) -> bytes | None:
+    """Zaxira yo'l: MediaMTX'dagi oqimdan bitta kadr olinadi.
+
+    HTTP-snapshot bermaydigan kameralar uchun — MediaMTX kamerani baribir
+    talab bo'yicha tortadi, biz undan lokal ulanish orqali kadr olamiz
+    (kameraga qo'shimcha ulanish ochilmaydi).
+    """
+    if not slug:
+        return None
+    from . import security  # kech import: modul yukida kalit o'qilmasin
+    return _ffmpeg_frame(
+        f"rtsp://127.0.0.1:{os.environ.get('MEDIAMTX_RTSP_PORT', '8554')}"
+        f"/{slug}?token={security.internal_token()}")
+
+
+def device_snapshot(ip: str, username: str, password: str, channel: int,
+                    vendor: str = "", rtsp_url: str = "") -> bytes | None:
+    """Hali bazaga saqlanmagan qurilmadan bitta JPEG (skan ko'rinishi).
+
+    Avval kameraning HTTP-snapshot manzillari (eng tez), ishlamasa
+    to'g'ridan RTSP'dan kadr. Keshsiz — skanda har kanal bir marta.
+    """
+    if not ip:
+        return None
+    for url in _snapshot_candidates(vendor, ip, username, password, channel):
+        try:
+            data = _fetch_image(url, username, password)
+        except (urllib.error.URLError, OSError, ValueError):
+            continue
+        if data:
+            return data
+    return _ffmpeg_frame(rtsp_url) if rtsp_url else None
+
+
 def snapshot(camera_id: int, ip: str, username: str, password: str,
-             vendor: str, rtsp_path: str, slug: str = "") -> bytes | None:
+             vendor: str, rtsp_path: str, slug: str = "",
+             port: int = 554) -> bytes | None:
     """Kameraning JPEG suratini qaytaradi (qisqa muddat keshlab).
 
     Avval kameraning HTTP-snapshot manzillari sinaladi (eng tez yo'l),
-    ular ishlamasa — MediaMTX'dagi oqimdan kadr olinadi (har qanday
-    kamera uchun ishlaydi, lekin sekinroq).
+    ular ishlamasa — RTSP'dan kadr olinadi: TO'G'RIDAN kameradan (sovuq
+    kamerada ham ~1-2 s), bo'lmasa MediaMTX'dagi oqimdan.
+
+    Nega to'g'ridan: NVR'lar ko'pincha ISAPI/HTTP portini tashqariga
+    ochmaydi (RTSP boshqa portga forward qilingan) — HTTP surat 404
+    beradi. MediaMTX'dan olish esa sovuq kamerada runOnDemand cold-start
+    (keyframe kutish) tufayli 10 s timeout'ga uriladi. To'g'ridan RTSP
+    ikkalasini ham chetlab o'tadi.
     """
     if not ip:
         return None
@@ -336,13 +440,25 @@ def snapshot(camera_id: int, ip: str, username: str, password: str,
                 _snap_url[camera_id] = url
                 return data
 
-    data = _ffmpeg_snapshot(slug)
+    # RTSP zaxira: avval TO'G'RIDAN kameradan (sovuq kamerada ham tez,
+    # HTTP kabi port muammosi yo'q), bo'lmasa MediaMTX oqimidan.
+    data = None
+    if rtsp_path:
+        from .rtsp_probe import build_rtsp_url
+        data = _ffmpeg_frame(
+            build_rtsp_url(ip, port, rtsp_path, username, password))
+    if not data:
+        data = _ffmpeg_snapshot(slug)
     if data:
-        _snap_store(camera_id, now + SNAPSHOT_TTL, data)
+        # HTTP yo'l ishlamadi, RTSP ishladi. Kesh uzun: har 10 soniyada
+        # yangi RTSP sessiya ochish tirik oqimga xalaqit beradi.
+        _snap_store(camera_id, now + FFMPEG_TTL, data)
         _snap_url[camera_id] = _FFMPEG_SENTINEL   # keyingi safar to'g'ri shu yo'l
         return data
 
-    # Muvaffaqiyatsizlik ham keshlanadi — o'chiq kamerani qayta-qayta so'ramaslik uchun.
-    _snap_store(camera_id, now + SNAPSHOT_TTL, None)
+    # Muvaffaqiyatsizlik ham keshlanadi — o'chiq kamerani yoki sozlanmagan
+    # yo'lni qayta-qayta so'ramaslik uchun. Ilgari bu 8 soniya edi va
+    # jurnalda "path is not configured" cheksiz takrorlanardi.
+    _snap_store(camera_id, now + FFMPEG_FAIL_TTL, None)
     _snap_url.pop(camera_id, None)
     return None

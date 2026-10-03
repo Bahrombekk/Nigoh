@@ -23,16 +23,18 @@ docker compose up -d --build
 ```
 
 Windows'da (lokal ishlab chiqish) eng oson yo'l: **`ishga-tushirish.bat`**
-faylini ikki marta bosing. U MediaMTX va saytni birga ishga tushiradi,
-brauzerni ochadi.
+faylini ikki marta bosing. U saytni ishga tushiradi va brauzerni ochadi.
 
 Qo'lda:
 
 ```powershell
 venv\Scripts\python.exe -m pip install -r requirements.txt
-start mediamtx\mediamtx.exe mediamtx.yml     # video oqimlar
-venv\Scripts\python.exe main.py              # sayt
+venv\Scripts\python.exe main.py
 ```
+
+MediaMTX'ni (`mediamtx\mediamtx.exe`) alohida ishga tushirish shart emas:
+tizim `mediamtx.yml` ni o'zi yozadi va MediaMTX'ni o'zi ko'taradi, yiqilsa
+qayta ishga tushiradi. Sozlamalar `.env` da (namuna: `.env.example`).
 
 Brauzerda: **http://localhost:8010**
 

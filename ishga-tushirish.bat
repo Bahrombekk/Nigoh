@@ -17,16 +17,13 @@ if not exist "venv\Scripts\python.exe" (
   exit /b 1
 )
 
-if not exist ".env" (
-  echo   [!] .env topilmadi. .env.example dan nusxa olib, kamera
-  echo       mikroservisining manzili va kalitini yozing:
-  echo         NIGOH_URL=https://...
-  echo         NIGOH_KEY=...
+if not exist "mediamtx\mediamtx.exe" (
+  echo   [!] mediamtx\mediamtx.exe topilmadi — video oqimlar ishlamaydi.
+  echo       https://github.com/bluenviron/mediamtx/releases dan Windows
+  echo       arxivini yuklab, mediamtx\ papkasiga oching.
   echo.
-  pause
-  exit /b 1
 )
 
-echo   [*] Sayt ishga tushmoqda (kamera qatlami — mikroservisda)...
+echo   [*] Sayt ishga tushmoqda (MediaMTX'ni tizim o'zi ko'taradi)...
 start "" http://localhost:8010
 venv\Scripts\python.exe main.py

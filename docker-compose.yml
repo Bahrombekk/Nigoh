@@ -1,7 +1,7 @@
-# Nigoh — kamera mikroservisi.
+# Nigoh — kamera xaritasi, video devor va media qatlami.
 #
 # Ishga tushirish (Linux server):
-#     cp .env.example .env      # ADMIN_PAROL ni to'ldiring
+#     cp .env.example .env      # ADMIN_PAROL, PUBLIC_VIEW va boshqalar
 #     docker compose up -d --build
 #
 # WebRTC (jonli video) UDP orqali ishlaydi — shu sababli host tarmog'i
@@ -14,9 +14,38 @@ services:
     image: nigoh:latest
     container_name: nigoh
     restart: unless-stopped
+    # Konteynerda haqiqiy init (tini) turadi va PID 1 bo'ladi.
+    #
+    # Nima uchun: MediaMTX `runOnDemand` launcher'ini to'xtatganda
+    # launcher o'z FFmpeg bolasini yig'ishtirmasdan o'lishi mumkin —
+    # bola PID 1 ga o'tadi. PID 1 oddiy dastur bo'lsa (bizda `python
+    # main.py`) u begona bolalarni HECH QACHON yig'ishtirmaydi va ular
+    # zombi bo'lib to'planadi. Shu serverda qo'shni o'rnatmada aynan
+    # shunday bo'lgan: bitta jarayon ostida 1067 ta zombi FFmpeg, eng
+    # eskisi 5 kunlik. Har zombi PID bandlaydi — oxiri yangi jarayon
+    # ochilmay qoladi, ya'ni kamera ochilmaydi.
+    #
+    # tini bolalarni yig'ishtiradi va to'xtatish signalini to'g'ri
+    # uzatadi. Servisning o'z bolalari (MediaMTX, snapshot FFmpeg'lari)
+    # avvalgidek o'zi kutib oladi — bunga tegmaydi.
+    init: true
     network_mode: host
     env_file: .env
     volumes:
       # Baza, shifrlash kaliti, loglar — konteyner yangilansa ham qoladi.
       # BU PAPKANI ZAXIRALANG: ichida kamera parollari kaliti bor.
       - ./data:/data
+    # NVIDIA GPU — H.265 kameralarni H.264 ga o'girish uchun.
+    #
+    # GPU berilmasa servis o'zi CPU (`libx264`) ga tushadi va oqim
+    # baribir ishlaydi (`media/sync.py:has_nvenc`), lekin bitta H.265
+    # kamera bir yadroni to'liq egallaydi. GPU'da o'sha ish deyarli
+    # tekin va dekod-kodlash zanjiri xotiraga nusxa olmaydi.
+    #
+    # Talab: hostda NVIDIA drayveri va nvidia-container-toolkit
+    # (`nvidia-ctk --version` javob bersin). Yo'q bo'lsa shu ikki
+    # kalitni izohga oling — servis GPU'siz ham ko'tariladi.
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility

@@ -7,6 +7,7 @@ uchun Basic ham, Digest ham qo'llab-quvvatlanadi.
 import base64
 import hashlib
 import re
+import secrets
 import socket
 import urllib.parse
 
@@ -28,18 +29,40 @@ def build_rtsp_url(ip: str, port: int, path: str,
 
 
 def _digest_header(username: str, password: str, method: str, uri: str,
-                   challenge: str) -> str:
+                   challenge: str, nc: int = 1,
+                   cnonce: str | None = None) -> str:
+    """Digest Authorization sarlavhasi.
+
+    Kamera `qop` talab qilsa (Axis, ko'p ONVIF qurilma, ba'zi Dahua
+    firmware) RFC 2617 formulasi ishlatiladi: MD5(HA1:nonce:nc:cnonce:
+    qop:HA2). `qop`siz eski RFC 2069 formulasi qoladi. Bitta nonce bilan
+    ikkinchi so'rov (SETUP) yuborilganda `nc` oshirilishi shart.
+    """
     fields = dict(re.findall(r'(\w+)="([^"]*)"', challenge))
     realm = fields.get("realm", "")
     nonce = fields.get("nonce", "")
+    # qop qo'shtirnoqli ham, qo'shtirnoqsiz ham keladi: qop="auth" / qop=auth
+    qop_raw = fields.get("qop", "")
+    if not qop_raw:
+        match = re.search(r'qop=([^,\s"]+)', challenge)
+        qop_raw = match.group(1) if match else ""
+    qop = "auth" if "auth" in [q.strip() for q in qop_raw.split(",")] else ""
+
     md5 = lambda s: hashlib.md5(s.encode()).hexdigest()  # noqa: E731
     ha1 = md5(f"{username}:{realm}:{password}")
     ha2 = md5(f"{method}:{uri}")
-    response = md5(f"{ha1}:{nonce}:{ha2}")
+    if qop:
+        nc_value = f"{nc:08x}"
+        cnonce = cnonce or secrets.token_hex(8)
+        response = md5(f"{ha1}:{nonce}:{nc_value}:{cnonce}:{qop}:{ha2}")
+    else:
+        response = md5(f"{ha1}:{nonce}:{ha2}")
     header = (
         f'Digest username="{username}", realm="{realm}", nonce="{nonce}", '
         f'uri="{uri}", response="{response}"'
     )
+    if qop:
+        header += f', qop={qop}, nc={nc_value}, cnonce="{cnonce}"'
     if "opaque" in fields:
         header += f', opaque="{fields["opaque"]}"'
     return header
@@ -136,6 +159,41 @@ def sdp_video_control(describe: str, request_uri: str) -> str:
     if control.lower().startswith("rtsp://"):
         return control
     return base.rstrip("/") + "/" + control.lstrip("/")
+
+
+def sub_yol_nomzodlari(rtsp_path: str) -> list[str]:
+    """Asosiy yo'ldan ikkinchi (sub) oqim yo'lini taxmin qiladi.
+
+    Nima uchun kerak: bazada sub yo'li bo'sh bo'lgan kamera devorda
+    og'ir asosiy oqimda ochiladi. Amalda esa kameraning ikkinchi oqimi
+    ko'pincha BOR — shunchaki qo'shishda yozilmagan. Shu o'rnatmada
+    o'lchandi: sub yo'li bo'sh 23 kameradan sinalgan 8 tasining
+    4 tasida sub oqim ishlab turgan edi.
+
+    Taxmin ishlab chiqaruvchining nomlash qoidasiga tayanadi. Taxmin
+    QAT'IY EMAS — chaqiruvchi har nomzodni haqiqatda tekshiradi
+    (`media.sync.kadr_keladimi`) va faqat kadr bergani saqlanadi.
+    """
+    yol = (rtsp_path or "").strip()
+    if not yol:
+        return []
+    nomzod: list[str] = []
+    # Dahua va unga o'xshaganlar: subtype=0 -> subtype=1
+    if "subtype=0" in yol:
+        nomzod.append(yol.replace("subtype=0", "subtype=1"))
+    # Hikvision: /Streaming/Channels/101 -> 102 (oxirgi raqam — oqim
+    # nomeri: 1 asosiy, 2 sub).
+    m = re.search(r"(?i)(/streaming/channels/)(\d+)", yol)
+    if m and m.group(2).endswith("1"):
+        nomzod.append(yol[:m.start(2)] + m.group(2)[:-1] + "2" + yol[m.end(2):])
+    # "…/stream1", "…/ch01/main" kabi keng tarqalgan ikkita shakl.
+    m = re.search(r"(?i)(stream)0*1\b", yol)
+    if m:
+        nomzod.append(yol[:m.start()] + m.group(1) + "2" + yol[m.end():])
+    if re.search(r"(?i)/main\b", yol):
+        nomzod.append(re.sub(r"(?i)/main\b", "/sub", yol))
+    # Takrorlarni va asosiy yo'lning o'zini chiqarib tashlaymiz.
+    return [n for n in dict.fromkeys(nomzod) if n and n != yol]
 
 
 def probe(ip: str, port: int, path: str, username: str = "",
@@ -237,8 +295,9 @@ def probe(ip: str, port: int, path: str, username: str = "",
             transport = ["Transport: RTP/AVP/TCP;unicast;interleaved=0-1"]
             setup_auth = ""
             if challenge and challenge.lower().startswith("digest"):
+                # Bitta nonce ichida ikkinchi so'rov — nc oshiriladi.
                 setup_auth = _digest_header(username, password, "SETUP",
-                                            setup_uri, challenge)
+                                            setup_uri, challenge, nc=2)
             elif challenge:
                 token = base64.b64encode(f"{username}:{password}".encode()).decode()
                 setup_auth = f"Basic {token}"

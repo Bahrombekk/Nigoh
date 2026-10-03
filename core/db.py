@@ -15,15 +15,10 @@ DATA_DIR = Path(os.environ.get("NIGOH_DATA") or BASE_DIR)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "cameras.db"
 
+# Ilgari yangi baza demo kameralar bilan to'ldirilardi — endi seed yo'q
+# (server bo'sh boshlanadi). Konstanta 2-migratsiya uchun qoldi: mavjud
+# bazalardagi demo yozuvlarni shu manzil bo'yicha topib o'chiradi.
 DEMO_STREAM = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
-DEMO_CAMERAS = [
-    ("Amir Temur xiyoboni", "Toshkent", 41.3111, 69.2797, DEMO_STREAM),
-    ("Chorsu bozori", "Toshkent", 41.3266, 69.2345, DEMO_STREAM),
-    ("Registon maydoni", "Samarqand", 39.6547, 66.9758, DEMO_STREAM),
-    ("Labi Hovuz", "Buxoro", 39.7747, 64.4197, DEMO_STREAM),
-    ("Farg'ona markazi", "Farg'ona", 40.3864, 71.7864, DEMO_STREAM),
-    ("Urganch markazi", "Xorazm", 41.5500, 60.6333, DEMO_STREAM),
-]
 
 # Eski bazani yangi ustunlar bilan to'ldirish uchun (ALTER TABLE).
 CAMERA_EXTRA_COLUMNS = {
@@ -34,15 +29,49 @@ CAMERA_EXTRA_COLUMNS = {
     "password_enc": "TEXT",
     "rtsp_path": "TEXT",
     "sub_path": "TEXT",                           # past sifatli 2-oqim (video devor)
+    "sub_codec": "TEXT",                          # sub oqim kodegi (odatda H264)
+    # Sub oqimi brauzerda ochilmagan (masalan H.265 sub) — bir marta
+    # aniqlangач saqlanadi, keyingi safar devor to'g'ridan asosiy oqimdan
+    # ochadi, sub'ni qayta sinamaydi. Kamera tahrirlanganda 0 ga qaytadi.
+    "sub_bad": "INTEGER NOT NULL DEFAULT 0",
+    # Kamera RTSP'ni TCP (interleaved) orqali BERMAYDI — UDP kerak.
+    #
+    # O'lchov (shu o'rnatmada, 155 ta kamera, har biri 8 soniya):
+    # 42 tasi TCP'da PLAY'ga 200 OK beradi, keyin ulanishni 1-2 soniyada
+    # o'zi yopadi (ffmpeg: "Failed reading RTSP data: End of file",
+    # MediaMTX: "unexpected EOF"), o'sha kameralarning aksariyati UDP'da
+    # 8 soniyada ~190 kadr beradi. Ishlab chiqaruvchiga ham, subnetga ham
+    # bog'liq emas (dahua ham, holowits ham; bir xil subnetda ishlaydigani
+    # ham bor) — demak qaror KAMERA bo'yicha saqlanadi, global emas.
+    #
+    # Tashqaridan bu "kamera ochilmayapti" bo'lib ko'rinardi: HLS muxeri
+    # birinchi segmentni bermay o'lgani uchun brauzer index.m3u8 ga bo'sh
+    # tanali 500 olardi. `media/transport.py` buni o'zi aniqlab shu
+    # ustunni yozadi, kamera tahrirlanganda 0 ga qaytadi.
+    "rtsp_udp": "INTEGER NOT NULL DEFAULT 0",
     "vendor": "TEXT",
     "enabled": "INTEGER NOT NULL DEFAULT 1",
     "note": "TEXT",
     "codec": "TEXT",                              # kameradan kelayotgan kodek
     "resolution": "TEXT",                         # SDP'dan: "1920x1080" yoki bo'sh
+    # SDP'dan kadr tezligi. Probe uni allaqachon o'qirdi, lekin saqlanmasdi —
+    # holbuki "25 fps deb sozlangan kamera 8 fps beryapti" degan xulosa
+    # aynan shu ustunsiz chiqmaydi. 0 — kamera bermagan.
+    "fps": "REAL NOT NULL DEFAULT 0",
     "transcode": "INTEGER NOT NULL DEFAULT 0",    # H.264 ga o'girish kerakmi
     "always_on": "INTEGER NOT NULL DEFAULT 0",    # doim tayyor tursinmi
     "last_seen": "TEXT",                          # oxirgi marta onlayn bo'lgan vaqt (UTC)
     "node_id": "INTEGER NOT NULL DEFAULT 1",      # qaysi MediaMTX tuguni tortadi
+    # Tashqi tizim identifikatori: asosiy tizim o'z ID'si bilan murojaat
+    # qiladi (ext:...), mapping jadval yuritmaydi.
+    "external_id": "TEXT",
+    # Qurilma pasporti (/devices/info to'ldiradi): eski firmware'larni
+    # topish va ta'minotchi bilan gaplashish uchun.
+    "model": "TEXT",
+    "firmware": "TEXT",
+    # Oxirgi muvaffaqiyatli surat vaqti — suratning o'zi diskda
+    # ({DATA_DIR}/snapshots/{slug}.jpg), bazada blob saqlanmaydi.
+    "snapshot_at": "TEXT",
 }
 
 # Kamera ko'payganda xaritani va ro'yxatni tez ushlab turadigan indekslar.
@@ -53,7 +82,23 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_cameras_bbox ON cameras(lat, lng)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)",
     "CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)",
+    # Uptime hisobi kamera kesimida o'qiydi: slug bo'yicha, vaqt tartibida.
+    "CREATE INDEX IF NOT EXISTS idx_events_slug_ts ON events(slug, ts)",
     "CREATE INDEX IF NOT EXISTS idx_cameras_node ON cameras(node_id)",
+    # Bo'sh/NULL qiymatlar cheklovga tushmaydi — external_id ixtiyoriy.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_cameras_external "
+    "ON cameras(external_id) WHERE external_id IS NOT NULL AND external_id != ''",
+    # BITTA IP+PORT+RTSP YO'L — BITTA KAMERA.
+    #
+    # Cheklov aynan bazada turishi kerak: qo'shishdan oldingi tekshiruv
+    # yetmaydi, chunki tekshiruv bilan yozuv orasida RTSP probe'lari bir
+    # necha soniya ketadi. Shu oraliqda kelgan ikkinchi so'rov (tashqi
+    # tizimning takror urinishi, dev va prod muhitlari, tugmani ikki
+    # bosish) ham tekshiruvdan o'tib ketardi va ikkinchi nusxa
+    # yaratilardi — ishlab chiqarishda 195 kameradan 30 tasi shunday
+    # ikkilangan. Manual kameralar (ip bo'sh) cheklovga tushmaydi.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_cameras_rtsp "
+    "ON cameras(ip, port, rtsp_path) WHERE ip IS NOT NULL AND ip != ''",
 ]
 
 
@@ -112,6 +157,86 @@ def unique_slug(db, base: str, exclude_id: int | None = None) -> str:
 
 # ---------- sxema ----------
 
+def set_sub_bad(slugs: list[str], bad: bool) -> list[str]:
+    """`sub_bad` bayrog'ini o'rnatadi/oladi. Qaytadi: o'zgargan sluglar.
+
+    Faqat haqiqatan boshqa qiymatda turgan qator yangilanadi, shuning
+    uchun chaqiruvchi har tsiklda chaqirsa ham takror yozuv bo'lmaydi.
+
+    Bayroq nimani bildiradi: kameraning ikkinchi (sub) oqimi yo'q yoki
+    ishlamayapti — tomoshabinga asosiy oqim berilsin. Uni reconciler
+    jonli kuzatuvdan o'zi qo'yadi va o'zi oladi (media/reconciler.py,
+    `_check_sub_health`), pleyer ham qo'ya oladi (/sub-bad).
+    """
+    qiymat = 1 if bad else 0
+    ozgargan: list[str] = []
+    with get_db() as db:
+        for slug in slugs:
+            if db.execute(
+                "UPDATE cameras SET sub_bad = ? WHERE slug = ? AND sub_bad = ?",
+                (qiymat, slug, 1 - qiymat),
+            ).rowcount:
+                ozgargan.append(slug)
+        if ozgargan:
+            db.commit()
+    return ozgargan
+
+
+def cameras_by_slug(slugs: list[str]) -> list[dict]:
+    """Sub yo'li bor kameralarni slug bo'yicha oladi (tekshiruv uchun)."""
+    if not slugs:
+        return []
+    q = ",".join("?" * len(slugs))
+    with get_db() as db:
+        return [dict(r) for r in db.execute(
+            "SELECT id, slug, ip, port, username, password_enc, sub_path, "
+            f"rtsp_udp FROM cameras WHERE slug IN ({q}) "
+            "AND sub_path IS NOT NULL AND sub_path != ''", slugs)]
+
+
+def cameras_without_sub() -> list[dict]:
+    """Sub yo'li yozilmagan, yoqilgan kameralar.
+
+    Ular devorda og'ir asosiy oqimda ochiladi. Kameraning ikkinchi oqimi
+    ko'pincha BOR — shunchaki qo'shishda yozilmagan; reconciler uni
+    taxmin qilib, tekshirib, shu yerga yozadi (`set_sub_path`).
+    """
+    with get_db() as db:
+        return [dict(r) for r in db.execute(
+            "SELECT id, slug, ip, port, username, password_enc, rtsp_path, "
+            "rtsp_udp FROM cameras WHERE enabled = 1 AND ip != '' "
+            "AND (sub_path IS NULL OR sub_path = '')")]
+
+
+def set_sub_path(slug: str, sub_path: str) -> bool:
+    """Topilgan sub yo'lini yozadi. Faqat yo'l hali bo'sh bo'lsa.
+
+    Shart muhim: operator shu orada qo'lda yo'l yozgan bo'lishi mumkin,
+    avtomatik taxmin uni bosib ketmasin.
+    """
+    with get_db() as db:
+        n = db.execute(
+            "UPDATE cameras SET sub_path = ? WHERE slug = ? "
+            "AND (sub_path IS NULL OR sub_path = '')",
+            (sub_path, slug)).rowcount
+        if n:
+            db.commit()
+    return bool(n)
+
+
+def sub_bad_cameras() -> list[dict]:
+    """`sub_bad` deb belgilangan, sub yo'li bor va yoqilgan kameralar.
+
+    Qayta tekshirish uchun: operator registratorda ikkinchi oqimni
+    yoqsa, tizim buni o'zi ko'rib bayroqni olishi kerak.
+    """
+    with get_db() as db:
+        return [dict(r) for r in db.execute(
+            "SELECT id, slug, ip, port, username, password_enc, sub_path, "
+            "rtsp_udp FROM cameras WHERE sub_bad = 1 AND enabled = 1 "
+            "AND ip != '' AND sub_path IS NOT NULL AND sub_path != ''")]
+
+
 def init_db() -> None:
     with get_db() as db:
         db.execute(
@@ -147,17 +272,6 @@ def init_db() -> None:
             db.execute("ALTER TABLE admins ADD COLUMN role TEXT NOT NULL "
                        "DEFAULT 'admin'")
 
-        # Operator qaysi hududlarni ko'ra oladi (admin uchun yozuv bo'lmaydi —
-        # u hammasini ko'radi).
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_regions (
-                user_id INTEGER NOT NULL,
-                region TEXT NOT NULL,
-                UNIQUE (user_id, region)
-            )
-            """
-        )
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
@@ -210,41 +324,174 @@ def init_db() -> None:
                  int(os.environ.get("WEBRTC_PORT", "8889"))),
             )
 
-        # Dashboard statistikasi: hudud kesimidagi 5 daqiqalik suratlar va
-        # uzilish/ulanish hodisalari (core/stats.py yozadi).
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS stats_region (
-                ts TEXT NOT NULL,
-                region TEXT NOT NULL,
-                total INTEGER NOT NULL,
-                online INTEGER NOT NULL
-            )
-            """
-        )
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS stats_event (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts TEXT NOT NULL,
-                camera_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                region TEXT NOT NULL,
-                kind TEXT NOT NULL
-            )
-            """
-        )
+        _run_migrations(db)
+        _users_and_stats(db)
 
         for statement in INDEXES:
             db.execute(statement)
 
-        if db.execute("SELECT COUNT(*) FROM cameras").fetchone()[0] == 0:
-            db.executemany(
-                "INSERT INTO cameras (name, region, lat, lng, stream_url) "
-                "VALUES (?, ?, ?, ?, ?)",
-                DEMO_CAMERAS,
-            )
-            _backfill_slugs(db)
+
+def _users_and_stats(db) -> None:
+    """Operator hududlari va dashboard tarixi jadvallari.
+
+    Migratsiyalardan KEYIN yaratiladi: mikroservis bazasida 1-migratsiya
+    ularni o'chirib bo'lgan — shu baza ko'chirib kelinganda ham jadvallar
+    joyida bo'lsin.
+    """
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_regions (
+            user_id INTEGER NOT NULL,
+            region TEXT NOT NULL,
+            UNIQUE (user_id, region)
+        )
+        """
+    )
+    # 5 daqiqalik hudud suratlari — dashboard grafiklari (core/stats.py).
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stats_region (
+            ts TEXT NOT NULL,
+            region TEXT NOT NULL,
+            total INTEGER NOT NULL,
+            online INTEGER NOT NULL
+        )
+        """
+    )
+    db.execute("CREATE INDEX IF NOT EXISTS idx_stats_region_ts "
+               "ON stats_region(ts)")
+    # Kamera uzildi/qaytdi hodisalari — dashboard lentasi.
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS stats_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL,
+            camera_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            region TEXT NOT NULL,
+            kind TEXT NOT NULL
+        )
+        """
+    )
+    db.execute("CREATE INDEX IF NOT EXISTS idx_stats_event_ts "
+               "ON stats_event(ts)")
+
+
+# ---------- raqamlangan migratsiyalar ----------
+#
+# CAMERA_EXTRA_COLUMNS tsikli "yetishmagan ustunni qo'shish"ni bajaradi —
+# u idempotent va tartibga muhtoj emas. Undan tashqaridagi har qanday
+# sxema o'zgarishi (jadval o'chirish, ma'lumot ko'chirish, indeksni
+# almashtirish) shu ro'yxatga raqam bilan qo'shiladi: har biri bir marta,
+# tartib bilan bajariladi, bajarilgani `schema_version` jadvalida turadi.
+
+
+def _m1_kesish(db) -> None:
+    """Endi hech narsa qilmaydi — raqami tarix uchun saqlanadi.
+
+    Mikroservis davrida bu migratsiya statistika va operator hududlari
+    jadvallarini o'chirardi (ular o'shanda asosiy tizimda edi). Servis
+    asosiy tizimga qaytib qo'shilgach, o'sha jadvallar yana shu bazada
+    yashaydi: o'chirish ularni har yangi bazada yo'q qilardi. Servis
+    bazasida u allaqachon bajarilgan — jadvallar init_db'da qayta
+    yaratiladi (_users_and_stats)."""
+
+
+def _m2_demo_tozalash(db) -> None:
+    """Eski seed'dan qolgan demo kameralarni o'chiradi — ishlab
+    chiqarish bazasi bo'sh boshlanishi kerak. Faqat aynan demo oqim
+    manziliga qaragan, IP'siz yozuvlar ketadi — haqiqiylarga tegilmaydi."""
+    db.execute(
+        "DELETE FROM cameras WHERE stream_url = ? AND (ip IS NULL OR ip = '')",
+        (DEMO_STREAM,),
+    )
+
+
+def _m3_takror_kamera(db) -> None:
+    """Ikkilangan kameralarni tozalaydi — `idx_cameras_rtsp` shundan
+    keyin quriladi (takror qolsa indeks umuman yaratilmaydi).
+
+    Bitta IP+port+RTSP yo'lga bir nechta yozuv bo'lsa, eng birinchisi
+    (kichik id) qoladi: MediaMTX yo'li, suratlar va uzilishlar tarixi
+    o'shanikida. Keyingilari o'chiriladi — ular o'sha kameraning
+    nusxasi, o'z ma'lumoti yo'q.
+    """
+    dups = db.execute(
+        "SELECT COUNT(*) FROM cameras WHERE ip IS NOT NULL AND ip != '' "
+        "AND id NOT IN (SELECT MIN(id) FROM cameras "
+        "WHERE ip IS NOT NULL AND ip != '' GROUP BY ip, port, rtsp_path)"
+    ).fetchone()[0]
+    if not dups:
+        return
+    db.execute(
+        "DELETE FROM cameras WHERE ip IS NOT NULL AND ip != '' "
+        "AND id NOT IN (SELECT MIN(id) FROM cameras "
+        "WHERE ip IS NOT NULL AND ip != '' GROUP BY ip, port, rtsp_path)")
+    # Ichkarida import: core.log DATA_DIR uchun shu modulni import
+    # qiladi — yuqorida yozilsa aylanma bo'ladi.
+    from core.log import log
+    log("db", "takror_kamera_ochirildi", removed=dups,
+        detail="bir xil IP+port+RTSP yo'lli nusxalar, birinchisi qoldirildi")
+
+
+def _m4_yolsiz_takror(db) -> None:
+    """RTSP yo'li ko'rsatilmagan takror kameralarni olib tashlaydi.
+
+    Tashqi tizim kamerani faqat IP bilan yuborganda yo'l standart
+    `/stream1` bo'lib qolgan, holbuki o'sha kamera Nigoh'da allaqachon
+    o'zining haqiqiy yo'li bilan turgan (dahua'da
+    `/cam/realmonitor?channel=1&subtype=0`). Yo'llar farq qilgani uchun
+    `idx_cameras_rtsp` bunday nusxani ushlamaydi — ro'yxatda bitta
+    kamera ikkita bo'lib ko'rinardi (ikkinchisi "yo'l: yo'q" bilan).
+
+    Faqat aniq o'lik nusxalar ketadi: yo'li standart `/stream1`, kodegi
+    hech qachon aniqlanmagan (ya'ni bu yo'ldan oqim kelmagan) va o'sha
+    IP+port'da kodegi aniqlangan, ishlayotgan boshqa kamera bor.
+    Registratorning haqiqiy `/stream1` kanaliga tegilmaydi — unda kodek
+    bor. Yangi nusxalar esa qo'shishning o'zida to'xtatiladi
+    (`api/admin.py:_path_given`).
+    """
+    shart = (
+        "FROM cameras WHERE ip IS NOT NULL AND ip != '' "
+        "AND rtsp_path = '/stream1' AND (codec IS NULL OR codec = '') "
+        "AND EXISTS (SELECT 1 FROM cameras o WHERE o.ip = cameras.ip "
+        "AND o.port = cameras.port AND o.id != cameras.id "
+        "AND o.rtsp_path != cameras.rtsp_path "
+        "AND o.codec IS NOT NULL AND o.codec != '')"
+    )
+    dups = db.execute(f"SELECT COUNT(*) {shart}").fetchone()[0]
+    if not dups:
+        return
+    db.execute(f"DELETE {shart}")
+    from core.log import log
+    log("db", "yolsiz_takror_ochirildi", removed=dups,
+        detail="IP bo'yicha takror, standart /stream1 yo'li ishlamagan")
+
+
+MIGRATIONS = [
+    (1, _m1_kesish),
+    (2, _m2_demo_tozalash),
+    (3, _m3_takror_kamera),
+    (4, _m4_yolsiz_takror),
+]
+
+
+def schema_version(db) -> int:
+    db.execute("CREATE TABLE IF NOT EXISTS schema_version "
+               "(version INTEGER NOT NULL, applied_at TEXT NOT NULL "
+               "DEFAULT (datetime('now')))")
+    row = db.execute("SELECT MAX(version) FROM schema_version").fetchone()
+    return row[0] or 0
+
+
+def _run_migrations(db) -> None:
+    current = schema_version(db)
+    for version, migrate in MIGRATIONS:
+        if version <= current:
+            continue
+        migrate(db)
+        db.execute("INSERT INTO schema_version (version) VALUES (?)",
+                   (version,))
 
 
 def _migrate_cameras(db) -> None:

@@ -1,33 +1,119 @@
 """Nigoh — birinchi ishga tushirish tayyorgarligi."""
 import os
-import sys
 
-from core import security
+from core import health, security, snapshots
 from core.db import get_db, init_db
 from core.log import log
+from media import reconciler
+from media import sync as mediamtx_sync
 
-from . import nigoh
-from .config import NIGOH_KEY, NIGOH_URL
+from . import stats
+from .config import API_KEY
+from .helpers import cameras_for_mediamtx
+
+
+def _load_cameras() -> list[dict]:
+    """Reconciler uchun: kameralarning MediaMTX ko'rinishi, har safar bazadan."""
+    with get_db() as db:
+        return cameras_for_mediamtx(db)
+
+
+def _streaming_pairs() -> set[tuple[str, int]]:
+    """Ayni damda MediaMTX oqim olayotgan kameralarning (ip, port) to'plami.
+
+    Health tekshiruvi shu ro'yxatga qaraydi: TCP javob bermasa ham,
+    MediaMTX kameradan bayt olayotgan bo'lsa kamera tirik hisoblanadi.
+    Sweep'da faqat tekshiruvdan o'tmagan manzil bo'lsa chaqiriladi.
+
+    core/ media/ ga bog'lanmasligi uchun funksiya shu qatlamda turadi va
+    health'ga uzatiladi (reconciler'dagi `load_cameras` bilan bir xil).
+    """
+    paths = mediamtx_sync.list_active_paths()
+    if not paths:
+        return set()
+    ready = set()
+    for name, item in paths.items():
+        if not item.get("ready"):
+            continue
+        base = name
+        for suffix in (mediamtx_sync.TRANSCODE_SUFFIX, mediamtx_sync.SUB_SUFFIX):
+            if base.endswith(suffix):
+                base = base[: -len(suffix)]
+        ready.add(base)
+    if not ready:
+        return set()
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT ip, port FROM cameras WHERE slug IN "
+            f"({','.join('?' * len(ready))})", tuple(ready)).fetchall()
+    return {(r["ip"], r["port"] or 554) for r in rows if r["ip"]}
 
 
 def bootstrap() -> None:
-    # Kamera qatlami mikroservisda — manzil va kalitsiz tizim ma'nosiz,
-    # shuning uchun darhol, tushunarli xabar bilan to'xtaymiz.
-    if not NIGOH_URL or not NIGOH_KEY:
-        sys.exit(
-            "NIGOH_URL va NIGOH_KEY sozlanmagan.\n"
-            "Loyiha ildizidagi .env fayliga yozing:\n"
-            "    NIGOH_URL=https://kamera-servis-manzili\n"
-            "    NIGOH_KEY=<mikroservisning NIGOH_API_KEY qiymati>"
-        )
-
     init_db()
 
-    # Kamera holatlarini mikroservisdan fonda so'rab, dashboard tarixini
-    # (stats_region/stats_event) yozib boramiz. Sayt ochilishini kutdirmaydi.
-    nigoh.start_poller()
+    # Kameralarning tirikligini fonda kuzatib boramiz — xaritada o'chiq
+    # kameralar qizil bo'lib ko'rinadi.
+    # Oqim ketayotgan kamera "o'chiq" deb belgilanmasin: TCP tekshiruvi
+    # qurilma band yoki sekin bo'lganda ham yiqiladi, MediaMTX'dagi bayt
+    # esa tiriklikning aniq dalili.
+    health.set_streaming_probe(_streaming_pairs)
+    health.start()
 
-    log("app", "started", nigoh_url=NIGOH_URL)
+    # Suratlar diskda, pog'onali yangilanadi: issiq (so'ralgan) — 10 s,
+    # sovuq online — 5 daqiqa. Poster'lar shu zaxiradan darhol beriladi.
+    snapshots.start()
+
+    # mediamtx.yml har ishga tushishda qayta yoziladi: portlar va kirish
+    # nazorati sozlamalari kod bilan birga yangilansin. MediaMTX ishlab
+    # turgan bo'lsa faylni o'zi qayta o'qiydi — qo'lda hech narsa kerak emas.
+    with get_db() as db:
+        mediamtx_sync.write_config(cameras_for_mediamtx(db))
+
+    # MediaMTX'ni fonda kuzatib turamiz: yiqilsa qayta ishga tushiriladi,
+    # yo'llar (kamera qo'shildi/o'chirildi, MediaMTX qayta ko'tarildi)
+    # o'z-o'zidan kelishtiriladi. Sayt ochilishini kutdirmaydi.
+    reconciler.start(_load_cameras)
+
+    # Dashboard tarixi (stats_region/stats_event) — har daqiqada.
+    stats.start_recorder()
+
+    log("app", "started", api_key=bool(API_KEY))
+
+    # WebRTC tashqaridan ishlashi uchun MediaMTX ICE nomzodida brauzer
+    # YETA OLADIGAN manzilni e'lon qilishi kerak. Sozlanmasa u faqat
+    # o'z interfeyslarini beradi (127.0.0.1, ichki LAN, docker0) va
+    # tashqi tomoshabinda signalizatsiya o'tadi, kadr esa kelmaydi.
+    #
+    # Bu eng qimmat jim nosozliklardan biri: har ochilish 6 soniya
+    # behuda kutib HLS'ga tushadi, HLS'ning sovuq starti esa 15-65
+    # soniya — foydalanuvchi buni "sekin" va "ochilmayapti" deb ko'radi.
+    # O'lchov: 5 kameradan 5 tasi 12 soniyada bitta kadr bermadi.
+    #
+    # Sozlama berilmasa manzil endi marshrut bo'yicha O'ZI aniqlanadi
+    # (media/sync.webrtc_ice_hosts) — ya'ni ichki tarmoqdagi tomoshabin
+    # uchun WebRTC baribir ishlaydi. Shuning uchun ogohlantirish
+    # yumshatildi: u endi "umuman ishlamaydi" emas, "faqat ichkarida
+    # ishlaydi" deydi. Umuman manzil topilmagani esa jiddiy — o'shanda
+    # MediaMTX hamma interfeysni e'lon qiladi va ICE virtual adapterni
+    # (VPN, WSL) tanlab qo'yishi mumkin; o'lchovda bu qotishni ikki
+    # barobar oshirgan edi.
+    if not mediamtx_sync.WEBRTC_HOSTS:
+        topilgan = mediamtx_sync.webrtc_ice_hosts()
+        log("app", "webrtc_tashqi_manzil_yoq",
+            level="info" if topilgan else "warning",
+            topilgan=topilgan,
+            sabab=("WEBRTC_HOSTS/MEDIA_HOST/MEDIA_BASE bo'sh — manzil "
+                   f"marshrut bo'yicha aniqlandi ({', '.join(topilgan)}). "
+                   "Ichki tarmoqdagi tomoshabinga yetadi, internetdagi "
+                   "tomoshabinga YETMAYDI." if topilgan else
+                   "WEBRTC_HOSTS/MEDIA_HOST/MEDIA_BASE bo'sh va manzil "
+                   "avtomatik ham aniqlanmadi — MediaMTX hamma "
+                   "interfeysni e'lon qiladi, ICE virtual adapterni "
+                   "(VPN, WSL) tanlab qolishi mumkin"),
+            yechim="Tashqi tomoshabin kerak bo'lsa `.env` ga "
+                   "WEBRTC_HOSTS=<domen yoki tashqi IP> yozing va ICE "
+                   "portini (UDP/TCP) firewallda oching")
 
     with get_db() as db:
         generated = security.ensure_admin(db)

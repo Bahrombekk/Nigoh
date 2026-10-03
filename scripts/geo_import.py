@@ -206,7 +206,6 @@ def main() -> int:
             continue
         planned.append((camera, point))
 
-    used = {(c.get("ip") or "").strip() for c, _ in planned}
     missing_ips = sorted(set(points) - {(c.get("ip") or "").strip() for c in cameras})
 
     print(f"\nYoziladi: {len(planned)} ta")

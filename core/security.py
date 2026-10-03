@@ -83,27 +83,72 @@ def _stream_sig(path: str, expires: int) -> str:
     return base64.urlsafe_b64encode(mac.digest()[:20]).decode().rstrip("=")
 
 
+def _sig_matches(sig: str, path: str, expires: int) -> bool:
+    """Chipta shu yo'lga (yoki uning ichki resursiga) tegishlimi.
+
+    Chipta oqim yo'liga imzolanadi ("kamera_1"), lekin MediaMTX ba'zi
+    so'rovlarda ICHKI resurs bilan murojaat qiladi — masalan HLS variant
+    playlisti "kamera_1/video1_stream.m3u8". Aynan tekshirilsa bunday
+    so'rov rad etilardi va tomosha o'rtasida video uzilardi (o'lchov:
+    tomosha boshlangandan ~25-45 soniya keyin 401 boshlanardi).
+
+    Prefiks bo'yicha moslik xavfsiz: "kamera_1" chiptasi faqat
+    "kamera_1" va uning ichidagi resurslarga ruxsat beradi. Yondosh
+    "kamera_10" ga o'tmaydi — chegara sifatida "/" talab qilinadi.
+    """
+    if hmac.compare_digest(sig, _stream_sig(path, expires)):
+        return True
+    base = path.split("/", 1)[0]
+    if base and base != path:
+        return hmac.compare_digest(sig, _stream_sig(base, expires))
+    return False
+
+
 def stream_token(path: str) -> str:
     """Bitta yo'l uchun imzolangan chipta — oqim manziliga ?token= bo'lib qo'shiladi."""
     expires = int(time.time()) + STREAM_TOKEN_TTL
     return f"{expires}.{_stream_sig(path, expires)}"
 
 
+def _session_key(ip: str, path: str) -> tuple[str, str]:
+    """Sessiya kaliti — HAR DOIM oqim yo'lining o'zi bo'yicha.
+
+    MediaMTX ichki resurslarni ham so'raydi ("kamera_1/video1_seg7.mp4").
+    Ilgari kalit to'liq yo'l bo'yicha olinardi va shu sababli sessiya
+    ishlamasdi: "kamera_1" uchun ochilgan sessiya "kamera_1/..." ni
+    qoplamaydi. Natijada tokensiz kelgan segment so'rovlari 401 olardi —
+    ishlab chiqarishda o'lchandi:
+
+        yo'l "kamera_1"                    tokensiz -> 200
+        yo'l "kamera_1/video1_stream.m3u8" tokensiz -> 401
+        yo'l "kamera_1/video1_seg9.mp4"    tokensiz -> 401
+
+    Imzo tekshiruvi (`_sig_matches`) allaqachon asosiy yo'lga
+    normallashtirilgan; sessiya ham xuddi shunday bo'lishi shart, aks
+    holda mexanizmning butun ma'nosi yo'qoladi (u aynan tokensiz
+    segmentlar uchun bor).
+    """
+    base = path.split("/", 1)[0]
+    # Bo'sh baza (masalan "/kamera_1") bo'lsa to'liq yo'l ishlatiladi —
+    # aks holda barcha oqim bitta ("", ip) kalitiga tushib qolardi.
+    return (ip, base or path)
+
+
 def stream_access_ok(ip: str, path: str, token: str) -> bool:
     """MediaMTX'dan kelgan o'qish so'rovini tekshiradi.
 
-    To'g'ri token — ruxsat + (ip, yo'l) sessiyasi. Tokensiz so'rov faqat
-    tirik sessiya bo'lsa o'tadi (HLS segmentlari, WHEP davomi).
+    To'g'ri token — ruxsat + (ip, oqim yo'li) sessiyasi. Tokensiz so'rov
+    faqat tirik sessiya bo'lsa o'tadi (HLS segmentlari, WHEP davomi).
     """
     now = time.time()
-    key = (ip, path)
+    key = _session_key(ip, path)
     if token:
         expires_s, _, sig = token.partition(".")
         try:
             expires = int(expires_s)
         except ValueError:
             expires = 0
-        if expires > now and hmac.compare_digest(sig, _stream_sig(path, expires)):
+        if expires > now and _sig_matches(sig, path, expires):
             with _stream_lock:
                 if len(_stream_sessions) > 10_000:      # chegara: eskilar chiqsin
                     for k in [k for k, t in _stream_sessions.items() if t <= now]:
@@ -115,6 +160,62 @@ def stream_access_ok(ip: str, path: str, token: str) -> bool:
         if alive:
             _stream_sessions[key] = now + STREAM_SESSION_TTL
     return alive
+
+
+# ---------- HLS "CDN kaliti" ----------
+#
+# MediaMTX `hlsCDNSecret` — bu kalit `Authorization: Bearer` sarlavhasida
+# kelsa MediaMTX so'rovni SESSIYASIZ o'tkazadi va manzillarga na
+# `session=`, na `token=` qo'shadi. Sarlavhani nginx qo'yadi.
+#
+# Nima uchun kalit endi AVTOMATIK: ilgari u .env dagi ixtiyoriy sozlama
+# edi va ikkita joyda (.env + nginx) qo'lda bir xil yozilishi kerak edi.
+# Amalda bu bajarilmadi — HTTPS (443) bloki docs/DEPLOY.md dagi eski
+# namunadan ko'chirilgan bo'lib, unda na `auth_request`, na Bearer
+# sarlavhasi bor edi. Natijada MediaMTX sessiyali rejimda qoldi va manba
+# har uzilganda tomoshabin DOIMIY 401 oldi:
+#
+#     .../media/hls/<slug>/video1_stream.m3u8?session=...&token=...  -> 401
+#
+# Lokalda muammo ko'rinmasdi, chunki MEDIA_BASE bo'sh bo'lganda brauzer
+# videoni to'g'ridan MediaMTX portidan oladi (nginx umuman yo'q).
+#
+# Endi kalit secret.key'dan hosil qilinadi — HAR DOIM mavjud, hech
+# qachon bo'sh emas. Sozlanadigan yagona joy nginx, uni esa
+# `python scripts/nginx_conf.py` tayyor holda chiqarib beradi.
+#
+# HLS_CDN_SECRET muhit o'zgaruvchisi qo'yilsa u ustun turadi (bir necha
+# server bitta kalitni bo'lishishi kerak bo'lgan hol).
+
+_cdn_key = hashlib.sha256(b"nigoh-hls-cdn:" + _load_key()).digest()
+
+
+def hls_cdn_secret() -> str:
+    """MediaMTX `hlsCDNSecret` va nginx `Authorization: Bearer` qiymati."""
+    override = os.environ.get("HLS_CDN_SECRET", "").strip()
+    if override:
+        return override
+    return base64.urlsafe_b64encode(_cdn_key).decode().rstrip("=")
+
+
+# ---------- ichki jarayonlar chiptasi ----------
+#
+# Launcher'ning FFmpeg'i (o'girish) va snapshot zaxirasi MediaMTX'ga
+# 127.0.0.1 dan ulanadi, lekin IP'ga ishonib bo'lmaydi: nginx proksi
+# ortida barcha tomoshabin ham 127.0.0.1 bo'lib ko'rinadi. Shuning uchun
+# ichki jarayonlar muddatsiz, secret.key'dan hosil qilingan alohida
+# chipta bilan yuradi — kalit almashsa chipta ham almashadi.
+
+_internal_key = hashlib.sha256(b"nigoh-internal:" + _load_key()).digest()
+
+
+def internal_token() -> str:
+    """Ichki jarayonlar (FFmpeg) uchun muddatsiz chipta."""
+    return base64.urlsafe_b64encode(_internal_key[:20]).decode().rstrip("=")
+
+
+def internal_token_ok(token: str) -> bool:
+    return bool(token) and hmac.compare_digest(token, internal_token())
 
 
 # ---------- admin paroli ----------

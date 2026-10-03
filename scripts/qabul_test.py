@@ -1,4 +1,4 @@
-"""Nigoh mikroservisining qabul testi — YANGI (bo'sh) test konteyneriga qarshi.
+"""Nigoh qabul testi — YANGI (bo'sh) test konteyneriga qarshi.
 
 Ishga tushirish:
     docker run -d --name nigoh-sinov -p 8021:8010 \n      -e ADMIN_PAROL=sinov-admin-987 -e NIGOH_API_KEY=test-kalit-abc123 \n      -e PUBLIC_VIEW=0 nigoh:latest
@@ -6,11 +6,12 @@ Ishga tushirish:
 
 Muhit orqali moslash: NIGOH_BASE, NIGOH_KEY, NIGOH_ADMIN_PAROL.
 DIQQAT: faqat sinov konteyneriga qarshi yuriting — test kamera va
-foydalanuvchi yaratib o'chiradi, demo bazani (6 kamera) kutadi.
+foydalanuvchi yaratib o'chiradi. Baza bo'sh bo'lishi shart emas — boshidagi
+kameralar soni eslab qolinadi va oxirida shunga qaytgani tekshiriladi.
 """
 import http.cookiejar
-import os
 import json
+import os
 import urllib.error
 import urllib.request
 
@@ -59,15 +60,16 @@ def req(path, method="GET", body=None, headers=None, opener=None, timeout=30):
 s, _ = req("/docs")
 check("1.1 /docs ochiladi", s == 200, s)
 s, d = req("/openapi.json")
-check("1.2 OpenAPI faqat v1 yo'llar", s == 200 and all(p.startswith("/api/v1") for p in d["paths"]), s)
+check("1.2 OpenAPI faqat v1 yo'llar (+ /health)", s == 200 and all(
+    p.startswith("/api/v1") or p == "/health" for p in d["paths"]), s)
 s, _ = req("/")
 check("1.3 Test UI (/) beriladi", s == 200, s)
 
 # ---------- 2. Anonim cheklovlar (PUBLIC_VIEW=0) ----------
-s, d = req("/api/v1/cameras")
-check("2.1 anonim ro'yxat bo'sh", s == 200 and d["total"] == 0, d)
+s, _ = req("/api/v1/cameras")
+check("2.1 anonim ro'yxat 401", s == 401, s)
 s, _ = req("/api/v1/cameras/1/stream")
-check("2.2 anonim oqim 403", s == 403, s)
+check("2.2 anonim oqim 401", s == 401, s)
 s, _ = req("/api/v1/admin/status")
 check("2.3 anonim admin 401", s == 401, s)
 s, _ = req("/api/v1/admin/status", headers=BAD_KEY)
@@ -75,7 +77,8 @@ check("2.4 noto'g'ri kalit 401", s == 401, s)
 
 # ---------- 3. API kalit — server-to-server ----------
 s, d = req("/api/v1/cameras", headers=KEY)
-check("3.1 kalit bilan ro'yxat (demo 6 ta)", s == 200 and d["total"] == 6, d)
+check("3.1 kalit bilan ro'yxat", s == 200 and isinstance(d.get("total"), int), d)
+BOSHIDA = d["total"]
 s, d = req("/api/v1/admin/status", headers=KEY)
 check("3.2 MediaMTX tirik", s == 200 and d["mediamtx"] is True, d)
 check("3.3 tugun online", d["nodes"][0]["status"] == "online", d["nodes"])
@@ -95,7 +98,7 @@ check("4.2 javobda parol yo'q, has_password bor",
       "password" not in cam and cam.get("has_password") is True, list(cam))
 check("4.3 state maydoni bor", cam.get("state") in
       ("online", "offline", "unknown", "stalled", "disabled"), cam.get("state"))
-s, d = req(f"/api/v1/admin/cameras?q=Sinov", headers=KEY)
+s, d = req("/api/v1/admin/cameras?q=Sinov", headers=KEY)
 check("4.4 qidiruv topadi", s == 200 and d["total"] == 1, d["total"])
 upd = dict(new_cam, name="Sinov kamera 2", password=None)
 s, d = req(f"/api/v1/admin/cameras/{cam_id}", "PUT", upd, headers=KEY)
@@ -157,7 +160,10 @@ check("9.2 operator login", s == 200 and d["role"] == "operator", (s, d))
 s, d = req("/api/v1/cameras", opener=op2)
 check("9.3 operator faqat o'z hududini ko'radi", s == 200 and d["total"] == 1
       and d["cameras"][0]["region"] == "Sinovobod", d)
-s, d = req("/api/v1/cameras/1/stream", opener=op2)   # demo kamera boshqa hududda
+s, begona = req("/api/v1/admin/cameras", "POST", {
+    "name": "Sinov begona", "region": "Boshqaobod", "source_type": "manual",
+    "stream_url": "https://misol.uz/begona.m3u8"}, headers=KEY)
+s, d = req(f"/api/v1/cameras/{begona['id']}/stream", opener=op2)
 check("9.4 begona hudud oqimi 403", s == 403, s)
 s, d = req(f"/api/v1/cameras/{cam_id}/stream", opener=op2)
 check("9.5 o'z hududi oqimi ochiladi", s == 200 and "token=" in d.get("stream_url", ""), s)
@@ -180,13 +186,15 @@ check("10.3 tugun runtime ko'rsatkichlari", s == 200
 
 # ---------- 11. Eski (/api) alias ----------
 s, d = req("/api/cameras", headers=KEY)
-check("11.1 eski /api/cameras ishlaydi", s == 200 and d["total"] == 7, d.get("total"))
+check("11.1 eski /api/cameras ishlaydi", s == 200 and d["total"] == BOSHIDA + 2,
+      d.get("total"))
 
 # ---------- 12. Tozalash ----------
 s, _ = req(f"/api/v1/admin/cameras/{cam_id}", "DELETE", headers=KEY)
-check("12.1 sinov kamerasi o'chirildi", s == 204, s)
+s2, _ = req(f"/api/v1/admin/cameras/{begona['id']}", "DELETE", headers=KEY)
+check("12.1 sinov kameralari o'chirildi", s == 204 and s2 == 204, (s, s2))
 s, d = req("/api/v1/cameras", headers=KEY)
-check("12.2 baza asl holiga qaytdi (6 demo)", d["total"] == 6, d["total"])
+check("12.2 baza asl holiga qaytdi", d["total"] == BOSHIDA, (d["total"], BOSHIDA))
 
 print(f"\nJAMI: {passed} PASS, {failed} FAIL")
 raise SystemExit(1 if failed else 0)

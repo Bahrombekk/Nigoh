@@ -1,14 +1,23 @@
-"""Nigoh — dashboard statistikasi (kirishsiz, xarita kabi ochiq).
+"""Nigoh — dashboard statistikasi: tarixni yozish va o'qish.
 
 Ma'lumot manbai — core/stats.py yozib boradigan ikki jadval:
 stats_region (5 daqiqalik hudud suratlari) va stats_event (uzilishlar).
 Hammasi bitta endpointda — dashboard bitta so'rov bilan chizadi.
+
+Yozuvchi (`start_recorder`) har daqiqada kameralarning yagona holatini
+(`helpers.camera_state`) oladi — xaritadagi rang bilan bir xil manba.
 """
+import threading
+import time
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter
 
+from core import stats
 from core.db import get_db
+from core.log import log
+
+from .helpers import camera_state
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -104,3 +113,42 @@ def dashboard_stats():
         "events_today": sum(hourly),
         "events": events,
     }
+
+
+# ---------- tarixni yozib borish ----------
+
+RECORD_INTERVAL = 60.0
+_recorder_started = False
+
+
+def _record_once() -> None:
+    with get_db() as db:
+        rows = db.execute("SELECT * FROM cameras").fetchall()
+    snapshot = []
+    for row in rows:
+        state = camera_state(row)
+        # unknown/disabled — holati o'lchanmaydi, foizlarga kirmaydi;
+        # stalled — port ochiq-u tasvir yo'q, ya'ni ishlamayapti.
+        online = None if state in ("unknown", "disabled") else state == "online"
+        snapshot.append({"id": row["id"], "name": row["name"],
+                         "region": row["region"], "online": online})
+    stats.record_states(snapshot)
+
+
+def _recorder_loop() -> None:
+    while True:
+        time.sleep(RECORD_INTERVAL)   # birinchi sweep tugashiga vaqt beriladi
+        try:
+            _record_once()
+        except Exception as exc:       # kuzatuv hech qachon yiqilmasin
+            log("stats", "record_failed", level="error", error=str(exc))
+
+
+def start_recorder() -> None:
+    """Dashboard tarixini fonda yozib boradi (bir marta ishga tushadi)."""
+    global _recorder_started
+    if _recorder_started:
+        return
+    _recorder_started = True
+    threading.Thread(target=_recorder_loop, name="stats-recorder",
+                     daemon=True).start()

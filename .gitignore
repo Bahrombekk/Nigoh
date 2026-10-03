@@ -42,6 +42,9 @@ geo-import.log
 # Geo import oldidan olingan zaxira (mashinaga xos)
 geo-zaxira.json
 
+# Kamera suratlari (core/snapshots.py diskka yozadi)
+snapshots/
+
 # Skrinshotlar (suhbat uchun vaqtinchalik)
 image*.png
 

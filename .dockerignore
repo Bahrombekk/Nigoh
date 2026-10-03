@@ -29,3 +29,7 @@ nigoh.log.*
 .vscode/
 .idea/
 ishga-tushirish.bat
+.github/
+tests/
+requirements-dev.txt
+ruff.toml
