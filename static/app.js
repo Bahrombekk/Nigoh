@@ -686,15 +686,30 @@ function renderStrip() {
    WebRTC sinalmaydi — HLS darhol boshlanadi.
 
    Bir marta jim qolish sabab emas: kamera ayni damda uyg'onayotgan
-   bo'lishi mumkin. Muvaffaqiyatli ochilish hisobni nolga qaytaradi. */
-const WEBRTC_JIM_CHEGARA = 2;
-let webrtcJim = 0;
+   bo'lishi mumkin. Muvaffaqiyatli ochilish hisobni nolga qaytaradi.
 
-function webrtcDead() { return webrtcJim >= WEBRTC_JIM_CHEGARA; }
+   Bekor qilingan urinish (foydalanuvchi boshqa kamerani bosdi) HECH QACHON
+   sanalmaydi. Ilgari sanalardi: kameralarni ketma-ket ko'rib chiqqan
+   foydalanuvchida WebRTC ikki bosishda o'chib, butun seans 7-17 s lik
+   HLS'ga tushardi (lokal o'lchov: WebRTC 15 dan 14 kamerada 3-7 s da
+   ochiladi). Kadr bermaydigan kamera ham sanalmaydi — ICE ulangan bo'lsa
+   aybdor tarmoq emas. O'chgan WebRTC ham 2 daqiqadan keyin qayta
+   sinaladi — bitta yomon daqiqa butun ish kunini sekinlashtirmasin. */
+const WEBRTC_JIM_CHEGARA = 2;
+const WEBRTC_QAYTA_SINASH = 120000;           // ms
+let webrtcJim = 0;
+let webrtcJimAt = 0;
+
+function webrtcDead() {
+  if (webrtcJim < WEBRTC_JIM_CHEGARA) return false;
+  if (Date.now() - webrtcJimAt > WEBRTC_QAYTA_SINASH) { webrtcJim = 0; return false; }
+  return true;
+}
 
 function noteWebRtc(ok) {
   if (ok) { webrtcJim = 0; return; }
   webrtcJim++;
+  webrtcJimAt = Date.now();
   if (webrtcJim === WEBRTC_JIM_CHEGARA) {
     console.warn("Nigoh: WebRTC kadr bermayapti — bu seansda faqat HLS " +
                  "ishlatiladi. Serverda webrtcAdditionalHosts sozlanmagan " +
@@ -779,10 +794,19 @@ function createPlayer(video, msgEl) {
     function attach(urls, staleFn, onFail) {
       if (urls.webrtc_url && !webrtcDead()) {
         playWebRtc(urls.webrtc_url, staleFn).then(() => {
-          noteWebRtc(true);
-        }).catch(() => {
-          noteWebRtc(false);
+          if (!staleFn()) noteWebRtc(true);
+        }).catch((err) => {
+          // Boshqa kamera bosilgan — bu WebRTC'ning aybi emas.
           if (staleFn()) return;
+          // Faqat tarmoq darajasidagi jimlik sanaladi (ICE ulanmagan).
+          if (!(err && err.iceOk)) noteWebRtc(false);
+          if (err && err.noSource) {
+            // Sub oqim yo'q bo'lsa — asosiyga (onFail shuni qiladi);
+            // asosiy oqimning manbasi ochilmasa — darhol aniq xabar.
+            if (urls.mode === "sub") onFail();
+            else setMsg("Kamera oqim bermayapti — kamera yoki registratorni tekshiring", "fail");
+            return;
+          }
           setMsg("Zaxira yo'l orqali ulanmoqda…", "wait");
           playHls(urls.stream_url, staleFn, onFail);
         });
@@ -802,6 +826,7 @@ function createPlayer(video, msgEl) {
         // (soniya). Ikkisi ham beriladi: brauzer bilganini oladi.
         try { e.receiver.jitterBufferTarget = PLAYOUT_DELAY * 1000; } catch (x) { /* qo'llamaydi */ }
         try { e.receiver.playoutDelayHint = PLAYOUT_DELAY; } catch (x) { /* qo'llamaydi */ }
+        pc.__stream = e.streams[0];
         video.srcObject = e.streams[0];
         video.play().catch(() => {});
       };
@@ -818,7 +843,15 @@ function createPlayer(video, msgEl) {
         method: "POST", headers: { "Content-Type": "application/sdp" },
         body: pc.localDescription.sdp
       });
-      if (!res.ok) { pc.close(); throw new Error("WHEP " + res.status); }
+      if (!res.ok) {
+        pc.close();
+        // MediaMTX manbani ocholmadi (kamera oqim bermayapti) — tarmoq
+        // emas, kamera. HLS ham shu manbadan oladi, unga o'tish yana
+        // 30+ soniya behuda kutish bo'lardi.
+        const body = await res.text().catch(() => "");
+        throw Object.assign(new Error("WHEP " + res.status),
+          { iceOk: true, noSource: /timed out|no stream|not ready/i.test(body) });
+      }
       const answer = await res.text();
       if (staleFn()) { pc.close(); return; }
       await pc.setRemoteDescription({ type: "answer", sdp: answer });
@@ -826,12 +859,30 @@ function createPlayer(video, msgEl) {
         // srcObject/"connected" yetarli emas: ular kadr kelmasa ham paydo
         // bo'ladi (masalan, server UDP tashqariga yopiq bo'lsa). Haqiqiy
         // belgi — vaqt yurishi, ya'ni dekodlangan kadrlar oqib kelyapti.
-        const timer = setTimeout(() => {
-          if (video.currentTime > 0) resolve();
-          else { pc.close(); reject(new Error("WebRTC jim")); }
-        }, 6000);
+        //
+        // Kadr kelishi bilan DARHOL hal bo'ladi. Ilgari faqat 6-soniyada
+        // tekshirilardi: shu oraliqda boshqa kamera bosilsa, taymer
+        // yangi (hali bo'sh) videoga qarab eski urinishni "jim" deb
+        // sanardi va WebRTC butun seansga o'chib qolardi.
+        const t0 = performance.now();
+        const poll = setInterval(() => {
+          if (staleFn()) { clearInterval(poll); reject(new Error("bekor")); return; }
+          if (video.srcObject === pc.__stream && video.currentTime > 0) {
+            clearInterval(poll); resolve(); return;
+          }
+          if (performance.now() - t0 > 6000) {
+            clearInterval(poll);
+            // ICE ulangan-u kadr yo'q — tarmoq emas, kameraning o'zi
+            // (oqim bermayapti). Bunday holat WebRTC'ni o'chirishga
+            // sanalmaydi: aks holda ikkita nosoz kamera ketma-ket ochilsa
+            // butun seans sekin HLS'ga tushardi.
+            const iceOk = ["connected", "completed"].includes(pc.iceConnectionState);
+            pc.close();
+            reject(Object.assign(new Error("WebRTC jim"), { iceOk }));
+          }
+        }, 100);
         pc.addEventListener("connectionstatechange", () => {
-          if (pc.connectionState === "failed") { clearTimeout(timer); pc.close(); reject(new Error("WebRTC uzildi")); }
+          if (pc.connectionState === "failed") { clearInterval(poll); pc.close(); reject(new Error("WebRTC uzildi")); }
         });
       });
     }
