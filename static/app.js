@@ -158,16 +158,45 @@ const map = L.map("map", {
   zoomControl: false, maxZoom: 19, minZoom: 5,
   maxBounds: [[33.5, 52.0], [49.0, 77.5]], maxBoundsViscosity: 0.8
 }).setView([41.35, 64.6], 6);
+/* Ikki qatlam: pastda butun xarita xira (blur, rangsiz) — qo'shni davlatlar;
+   ustida xuddi shu plitkalar tiniq, lekin O'zbekiston chegarasi bo'yicha
+   kesilgan (clip-path, applyUzClip). SVG parda orqadagi plitkalarni
+   xiralashtira olmaydi — shuning uchun ikkinchi qatlam. Brauzer bir xil
+   manzilli plitkani keshdan oladi, trafik ikki baravar oshmaydi. */
+map.createPane("uzSharp").style.zIndex = 250;   // tilePane (200) va overlayPane (400) orasi
 let tiles = null;
+let tilesUz = null;
 function setTiles() {
   if (tiles) map.removeLayer(tiles);
+  if (tilesUz) map.removeLayer(tilesUz);
   // OSM plitkalari — kalit talab qilmaydi (CARTO endi kalitsiz "API KEY
   // REQUIRED" chizadi). Tungi mavzu CSS filtr bilan olinadi (style.css).
-  tiles = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  const url = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  tiles = L.tileLayer(url, {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom: 19
+    maxZoom: 19, className: "tiles-out"
   }).addTo(map);
+  tilesUz = L.tileLayer(url, { maxZoom: 19, pane: "uzSharp", className: "tiles-uz" })
+    .addTo(map);
 }
+
+/* Tiniq qatlamni O'zbekiston shakli bo'yicha kesadi. Yo'l qatlam
+   koordinatalarida (pane'ning o'z koordinatasi) — ular faqat zoom'da
+   o'zgaradi, surishda emas. Zoom animatsiyasida yangi masshtab oldindan
+   hisoblanadi, aks holda bir lahzaga kesim xaritadan ajralib qoladi. */
+function applyUzClip(zoom, center) {
+  if (!uzRings) return;
+  const pt = zoom == null
+    ? (ll) => map.latLngToLayerPoint(ll)
+    : (ll) => map._latLngToNewLayerPoint(L.latLng(ll), zoom, center);
+  const d = uzRings.map((ring) => "M" + ring.map((ll) => {
+    const p = pt(ll);
+    return Math.round(p.x) + " " + Math.round(p.y);
+  }).join("L") + "Z").join("");
+  map.getPane("uzSharp").style.clipPath = "path('" + d + "')";
+}
+map.on("zoomanim", (e) => applyUzClip(e.zoom, e.center));
+map.on("zoomend viewreset", () => applyUzClip());
 
 /* O'zbekiston hududini ajratib ko'rsatish: chegara urg'u rangida chiziladi,
    tashqi hududlar esa yarim shaffof parda bilan xiralashtiriladi. */
@@ -176,8 +205,9 @@ let uzBorder = null;
 
 function uzMaskStyle() {
   const dark = document.documentElement.dataset.theme === "dark";
+  // Tashqi hudud allaqachon xira (blur) — parda faqat ohangni tushiradi.
   return { fillColor: dark ? "#02050b" : "#5b6b85",
-           fillOpacity: dark ? 0.55 : 0.22 };
+           fillOpacity: dark ? 0.4 : 0.14 };
 }
 function uzBorderStyle() {
   const accent = getComputedStyle(document.documentElement)
@@ -194,6 +224,8 @@ async function loadUzBoundary() {
     const geom = gj.features[0].geometry;
     const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
     const rings = polys.map((p) => p[0].map(([lng, lat]) => [lat, lng]));
+    uzRings = rings;
+    applyUzClip();
 
     // Butun dunyoni qoplaydigan tashqi halqa + O'zbekiston "teshik" sifatida.
     const world = [[-89.9, -179.9], [-89.9, 179.9], [89.9, 179.9], [89.9, -179.9]];
@@ -205,6 +237,7 @@ async function loadUzBoundary() {
     }, uzBorderStyle())).addTo(map);
   } catch (e) { /* chegara fayli yuklanmasa — xarita oddiy qoladi */ }
 }
+let uzRings = null;     // [[lat, lng], ...] halqalar — tiniq qatlam kesimi
 loadUzBoundary();
 
 /* Klaster belgisi kameralarning O'RTACHA nuqtasiga qo'yiladi. Kameralar egri
