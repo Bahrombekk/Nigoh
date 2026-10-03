@@ -459,13 +459,18 @@ function renderList(force) {
 
   if (state.listView === "regs") { renderRegionList(cams); renderFootStats(); return; }
 
-  const regions = [...new Set(cams.map((c) => c.region))];
+  // Hudud bo'yicha bir o'tishda guruhlanadi (ilgari har hudud uchun
+  // butun ro'yxat qayta filtrlanardi: 110 hudud x 5000 kamera).
+  const byRegion = new Map();
+  cams.forEach((c) => {
+    if (!byRegion.has(c.region)) byRegion.set(c.region, []);
+    byRegion.get(c.region).push(c);
+  });
   const body = $("list-body");
-  body.innerHTML = regions.length ? "" :
+  body.innerHTML = byRegion.size ? "" :
     '<div class="empty">Kamera topilmadi.</div>';
 
-  regions.forEach((region) => {
-    const list = cams.filter((c) => c.region === region);
+  byRegion.forEach((list, region) => {
     const down = list.filter((c) => c.online === false).length;
     const known = list.some((c) => c.online === true);
     const grp = document.createElement("div");
@@ -485,6 +490,7 @@ function renderList(force) {
       '<button class="grp-fly" title="Xaritada ko\'rsatish">&#9678;</button>';
     headRow.querySelector(".grp-head").addEventListener("click", () => {
       state.openRegions[region] = !state.openRegions[region];
+      if (state.openRegions[region]) fillRows();
       grp.classList.toggle("open", state.openRegions[region]);
     });
     headRow.querySelector(".grp-fly").addEventListener("click", () => flyToRegion(region));
@@ -492,31 +498,40 @@ function renderList(force) {
 
     const wrap = document.createElement("div");
     wrap.className = "grp-cams";
-    list.forEach((cam) => {
-      const row = document.createElement("button");
-      row.dataset.id = cam.id;
-      // "Tirik, lekin oqimsiz" — alohida holat. Kameraning porti ochiq
-      // (health uni ONLINE deb belgilaydi), ammo RTSP kodek bermagan:
-      // login/parol yoki yo'l xato. Bunday kamera hech qachon ochilmaydi.
-      // Ilgari u ro'yxatda oddiy yashil bo'lib turardi va foydalanuvchi
-      // bosib, kutib, sababsiz xato olardi — servisda 4 tasi shunday.
-      const oqimsiz = cam.online !== false && !cam.codec;
-      row.className = "cam-row" + (cam.online === false ? " down" : "") +
-                      (oqimsiz ? " nostream" : "") +
-                      (cam.id === state.selectedId ? " sel" : "");
-      if (oqimsiz) {
-        row.title = "Tarmoqda ko'rinadi, lekin oqim bermayapti — "
-                  + "RTSP login/parol yoki yo'l xato bo'lishi mumkin";
-      }
-      row.innerHTML =
-        '<span class="dot"></span>' +
-        '<span class="nm">' + esc(cam.name) + "</span>" +
-        '<span class="cdx">' + esc(cam.codec || "oqim yo'q") + "</span>";
-      row.addEventListener("click", () => { hideCamTip(); selectCamera(cam.id, true); });
-      row.addEventListener("mouseenter", (e) => { prewarm(cam); showCamTip(cam, row); });
-      row.addEventListener("mouseleave", hideCamTip);
-      wrap.appendChild(row);
-    });
+    // Qatorlar faqat guruh ochiq bo'lsa (yoki ochilganda) yaratiladi.
+    // 5000 kamerada yopiq guruhlar ichidagi minglab ko'rinmas tugmani
+    // qurish ro'yxatning har chizilishiga ~1 s qo'shardi.
+    let filled = false;
+    const fillRows = () => {
+      if (filled) return;
+      filled = true;
+      list.forEach((cam) => {
+        const row = document.createElement("button");
+        row.dataset.id = cam.id;
+        // "Tirik, lekin oqimsiz" — alohida holat. Kameraning porti ochiq
+        // (health uni ONLINE deb belgilaydi), ammo RTSP kodek bermagan:
+        // login/parol yoki yo'l xato. Bunday kamera hech qachon ochilmaydi.
+        // Ilgari u ro'yxatda oddiy yashil bo'lib turardi va foydalanuvchi
+        // bosib, kutib, sababsiz xato olardi — servisda 4 tasi shunday.
+        const oqimsiz = cam.online !== false && !cam.codec;
+        row.className = "cam-row" + (cam.online === false ? " down" : "") +
+                        (oqimsiz ? " nostream" : "") +
+                        (cam.id === state.selectedId ? " sel" : "");
+        if (oqimsiz) {
+          row.title = "Tarmoqda ko'rinadi, lekin oqim bermayapti — "
+                    + "RTSP login/parol yoki yo'l xato bo'lishi mumkin";
+        }
+        row.innerHTML =
+          '<span class="dot"></span>' +
+          '<span class="nm">' + esc(cam.name) + "</span>" +
+          '<span class="cdx">' + esc(cam.codec || "oqim yo'q") + "</span>";
+        row.addEventListener("click", () => { hideCamTip(); selectCamera(cam.id, true); });
+        row.addEventListener("mouseenter", (e) => { prewarm(cam); showCamTip(cam, row); });
+        row.addEventListener("mouseleave", hideCamTip);
+        wrap.appendChild(row);
+      });
+    };
+    if (state.openRegions[region] || q) fillRows();
     grp.appendChild(wrap);
     body.appendChild(grp);
   });

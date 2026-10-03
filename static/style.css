@@ -378,7 +378,9 @@ button.mini-kpi:hover{border-color:var(--c)}
 #list-exp:hover{text-decoration:underline}
 
 #list-body{flex:1;min-height:0;overflow-y:auto}
-.grp{border-bottom:1px solid var(--line-2)}
+/* Ekrandan tashqaridagi guruhlar chizilmaydi va joylashtirilmaydi —
+   "Hammasini ochish" 5000 qatorda ham faqat ko'rinadigan qism ishlaydi. */
+.grp{border-bottom:1px solid var(--line-2);content-visibility:auto;contain-intrinsic-size:auto 41px}
 .grp-row{display:flex;align-items:stretch}
 .grp-row:hover{background:var(--surface-2)}
 .grp-head{flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:10px 0 10px 12px;text-align:left;color:var(--text)}
