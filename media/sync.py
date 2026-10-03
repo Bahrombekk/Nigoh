@@ -829,10 +829,18 @@ def source_path(cam: dict) -> dict:
     if pull_via_ffmpeg(cam["slug"]) or cam.get("rtsp_udp"):
         return relay_path(cam)
 
+    # Login bor-u parol bo'sh: MediaMTX bunday manbani butunlay rad etadi
+    # ("username and password must be both provided", 400) — yo'l umuman
+    # yaratilmaydi va kamera hech qachon ochilmaydi. Login tashlab
+    # yuboriladi: kamera anonim ulanishga ruxsat bersa ochiladi, bermasa
+    # MediaMTX jurnalida 401 aniq ko'rinadi. (FFmpeg yo'llari bunga
+    # kirmaydi — ular `user@` shaklini qabul qiladi.)
+    password = cam.get("password") or ""
+    username = (cam.get("username") or "") if password else ""
     conf = {
         "source": build_rtsp_url(
             cam["ip"], cam["port"], cam.get("rtsp_path") or "/",
-            cam.get("username") or "", cam.get("password") or "",
+            username, password,
         ),
         # UDP'da paketlar yo'qoladi va tasvir buziladi — shuning uchun
         # standart TCP. ISTISNO: TCP'ni umuman ko'tarmaydigan kamera

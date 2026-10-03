@@ -18,7 +18,7 @@ Tekshiruv arzon bo'lishi uchun:
 import socket
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -146,13 +146,26 @@ def _sweep() -> None:
     live = _live_pairs()
     probe = [pair for pair in pairs if pair not in live]
 
-    results = []
+    # Birinchi sweep (server endigina yondi): natija kelishi bilan
+    # e'lon qilinadi. Aks holda xarita butun sweep tugaguncha holatsiz
+    # turardi — 5000 kamerada, ulardan ko'pi javob bermasa, bu ~100 s
+    # (har javobsiz manzil 1,5 + 4 s kutiladi). Tirik kamera millisoniyada
+    # javob beradi, ya'ni ular darhol yashil bo'ladi. Keyingi sweeplarda
+    # eski holat bor — o'zgarishlar oxirida solishtiriladi (SSE).
+    with _lock:
+        first = not _statuses
+    fresh: dict[tuple[str, int], bool] = {}
     if probe:
         workers = min(MAX_WORKERS, max(8, len(probe)))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            results = list(pool.map(_tcp_ok, probe))
+            futures = {pool.submit(_tcp_ok, pair): pair for pair in probe}
+            for future in as_completed(futures):
+                pair = futures[future]
+                fresh[pair] = future.result()
+                if first:
+                    with _lock:
+                        _statuses.setdefault(pair, fresh[pair])
 
-    fresh = dict(zip(probe, results))
     for pair in pairs:
         if pair in live:
             fresh[pair] = True

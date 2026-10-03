@@ -36,6 +36,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -136,6 +137,13 @@ def create_app() -> FastAPI:
         description=API_DESCRIPTION,
         lifespan=_lifespan,
     )
+
+    # Siqish. 5000 kamerada `/cameras` ro'yxati 1,2 MB, va har ochiq
+    # brauzer uni 30 soniyada qayta so'raydi — 50 operator = doimiy
+    # ~2 MB/s faqat ro'yxat uchun. JSON yaxshi siqiladi (~10 baravar).
+    # SSE, JPEG suratlar va video bu yerga kirmaydi (Starlette ularni
+    # o'zi chetlab o'tadi), ya'ni hodisalar kechikmaydi.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 
     @app.middleware("http")
     async def xavfsizlik_sarlavhalari(request, call_next):

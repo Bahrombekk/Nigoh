@@ -343,3 +343,13 @@ def test_yoqilgan_kameraning_korilayotgan_yoli_saqlanadi(monkeypatch):
             "ko'rilayotgan yo'l o'chirildi"
     finally:
         sync._sent.clear()
+
+
+def test_parolsiz_login_mediamtx_ga_yuborilmaydi():
+    """MediaMTX `user@host` ni 400 bilan rad etadi — yo'l yaratilmasdi."""
+    from media.sync import source_path
+    cam = {"slug": "p", "ip": "10.0.0.9", "port": 554, "rtsp_path": "/s",
+           "username": "admin", "password": "", "enabled": True}
+    assert source_path(cam)["source"] == "rtsp://10.0.0.9:554/s"
+    cam["password"] = "x"
+    assert source_path(cam)["source"] == "rtsp://admin:x@10.0.0.9:554/s"

@@ -500,8 +500,54 @@ def _migrate_cameras(db) -> None:
     for column, ddl in CAMERA_EXTRA_COLUMNS.items():
         if column not in existing:
             db.execute(f"ALTER TABLE cameras ADD COLUMN {column} {ddl}")
+    _fix_column_defaults(db)
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cameras_slug ON cameras(slug)")
     _backfill_slugs(db)
+
+
+def _fix_column_defaults(db) -> None:
+    """Eski sxemadagi xavfli standart qiymatni tuzatadi: always_on = 1.
+
+    Eng eski bazalarda `always_on` ustuni `DEFAULT 1` bilan qo'shilgan
+    (ishlab chiqarishdagi servis bazasi ham shunday). Ustunni ko'rsatmay
+    yozilgan har bir kamera (skript, import, qo'lda SQL) jimgina "doim
+    tayyor" bo'lib qoladi: MediaMTX unga doimiy ulanib turadi va yo'li
+    oldindan yaratiladi. 5000 kamerada bu 12 000 yo'l — sinxronlash
+    soatlab cho'ziladi (o'lchandi: tsiklda 608 -> 159 yo'l, tobora
+    sekinroq). Hozirgi kod ustunni doim yozadi, lekin tuzoq qolmasin.
+
+    SQLite ustun standartini o'zgartira olmaydi — jadval qayta quriladi:
+    bitta tranzaksiyada, id'lar bilan. Indekslar init_db oxirida
+    INDEXES'dan qayta yaratiladi. Standart allaqachon to'g'ri bo'lsa
+    hech narsa qilmaydi.
+    """
+    info = {r["name"]: r for r in db.execute("PRAGMA table_info(cameras)")}
+    col = info.get("always_on")
+    if col is None or str(col["dflt_value"]) != "1":
+        return
+    sql = db.execute("SELECT sql FROM sqlite_master WHERE type = 'table' "
+                     "AND name = 'cameras'").fetchone()["sql"]
+    fixed = re.sub(r"(always_on\s+INTEGER\s+NOT\s+NULL\s+DEFAULT\s+)1",
+                   r"\g<1>0", sql, flags=re.I)
+    if fixed == sql:
+        return
+    columns = ", ".join(info)
+    # SAVEPOINT — sqlite3 moduli DDL'ni o'zi tranzaksiyaga o'ramasligi
+    # mumkin; yarim yo'lda to'xtasa jadval yo'qolib qolmasin.
+    db.execute("SAVEPOINT standart_tuzatish")
+    try:
+        db.execute("ALTER TABLE cameras RENAME TO cameras_eski")
+        db.execute(fixed)
+        db.execute(f"INSERT INTO cameras ({columns}) SELECT {columns} FROM cameras_eski")
+        db.execute("DROP TABLE cameras_eski")
+    except Exception:
+        db.execute("ROLLBACK TO standart_tuzatish")
+        db.execute("RELEASE standart_tuzatish")
+        raise
+    db.execute("RELEASE standart_tuzatish")
+    from core.log import log
+    log("db", "always_on_standart_tuzatildi",
+        detail="cameras.always_on DEFAULT 1 -> 0 (jadval qayta qurildi)")
 
 
 def _backfill_slugs(db) -> None:
