@@ -14,6 +14,7 @@ const state = {
   pinned: [],                 // "Devorga qo'shish" bilan tanlanganlar
   wallSize: 3,
   wallRegion: "",             // devorda faqat shu hudud ("" — hammasi)
+  wallQuality: "auto",        // auto | sub (past) | main (asl) — devor oqimi
   wallFit: "contain",         // contain — butun kadr, cover — katakni to'ldirish
   wallPage: 0,
   wallAuto: false,            // sahifalarni avtomatik aylantirish
@@ -1127,7 +1128,7 @@ function saveWallPrefs() {
   try {
     localStorage.setItem("nigoh-wall", JSON.stringify({
       size: state.wallSize, fit: state.wallFit, interval: state.wallInterval,
-      region: state.wallRegion, auto: state.wallAuto
+      region: state.wallRegion, auto: state.wallAuto, quality: state.wallQuality
     }));
   } catch (e) {}
 }
@@ -1139,9 +1140,23 @@ function loadWallPrefs() {
     if (typeof p.region === "string") state.wallRegion = p.region;
     if (Number(p.interval) >= 5) state.wallInterval = Number(p.interval);
     state.wallAuto = !!p.auto;
+    if (["auto", "sub", "main"].includes(p.quality)) state.wallQuality = p.quality;
   } catch (e) {}
   document.querySelectorAll("#wall-sizes button").forEach((b) =>
     b.classList.toggle("on", Number(b.dataset.wsize) === state.wallSize));
+  document.querySelectorAll("#wall-quality button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.wq === state.wallQuality));
+}
+
+/* Devor kataklari qaysi oqimni oladi. Past — kameraning 2-oqimi (~704x576,
+   ~1 Mbit/s): 16-64 katak tarmoq va brauzer dekoderini bo'g'masin.
+   Yuqori — asl oqim (1080p/1440p, 2-5 Mbit/s har biri). Avto — 4 tagacha
+   katakda asl sifat (ular katta, farq ko'rinadi), ko'prog'ida past. */
+const WALL_AUTO_MAIN_MAX = 4;
+function wallStreamQuality(tileCount) {
+  if (state.wallQuality === "main") return "";
+  if (state.wallQuality === "sub") return "sub";
+  return tileCount <= WALL_AUTO_MAIN_MAX ? "" : "sub";
 }
 loadWallPrefs();
 
@@ -1229,9 +1244,15 @@ function buildWall() {
       '<div class="empty" style="grid-column:1/-1">Ko‘rsatiladigan kamera yo‘q.</div>');
   }
 
+  const quality = wallStreamQuality(cams.length);
   cams.forEach((cam, i) => {
     let t = wallTiles.get(cam.id);
-    if (!t) { t = makeTile(cam); wallTiles.set(cam.id, t); }
+    if (!t) { t = makeTile(cam, quality); wallTiles.set(cam.id, t); }
+    else if (t.player && t.quality !== quality) {
+      // Sifat yoki katak soni o'zgardi — bor plitka yangi oqimga o'tadi.
+      t.quality = quality;
+      if (document.fullscreenElement !== t.tile) t.player.open(cam, HEVC_OK, quality);
+    }
     // Yengil yangilanishlar: biriktirilganlik va tanlanganlik.
     t.tile.querySelector('[data-w="pin"]').classList.toggle("on", state.pinned.includes(cam.id));
     t.tile.classList.toggle("sel", cam.id === state.selectedId);
@@ -1256,7 +1277,7 @@ async function saveSnapshot(cam) {
 }
 
 /* Bitta plitka: video, ustki/ostki yozuvlar, tugmalar va pleyer. */
-function makeTile(cam) {
+function makeTile(cam, quality) {
   const down = cam.online === false;
   const tile = document.createElement("div");
   tile.className = "tile" + (down ? " down" : "");
@@ -1315,16 +1336,18 @@ function makeTile(cam) {
     player = createPlayer(tile.querySelector("video"), tile.querySelector(".t-msg"));
     const msEl = tile.querySelector(".t-foot span:last-child");
     player.onOpen = (ms) => { msEl.textContent = (ms / 1000).toFixed(2) + "s"; };
-    // Setkada past sifatli 2-oqim (sub) — 16 plitka tarmoqni bo'g'masin.
-    // Sub bo'lmasa server asosiysini beradi; to'liq ekranda asosiyga o'tiladi.
-    player.open(cam, HEVC_OK, "sub");
+    // Oqim sifati devor tanloviga bog'liq (wallStreamQuality). Sub
+    // bo'lmasa server asosiysini beradi; to'liq ekranda doim asosiy.
+    player.open(cam, HEVC_OK, quality);
     tile.addEventListener("fullscreenchange", () => {
-      player.open(cam, HEVC_OK, document.fullscreenElement === tile ? "" : "sub");
+      const t = wallTiles.get(cam.id);
+      player.open(cam, HEVC_OK,
+        document.fullscreenElement === tile ? "" : (t ? t.quality : quality));
     });
   } else {
     tile.querySelector(".t-msg").textContent = "ulanish yo'q";
   }
-  return { tile, player, down };
+  return { tile, player, down, quality };
 }
 
 function stopWall() {
@@ -1355,6 +1378,14 @@ document.querySelectorAll("#wall-sizes button").forEach((b) =>
     state.wallSize = Number(b.dataset.wsize);
     state.wallPage = 0;
     document.querySelectorAll("#wall-sizes button").forEach((x) =>
+      x.classList.toggle("on", x === b));
+    saveWallPrefs();
+    buildWall();
+  }));
+document.querySelectorAll("#wall-quality button").forEach((b) =>
+  b.addEventListener("click", () => {
+    state.wallQuality = b.dataset.wq;
+    document.querySelectorAll("#wall-quality button").forEach((x) =>
       x.classList.toggle("on", x === b));
     saveWallPrefs();
     buildWall();

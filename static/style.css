@@ -525,11 +525,11 @@ body.picking #pick-hint{display:block}
   border:1px solid var(--line);border-radius:var(--r-md)}
 .tg-k{font-size:10.5px;color:var(--muted);font-weight:600}
 .tg-row{display:flex;align-items:center;gap:10px}
-#wall-sizes{display:flex;gap:2px;padding:3px;background:var(--surface-3);border-radius:10px}
-#wall-sizes button{border-radius:8px;height:30px;padding:0 12px;font-family:var(--mono);font-size:11.5px;
+#wall-sizes,#wall-quality{display:flex;gap:2px;padding:3px;background:var(--surface-3);border-radius:10px}
+#wall-sizes button,#wall-quality button{border-radius:8px;height:30px;padding:0 12px;font-family:var(--mono);font-size:11.5px;
   color:var(--muted);transition:background .15s,color .15s}
-#wall-sizes button:hover{color:var(--text)}
-#wall-sizes button.on{background:var(--accent);color:#fff}
+#wall-sizes button:hover,#wall-quality button:hover{color:var(--text)}
+#wall-sizes button.on,#wall-quality button.on{background:var(--accent);color:#fff}
 .toolbar .btn.tall{margin-left:auto}
 
 #wall-grid{flex:1;min-height:0;overflow:hidden;padding:0 24px;display:grid;gap:10px}
