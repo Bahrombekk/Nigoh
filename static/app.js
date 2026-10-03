@@ -152,7 +152,12 @@ $("theme-btn").addEventListener("click", () =>
 /* ---------- Xarita ---------- */
 // maxZoom shu yerda shart: markercluster xaritadan so'raydi, tile-qatlam
 // esa keyinroq (mavzu tanlangach) qo'shiladi.
-const map = L.map("map", { zoomControl: false, maxZoom: 19 }).setView([41.35, 64.6], 6);
+// Xarita O'zbekiston atrofida ushlanadi: juda uzoqlashtirib yoki surib
+// yuborilsa mamlakat kichik nuqtaga aylanib, markerlar "chiqib ketadi".
+const map = L.map("map", {
+  zoomControl: false, maxZoom: 19, minZoom: 5,
+  maxBounds: [[33.5, 52.0], [49.0, 77.5]], maxBoundsViscosity: 0.8
+}).setView([41.35, 64.6], 6);
 let tiles = null;
 function setTiles() {
   if (tiles) map.removeLayer(tiles);
@@ -201,6 +206,31 @@ async function loadUzBoundary() {
   } catch (e) { /* chegara fayli yuklanmasa — xarita oddiy qoladi */ }
 }
 loadUzBoundary();
+
+/* Klaster belgisi kameralarning O'RTACHA nuqtasiga qo'yiladi. Kameralar egri
+   chiziq bo'ylab (Toshkent — Jizzax — Samarqand) tizilganda bu nuqta
+   chegaradan tashqariga, qo'shni davlat ustiga tushib qoladi. Belgi
+   o'rtachaga eng yaqin HAQIQIY kamera (yoki ichki klaster) joyiga suriladi.
+   _wLatLng (guruhlash hisobi) o'zgarmaydi — faqat ko'rinadigan joy. */
+(function snapClustersToCameras() {
+  const P = L.MarkerCluster && L.MarkerCluster.prototype;
+  if (!P || !P._recalculateBounds) return;
+  const orig = P._recalculateBounds;
+  P._recalculateBounds = function () {
+    orig.call(this);
+    const c = this._wLatLng;
+    if (!c) return;
+    let best = null, bestD = Infinity;
+    const consider = (ll) => {
+      if (!ll) return;
+      const d = (ll.lat - c.lat) ** 2 + (ll.lng - c.lng) ** 2;
+      if (d < bestD) { bestD = d; best = ll; }
+    };
+    this._markers.forEach((m) => consider(m.getLatLng()));
+    this._childClusters.forEach((ch) => consider(ch._latlng));
+    if (best) this._latlng = L.latLng(best.lat, best.lng);
+  };
+})();
 
 const cluster = L.markerClusterGroup({
   maxClusterRadius: 60,
@@ -255,8 +285,13 @@ function visibleCams() {
 /* Ikonka "kaliti": holat + tanlanganlik. Kalit o'zgarmasa DOM'ga tegilmaydi. */
 const iconKey = (cam) => (cam.online === false ? "d" : "u") + (cam.id === state.selectedId ? "s" : "");
 
+/* Koordinata ixtiyoriy: berilmagan kamera bazada 0/0 bo'lib turadi.
+   Uni xaritaga qo'yib bo'lmaydi — aks holda Afrika qirg'og'ida (0°, 0°)
+   soxta klaster paydo bo'ladi va uzoqlashtirganda ko'rinib qoladi. */
+const hasGeo = (c) => c.lat != null && c.lng != null && !(c.lat === 0 && c.lng === 0);
+
 function rebuildMarkers() {
-  const cams = visibleCams();
+  const cams = visibleCams().filter(hasGeo);
   markersById.clear();
   const markers = cams.map((cam) => {
     const m = L.marker([cam.lat, cam.lng], {
@@ -439,7 +474,7 @@ function renderList(force) {
 
 /* Hududdagi barcha kameralar sig'adigan qilib xaritani yaqinlashtiradi. */
 function flyToRegion(region) {
-  const pts = state.cameras.filter((c) => c.region === region)
+  const pts = state.cameras.filter((c) => c.region === region && hasGeo(c))
     .map((c) => [c.lat, c.lng]);
   if (!pts.length) return;
   if (pts.length === 1) map.flyTo(pts[0], 13, { duration: 0.6 });
@@ -875,7 +910,7 @@ function selectCamera(id, fly) {
   if (!cam) return;
   // Boshqa tab'dan kelinsa avval xaritaga o'tamiz — showTab o'zi qayta chaqiradi.
   if (state.tab !== "map") { showTab("map"); return; }
-  if (fly !== false) map.flyTo([cam.lat, cam.lng], Math.max(map.getZoom(), 13), { duration: 0.6 });
+  if (fly !== false && hasGeo(cam)) map.flyTo([cam.lat, cam.lng], Math.max(map.getZoom(), 13), { duration: 0.6 });
 
   setSelOpen(true);
   if (MOBILE.matches) setListOpen(false);
@@ -970,7 +1005,8 @@ $("sel-edit").addEventListener("click", async () => {
 });
 $("sel-center").addEventListener("click", () => {
   const cam = state.byId.get(state.selectedId);
-  if (cam) map.flyTo([cam.lat, cam.lng], Math.max(map.getZoom(), 15), { duration: 0.6 });
+  if (cam && hasGeo(cam)) map.flyTo([cam.lat, cam.lng], Math.max(map.getZoom(), 15), { duration: 0.6 });
+  else if (cam) toast("Bu kameraga koordinata kiritilmagan", true);
 });
 
 $("sel-wall").addEventListener("click", () => {
@@ -1467,7 +1503,7 @@ function renderRegions() {
       const region = row.dataset.region;
       showTab("map");
       setQuery(region, null, true);
-      const pts = state.cameras.filter((c) => c.region === region && c.lat != null);
+      const pts = state.cameras.filter((c) => c.region === region && hasGeo(c));
       if (pts.length) {
         const b = L.latLngBounds(pts.map((c) => [c.lat, c.lng]));
         map.fitBounds(b.pad(0.35));
@@ -2136,7 +2172,7 @@ async function drawHeadMaps() {
   const d = polys.map((poly) =>
     "M" + poly[0].map(([x, y]) => px(x) + "," + py(y)).join("L") + "Z").join("");
   // Kameralar joylashuvidan bir nechta nuqta — bezak sifatida.
-  const dots = state.cameras.filter((c) => c.lat && c.lng)
+  const dots = state.cameras.filter(hasGeo)
     .filter((_, i) => i % Math.max(1, Math.ceil(state.cameras.length / 9)) === 0)
     .slice(0, 9)
     .map((c) => '<circle cx="' + px(c.lng) + '" cy="' + py(c.lat) + '" r="1.5"/>').join("");
@@ -2502,7 +2538,8 @@ function adminRow(cam, idx) {
   tr.querySelector('[data-act="del"]').addEventListener("click", () => deleteCamera(cam));
   tr.querySelector('[data-act="find"]').addEventListener("click", () => {
     showTab("map");
-    map.setView([cam.lat, cam.lng], 15);
+    if (hasGeo(cam)) map.setView([cam.lat, cam.lng], 15);
+    else toast("Bu kameraga koordinata kiritilmagan", true);
     selectCamera(cam.id, false);
   });
   const testBtn = tr.querySelector('[data-act="test"]');
