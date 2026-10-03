@@ -265,13 +265,20 @@ loadUzBoundary();
   };
 })();
 
+/* Bitta ustunda ikki kamera (".. (2)") yoki NVR kanallari deyarli bir
+   nuqtada turadi. Guruhlash hech qaysi masshtabda o'chirilmaydi —
+   o'chirilsa ular ustma-ust tushib, birini bosib bo'lmasdi. Buning
+   o'rniga radius yaqinlashgan sari kichrayadi (bir necha metr naridagilar
+   oxirida alohida ko'rinadi), juda yaqinlari esa bosilganda yoyiladi. */
 const cluster = L.markerClusterGroup({
-  maxClusterRadius: 60,
+  maxClusterRadius: (z) => (z >= 18 ? 18 : z >= 16 ? 30 : z >= 14 ? 45 : 60),
   showCoverageOnHover: false,
   animate: false,               // kamera ko'p bo'lganda brauzerni bo'g'masin
   chunkedLoading: true,
   chunkInterval: 120,
-  disableClusteringAtZoom: 17,
+  zoomToBoundsOnClick: false,   // o'zimiz hal qilamiz — pastda, clusterclick
+  spiderfyDistanceMultiplier: 1.6,
+  spiderLegPolylineOptions: { weight: 1.5, color: "#4a90f7", opacity: 0.8 },
   iconCreateFunction: (c) => {
     const n = c.getChildCount();
     // Ilgari bitta uzilgan kamera ham butun klasterni qizil halqaga o'rardi:
@@ -291,6 +298,17 @@ const cluster = L.markerClusterGroup({
   }
 });
 map.addLayer(cluster);
+
+/* Klaster bosilganda: kameralari bir-biriga juda yaqin bo'lsa (≤ 40 m —
+   bitta ustun/bino) yoki xarita oxirgi masshtabda bo'lsa, ular aylana
+   bo'ylab yoyiladi; aks holda xarita ularga yaqinlashadi. */
+cluster.on("clusterclick", (e) => {
+  const c = e.layer;
+  const b = c.getBounds();
+  const tiny = map.distance(b.getSouthWest(), b.getNorthEast()) <= 40;
+  if (tiny || map.getZoom() >= map.getMaxZoom()) c.spiderfy();
+  else c.zoomToBounds({ padding: [40, 40] });
+});
 
 function camIcon(cam) {
   const off = cam.online === false;
