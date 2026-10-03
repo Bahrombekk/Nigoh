@@ -35,6 +35,7 @@ backend.log
 backend.err.log
 nigoh.log
 nigoh.log.*
+nigoh-server.log
 *-ishga-tushirish.log
 geo-import.log
 

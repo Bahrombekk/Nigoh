@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from core import security
 from core.db import get_db
 
+from .config import PUBLIC_VIEW
 from .models import LoginIn
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
@@ -52,7 +53,11 @@ def me(request: Request):
         user = security.session_admin(db, token)
         regions = (security.user_regions(db, user["id"])
                    if user is not None and user["role"] == "operator" else [])
+    # public_view — interfeys uchun: kirmagan foydalanuvchi xaritani ko'ra
+    # oladimi. Frontend shunga qarab kirish ekranida "Mehmon sifatida
+    # davom etish" tugmasini ko'rsatadi yoki yashiradi.
     if user is None:
-        return {"authenticated": False}
+        return {"authenticated": False, "public_view": PUBLIC_VIEW}
     return {"authenticated": True, "username": user["username"],
-            "role": user["role"], "regions": regions}
+            "role": user["role"], "regions": regions,
+            "public_view": PUBLIC_VIEW}

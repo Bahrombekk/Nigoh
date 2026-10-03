@@ -36,6 +36,23 @@ from .routes_auth import router as auth_router
 from .routes_public import router as public_router
 from .routes_stats import router as stats_router
 
+
+class _NoCacheStatic(StaticFiles):
+    """Interfeys fayllari har so'rovda tekshiriladi.
+
+    Cache-Control bo'lmasa brauzer style.css va app.js ni o'zicha eskirgan
+    holda ushlab qoladi — yangilangan dizayn faqat Ctrl+F5 dan keyin
+    ko'rinadi. `no-cache` fayl o'zgarganini tekshirishga majbur qiladi;
+    ETag saqlanib qolgani uchun o'zgarmagan fayl 304 bilan qaytadi, ya'ni
+    qo'shimcha trafik yo'q.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 API_DESCRIPTION = """\
 Kamera xaritasi va boshqaruv paneli — asosiy tizim. Kamera/media qatlami
 (RTSP, MediaMTX, oqim chiptalari, suratlar) alohida Nigoh mikroservisida;
@@ -69,7 +86,8 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(BASE_DIR / "static" / "index.html")
+        return FileResponse(BASE_DIR / "static" / "index.html",
+                            headers={"Cache-Control": "no-cache"})
 
     @app.get("/static/uz.geojson", include_in_schema=False)
     def uz_boundary():
@@ -99,6 +117,6 @@ def create_app() -> FastAPI:
 
     # Qolgan static fayllar (style.css, app.js) — yuqoridagi maxsus
     # yo'llardan keyin ulanadi, shuning uchun ular ustun turadi.
-    app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+    app.mount("/static", _NoCacheStatic(directory=BASE_DIR / "static"), name="static")
 
     return app
