@@ -2,7 +2,7 @@
 #
 # Nega bitta konteyner: MediaMTX'ning o'girish yo'llari (H.265 -> H.264)
 # stream_launcher.py ni MediaMTX turgan mashinada chaqiradi, backend esa
-# MediaMTX'ni o'zi kuzatib qayta ko'taradi (media/reconciler.py). Ikkalasini
+# MediaMTX'ni o'zi kuzatib qayta ko'taradi (kamera/reconciler.py). Ikkalasini
 # ajratish shu ikkala mexanizmni buzadi. Tashqaridan bu baribir bitta
 # servis: HTTP API (8010) + media portlari.
 #
@@ -36,11 +36,14 @@ RUN mkdir -p /app/mediamtx \
     && curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_${MEDIAMTX_ARCH}.tar.gz" \
        | tar -xz -C /app/mediamtx mediamtx
 
-WORKDIR /app
-COPY requirements.txt .
+# Tuzilma repo bilan bir xil: /app/backend (kod), /app/frontend (interfeys),
+# /app/mediamtx (dastur). Backend ROOT_DIR ni /app deb biladi.
+WORKDIR /app/backend
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/ /app/backend/
+COPY frontend/ /app/frontend/
 
 # Barcha o'zgaruvchan ma'lumot (baza, kalit, loglar, mediamtx.yml) /data da —
 # konteyner yangilansa ham kameralar va parollar joyida qoladi.

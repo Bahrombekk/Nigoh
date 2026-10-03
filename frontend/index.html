@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NIGOH — video nazorat tizimi</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='none' stroke='%232b6ff0' stroke-width='2.4'/%3E%3Ccircle cx='12' cy='12' r='4' fill='%232b6ff0'/%3E%3C/svg%3E">
+<script>
+  // Mavzu birinchi chizishdan oldin qo'yiladi — miltillamasin.
+  // Saqlangan tanlov bo'lmasa tungi rejim (operator xonasi uchun).
+  document.documentElement.dataset.theme =
+    localStorage.getItem("nigoh-theme") === "light" ? "light" : "dark";
+  // Ilova kim ekanimiz aniqlanguncha yashirin turadi — yangilashda yopiq
+  // bo'lim yoki noto'g'ri sahifa bir zumga ko'rinib ketmasin (app.js oladi).
+  document.documentElement.classList.add("booting");
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- Yuklanish ekrani — ilova tayyor bo'lguncha ko'rinadi -->
+<div id="splash">
+  <div class="sp-glow"></div>
+  <div class="sp-core">
+    <span class="sp-logo">
+      <i class="ring r1"></i><i class="ring r2"></i><i class="ring r3"></i>
+      <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" class="o"/><circle cx="16" cy="16" r="5.5" class="i"/></svg>
+    </span>
+    <div class="sp-name">NIGOH</div>
+    <div class="sp-sub">VIDEO NAZORAT TIZIMI</div>
+    <div class="sp-bar"><i></i></div>
+    <div class="sp-status" id="sp-status">Ulanmoqda…</div>
+  </div>
+  <div class="sp-foot">KUZATAMIZ &nbsp;|&nbsp; TAHLIL QILAMIZ &nbsp;|&nbsp; XAVFSIZROQ YARATAMIZ</div>
+</div>
+
+<div id="shell">
+
+  <!-- ======================= Yon panel ======================= -->
+  <aside id="side">
+    <div class="side-brand">
+      <span class="logo"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" class="o"/><circle cx="16" cy="16" r="5.5" class="i"/></svg></span>
+      <span class="bt"><b>NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
+    </div>
+
+    <nav id="tabs">
+      <button data-tab="dash"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/><path d="M9.5 20v-6h5v6"/></svg><span>Dashboard</span></button>
+      <button data-tab="map" class="on"><svg viewBox="0 0 24 24"><path d="M14.1 5.6a2 2 0 0 0 1.8 0l3.7-1.9A1 1 0 0 1 21 4.6v12.8a1 1 0 0 1-.6.9l-4.5 2.3a2 2 0 0 1-1.8 0l-4.2-2.1a2 2 0 0 0-1.8 0l-3.7 1.9A1 1 0 0 1 3 19.4V6.6a1 1 0 0 1 .6-.9l4.5-2.3a2 2 0 0 1 1.8 0z"/><path d="M15 5.8v15"/><path d="M9 3.2v15"/></svg><span>Xarita</span></button>
+      <button data-tab="wall"><svg viewBox="0 0 24 24"><rect width="7.5" height="7.5" x="3" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="13.5" rx="1.6"/><rect width="7.5" height="7.5" x="3" y="13.5" rx="1.6"/></svg><span>Video devor</span></button>
+      <button data-tab="admin"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg><span>Boshqaruv</span></button>
+    </nav>
+
+    <div class="side-foot">
+      <button id="help-btn" class="side-help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.4-2.5 3.9"/><path d="M12 17.5h.01"/></svg><span>Yordam</span></button>
+      <div class="side-ver">NIGOH v2.0.0<br><i>Barqaror va xavfsiz nazorat</i></div>
+    </div>
+  </aside>
+
+  <!-- ======================= Ish maydoni ======================= -->
+  <div id="work">
+
+    <!-- Tepa qator -->
+    <header id="top">
+      <button id="side-toggle" class="ic-btn" title="Menyu"><svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg></button>
+
+      <div id="searchbox">
+        <svg class="sb-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q-input" placeholder="Kamera, hudud yoki IP manzilni qidirish…" autocomplete="off">
+        <kbd>Ctrl</kbd><kbd>K</kbd>
+      </div>
+
+      <div class="top-right">
+        <button id="theme-btn" class="ic-btn" title="Mavzuni almashtirish"></button>
+
+        <div class="top-clock">
+          <span id="clock-date">&mdash;</span>
+          <b id="clock-time">&mdash;</b>
+        </div>
+
+        <div class="bell-wrap">
+          <button id="bell" class="ic-btn" title="Bildirishnomalar">
+            <svg viewBox="0 0 24 24"><path d="M18 8.5a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 14.5 18 8.5"/><path d="M13.7 20a2 2 0 0 1-3.4 0"/></svg>
+            <span id="bell-count" hidden>0</span>
+          </button>
+          <div id="bell-panel" hidden>
+            <div class="bp-head">Bildirishnomalar <span id="bp-sub"></span></div>
+            <div id="bp-list"></div>
+            <button class="bp-all" data-tab-go="dash">Barchasini ko'rish</button>
+          </div>
+        </div>
+
+        <button id="avatar" class="user-chip" title="Kirish">
+          <span id="user-av">?</span>
+          <span class="uc-t"><b id="user-name">&mdash;</b><i id="user-role">Kirilmagan</i></span>
+          <svg class="uc-ch" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Sahifalar -->
+    <main id="pages">
+
+      <!-- ==================== DASHBOARD ==================== -->
+      <section class="page" id="dash-view" hidden>
+        <div class="phead">
+          <div class="ph-main">
+            <h1>NIGOH Boshqaruv Markazi</h1>
+            <p>Mamlakat bo'ylab video kuzatuv tizimi holati va real vaqt monitoringi</p>
+          </div>
+          <div class="ph-side">
+            <svg class="ph-map" viewBox="0 0 200 100" aria-hidden="true"></svg>
+            <div class="ph-slogan">Xavfsiz hudud.<br>Barqaror nazorat.<br>Yaxshiroq kelajak.</div>
+          </div>
+        </div>
+
+        <!-- KPI qatori -->
+        <div id="kpis">
+          <div class="kpi">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">Jami kameralar</div>
+              <div class="kp-v"><span id="m-total">0</span><span class="u">ta</span></div>
+              <div class="kp-n" id="m-total-note">Tizimdagi barcha kameralar</div>
+            </div>
+          </div>
+          <div class="kpi ok">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><path d="M5 12.5a9.5 9.5 0 0 1 14 0"/><path d="M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1.4"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">Onlayn kameralar</div>
+              <div class="kp-v"><span id="m-online-n">0</span><span class="u">ta</span><span class="kp-tag" id="m-online">&mdash;</span></div>
+              <div class="kp-bar"><i id="m-online-bar"></i></div>
+              <div class="kp-n"><span id="m-online-note">Hozirda faol kameralar</span><span class="kp-d" id="m-online-d"></span></div>
+            </div>
+          </div>
+          <div class="kpi danger">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><path d="m3 3 18 18"/><path d="M10.6 5.6a9.5 9.5 0 0 1 8.4 2.9"/><path d="M5 12.5a9.5 9.5 0 0 1 3-2.1"/><circle cx="12" cy="19" r="1.4"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">Uzilgan kameralar</div>
+              <div class="kp-v"><span id="m-down">0</span><span class="u">ta</span><span class="kp-tag bad" id="m-down-pct">&mdash;</span></div>
+              <div class="kp-bar"><i id="m-down-bar" class="bad"></i></div>
+              <div class="kp-n" id="m-down-note">Hozirda uzilgan kameralar</div>
+            </div>
+          </div>
+          <div class="kpi accent">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">O'rtacha ochilish</div>
+              <div class="kp-v"><span id="m-open">&mdash;</span><span class="u">s</span></div>
+              <div class="kp-n" id="m-open-note">Kamera ochilish vaqti</div>
+              <svg class="spark" id="m-open-spark" viewBox="0 0 200 30" preserveAspectRatio="none"></svg>
+            </div>
+          </div>
+          <div class="kpi warn">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><path d="M12 9v4.5"/><path d="M12 17.5h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">Bugungi uzilishlar</div>
+              <div class="kp-v"><span id="m-ev">&mdash;</span><span class="u">ta</span></div>
+              <div class="kp-n"><span id="m-ev-note">Bugun qayd etilgan</span><span class="kp-d" id="m-ev-d"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grafik / donut / hodisalar -->
+        <div class="drow r1">
+          <div class="card" id="card-line">
+            <div class="c-head">
+              <div class="c-t">Onlaynlik darajasi<span class="c-sub" id="tl-sub">So'nggi 24 soat davomida tizim onlaynligi</span></div>
+              <div class="c-tools">
+                <div class="rangeseg" id="tl-range">
+                  <button data-h="6">6 soat</button>
+                  <button data-h="12">12 soat</button>
+                  <button data-h="24" class="on">24 soat</button>
+                </div>
+                <button class="live-pill" id="dash-refresh" title="Hozir yangilash"><i></i>JONLI · <span id="dash-upd">&mdash;</span></button>
+              </div>
+            </div>
+            <div class="stat-chips">
+              <div class="sc"><span class="k">Hozir</span><span class="v" id="tl-now">&mdash;</span></div>
+              <div class="sc"><span class="k">24 soat o'rtacha</span><span class="v" id="tl-avg">&mdash;</span></div>
+              <div class="sc"><span class="k">Eng past</span><span class="v" id="tl-min">&mdash;</span></div>
+              <div class="sc"><span class="k">7 kunlik</span><span class="v" id="tl-week">&mdash;</span></div>
+              <div class="sc"><span class="k">O'lchovlar</span><span class="v" id="tl-n">&mdash;</span></div>
+            </div>
+            <div class="ch-wrap tall">
+              <svg id="ch-timeline"></svg>
+              <div class="ch-empty" id="ch-timeline-empty"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="c-head"><div class="c-t">Kameralar holati<span class="c-sub">Barcha kameralar bo'yicha taqsimot</span></div></div>
+            <div id="donut-wrap">
+              <svg id="donut" viewBox="0 0 120 120" role="img"></svg>
+              <div id="donut-legend"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="c-head">
+              <div class="c-t">So'nggi hodisalar<span class="c-sub">Uzilishlar tarixda saqlanadi</span></div>
+              <button class="c-link" data-tab-go="admin">Barchasini ko'rish &rarr;</button>
+            </div>
+            <div id="events-list" class="scroll-list"></div>
+          </div>
+        </div>
+
+        <!-- Bugungi tahlil va takroriy uzilishlar -->
+        <div class="drow r15">
+          <div class="card">
+            <div class="c-head"><div class="c-t">Bugungi tahlil<span class="c-sub">Server tarixidan hisoblangan</span></div></div>
+            <div id="today-facts"></div>
+          </div>
+          <div class="card">
+            <div class="c-head">
+              <div class="c-t">Takroriy uzilishlar<span class="c-sub">So'nggi hodisalar lentasida bir necha marta uzilganlar</span></div>
+            </div>
+            <div id="flap-rows" class="scroll-list"></div>
+          </div>
+        </div>
+
+        <!-- Hududlar / tizim holati / tezkor amallar -->
+        <div class="drow r2">
+          <div class="card">
+            <div class="c-head">
+              <div class="c-t">Hududlar bo'yicha holat<span class="c-sub">Hududlar kesimida kamera holati</span></div>
+              <div class="c-tools">
+                <button class="c-link" id="reg-csv">CSV</button>
+                <button class="c-link" data-tab-go="map">Xaritada ko'rish &rarr;</button>
+              </div>
+            </div>
+            <div id="region-rows" class="scroll-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="c-head"><div class="c-t">Tizim holati<span class="c-sub">Asosiy servislar va komponentlar</span></div></div>
+            <div id="sys-list"></div>
+          </div>
+
+          <div class="card">
+            <div class="c-head"><div class="c-t">Tezkor amallar<span class="c-sub">Eng kerakli funksiyalar</span></div></div>
+            <div id="quick-actions">
+              <button class="qa acc" id="qa-add">
+                <svg class="qa-i" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                <span class="qa-t">Kamerani qo'shish</span>
+                <svg class="qa-a" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              </button>
+              <button class="qa" data-tab-go="map">
+                <svg class="qa-i" viewBox="0 0 24 24"><path d="M14.1 5.6a2 2 0 0 0 1.8 0l3.7-1.9A1 1 0 0 1 21 4.6v12.8a1 1 0 0 1-.6.9l-4.5 2.3a2 2 0 0 1-1.8 0l-4.2-2.1a2 2 0 0 0-1.8 0l-3.7 1.9A1 1 0 0 1 3 19.4V6.6a1 1 0 0 1 .6-.9l4.5-2.3a2 2 0 0 1 1.8 0z"/><path d="M15 5.8v15"/><path d="M9 3.2v15"/></svg>
+                <span class="qa-t">Xaritani ochish</span>
+                <svg class="qa-a" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+              </button>
+              <button class="qa" data-tab-go="wall">
+                <svg class="qa-i" viewBox="0 0 24 24"><rect width="7.5" height="7.5" x="3" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="13.5" rx="1.6"/><rect width="7.5" height="7.5" x="3" y="13.5" rx="1.6"/></svg>
+                <span class="qa-t">Video devor</span>
+                <svg class="qa-a" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+              </button>
+              <button class="qa" id="qa-mtx">
+                <svg class="qa-i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H1a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 2.6 7a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 7 2.6h.1A1.7 1.7 0 0 0 9 1V1a2 2 0 1 1 4 0v.1A1.7 1.7 0 0 0 15 2.6"/></svg>
+                <span class="qa-t">Tizim sozlamalari</span>
+                <svg class="qa-a" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kunlik kesimlar -->
+        <div class="drow r3">
+          <div class="card">
+            <div class="c-head"><div class="c-t">Kunlik onlaynlik<span class="c-sub">7 kun · o'rtacha %</span></div></div>
+            <div class="ch-wrap"><svg id="ch-daily-up"></svg><div class="ch-empty" id="ch-daily-up-empty"></div></div>
+          </div>
+          <div class="card">
+            <div class="c-head"><div class="c-t">Kunlik uzilishlar<span class="c-sub">7 kun · hodisalar soni</span></div></div>
+            <div class="ch-wrap"><svg id="ch-daily-ev"></svg><div class="ch-empty" id="ch-daily-ev-empty"></div></div>
+          </div>
+          <div class="card">
+            <div class="c-head"><div class="c-t">Bugungi uzilishlar<span class="c-sub">Soat kesimida</span></div></div>
+            <div class="ch-wrap"><svg id="ch-hourly"></svg><div class="ch-empty" id="ch-hourly-empty"></div></div>
+          </div>
+        </div>
+
+        <!-- Diqqat talab qiladiganlar + texnik kesim -->
+        <div class="drow r4">
+          <div class="card">
+            <div class="c-head">
+              <div class="c-t">Diqqat talab qiladi<span class="c-sub">Eng uzoq uzilgan kameralar</span></div>
+              <span class="c-right" id="att-count"></span>
+            </div>
+            <div id="att-rows" class="scroll-list"></div>
+          </div>
+          <div class="card">
+            <div class="c-head"><div class="c-t">Texnik kesim<span class="c-sub">Kodek va ishlash rejimi</span></div></div>
+            <div id="tech-rows"></div>
+          </div>
+          <div class="card">
+            <div class="c-head"><div class="c-t">Ochilish vaqti bo'yicha<span class="c-sub">Shu seans · sekinlari yuqorida</span></div></div>
+            <div id="slow-rows"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== XARITA ==================== -->
+      <section class="page nopad" id="map-view">
+        <div class="phead compact">
+          <div class="ph-main">
+            <h1>O'zbekiston xaritasi</h1>
+            <p>Hududlar bo'yicha kameralar va real vaqt monitoringi</p>
+          </div>
+          <div id="strip">
+            <button class="mini-kpi" id="chip-all" title="Hammasini ko'rsatish">
+              <span class="mk-ic"><svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg></span>
+              <span class="mk-t"><i>Jami kameralar</i><b id="strip-total">0</b><u>Barcha hududlarda</u></span>
+            </button>
+            <button class="mini-kpi ok" id="chip-on" title="Faqat onlaynlarni ko'rsatish">
+              <span class="mk-ic"><span class="dot"></span></span>
+              <span class="mk-t"><i>Onlayn</i><b id="strip-on">0</b><u id="strip-on-sub">Faol kameralar</u></span>
+            </button>
+            <button class="mini-kpi danger" id="chip-off" title="Faqat uzilganlarni ko'rsatish">
+              <span class="mk-ic"><span class="dot"></span></span>
+              <span class="mk-t"><i>Uzilgan</i><b id="strip-off">0</b><u id="strip-off-sub">Aloqa yo'q</u></span>
+            </button>
+            <div class="mini-kpi accent">
+              <span class="mk-ic"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.7 7-11a7 7 0 1 0-14 0c0 5.3 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></span>
+              <span class="mk-t"><i>Hududlar</i><b id="strip-reg">0</b><u>Barcha viloyatlar</u></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="map-grid">
+          <!-- Chap: kameralar ro'yxati -->
+          <aside id="list-panel">
+            <div id="list-head">
+              <div class="lh-row">
+                <div class="lh-tabs">
+                  <button class="on" data-lview="cams">Kameralar</button>
+                  <button data-lview="regs">Hududlar</button>
+                </div>
+                <button id="list-close" title="Yopish"><svg viewBox="0 0 24 24"><path d="m6 6 12 12"/><path d="m18 6-12 12"/></svg></button>
+              </div>
+              <div class="lh-search">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input id="q-list" placeholder="Kamera nomi yoki manzil…" autocomplete="off">
+              </div>
+              <div id="filters">
+                <button data-filter="all" class="on">Barchasi</button>
+                <button data-filter="online">Onlayn</button>
+                <button data-filter="offline">Uzilgan</button>
+              </div>
+              <div class="lh-meta">
+                <span id="list-count"></span>
+                <button id="list-exp" title="Hammasini ochish/yopish">Hammasini ochish</button>
+              </div>
+            </div>
+            <div id="list-body"><div class="empty">Yuklanmoqda…</div></div>
+            <div id="list-foot">
+              <div class="stat"><div class="k">O'rtacha ochilish</div><div class="v acc" id="stat-open">&mdash;</div></div>
+              <div class="stat"><div class="k">Faol oqim</div><div class="v" id="stat-live">0</div></div>
+            </div>
+          </aside>
+
+          <!-- Markaz: xarita -->
+          <div id="map-card">
+            <div id="map"></div>
+            <div id="mapctl">
+              <button id="z-in" title="Kattalashtirish"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+              <button id="z-out" title="Kichiklashtirish"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+              <button id="fit-all" title="Hammasini ko'rsatish"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/></svg></button>
+            </div>
+            <div id="map-legend">
+              <div class="ml-t">Belgilar</div>
+              <div class="ml-r"><span class="ml-i ok"></span>Onlayn kamera</div>
+              <div class="ml-r"><span class="ml-i bad"></span>Uzilgan kamera</div>
+              <div class="ml-r"><span class="ml-i cl">12</span>Kamera klasteri</div>
+              <div class="ml-r"><span class="ml-i bdg">3</span>Klasterda uzilganlar</div>
+              <div class="ml-r"><span class="ml-i bd"></span>Hudud chegarasi</div>
+            </div>
+            <button class="btn ghost" id="map-fs"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg>To'liq ekran</button>
+            <div id="pick-hint">Xaritada kerakli nuqtani bosing — koordinata shaklga tushadi</div>
+          </div>
+
+          <!-- O'ng: kamera tafsilotlari -->
+          <aside id="sel-panel">
+            <div class="sp-head">
+              <span class="sp-ttl">Kamera tafsilotlari</span>
+              <button id="sel-close" title="Yopish"><svg viewBox="0 0 24 24"><path d="m6 6 12 12"/><path d="m18 6-12 12"/></svg></button>
+            </div>
+
+            <div id="sel-empty" class="sp-empty">
+              <svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              <p>Xaritadan yoki ro'yxatdan kamerani tanlang — jonli tasvir va tafsilotlari shu yerda ochiladi.</p>
+            </div>
+
+            <div id="sel-body" hidden>
+              <div class="sp-status">
+                <span class="sp-st"><span id="sel-dot"></span><span id="sel-badge-tx">LIVE</span></span>
+                <span class="sp-open"><span id="sel-f-open">&mdash;</span></span>
+              </div>
+              <div id="sel-video-wrap">
+                <video id="sel-video" muted playsinline></video>
+                <div id="sel-msg" class="pmsg"></div>
+                <div id="sel-badge"><i></i><span id="sel-badge-2">LIVE</span></div>
+                <div id="sel-stamp"></div>
+                <button id="sel-full" title="To'liq ekran"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg></button>
+              </div>
+              <div class="sp-name"><b id="sel-name"></b><i id="sel-sub"></i></div>
+              <dl class="sp-facts">
+                <div><dt><svg viewBox="0 0 24 24"><path d="M12 21s7-5.7 7-11a7 7 0 1 0-14 0c0 5.3 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>Hudud</dt><dd id="sel-f-region">&mdash;</dd></div>
+                <div><dt><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>Kodek</dt><dd id="sel-f-codec">&mdash;</dd></div>
+                <div><dt><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M7 10h4"/></svg>Format</dt><dd id="sel-f-res">&mdash;</dd></div>
+                <div><dt><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Rejim</dt><dd id="sel-f-mode">&mdash;</dd></div>
+                <div><dt><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 18 0"/><path d="M12 12v6"/></svg>Oxirgi aloqa</dt><dd id="sel-f-seen">&mdash;</dd></div>
+              </dl>
+              <div class="sp-actions">
+                <button class="btn acc" id="sel-wall"><svg viewBox="0 0 24 24"><rect width="7.5" height="7.5" x="3" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="13.5" rx="1.6"/><rect width="7.5" height="7.5" x="3" y="13.5" rx="1.6"/></svg>Devorga qo'shish</button>
+                <button class="btn" id="sel-shot"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M4 19h16"/></svg>Suratni saqlash</button>
+                <button class="btn" id="sel-edit"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Kamerani sozlash</button>
+                <button class="btn" id="sel-center"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/></svg>Xaritada markazlash</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ==================== VIDEO DEVOR ==================== -->
+      <section class="page nopad" id="wall-view" hidden>
+        <div class="phead compact">
+          <div class="ph-main">
+            <h1>Video devor</h1>
+            <p id="wall-label">Jonli kameralarni bir ekranda kuzatish va boshqarish</p>
+          </div>
+          <div class="ph-side">
+            <svg class="ph-map" viewBox="0 0 200 100" aria-hidden="true"></svg>
+            <div class="ph-slogan">Xavfsiz hudud.<br>Barqaror nazorat.<br>Yaxshiroq kelajak.</div>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="tgroup">
+            <span class="tg-k">Grid ko'rinishi</span>
+            <div id="wall-sizes">
+              <button data-wsize="2">2&times;2</button>
+              <button data-wsize="3" class="on">3&times;3</button>
+              <button data-wsize="4">4&times;4</button>
+              <button data-wsize="6">6&times;6</button>
+              <button data-wsize="8">8&times;8</button>
+            </div>
+          </div>
+          <div class="tgroup">
+            <span class="tg-k">Sifat</span>
+            <div id="wall-quality" title="Avto: 4 tagacha katakda asl sifat, ko'prog'ida past sifatli 2-oqim">
+              <button data-wq="auto" class="on">Avto</button>
+              <button data-wq="sub">Past</button>
+              <button data-wq="main">Yuqori</button>
+            </div>
+          </div>
+          <div class="tgroup">
+            <span class="tg-k">Hudud bo'yicha filter</span>
+            <select id="wall-region" class="toolsel"><option value="">Barcha hududlar</option></select>
+          </div>
+          <div class="tgroup">
+            <span class="tg-k">Avto-almashish</span>
+            <div class="tg-row">
+              <button id="wall-auto" class="switch" role="switch" aria-checked="false"><i></i></button>
+              <select id="wall-interval" class="toolsel sm">
+                <option value="5">5 soniya</option>
+                <option value="10">10 soniya</option>
+                <option value="12" selected>12 soniya</option>
+                <option value="20">20 soniya</option>
+                <option value="30">30 soniya</option>
+              </select>
+            </div>
+          </div>
+          <div class="tgroup">
+            <span class="tg-k">Kadr</span>
+            <button class="btn" id="wall-fit">Butun ko'rinish</button>
+          </div>
+          <button class="btn acc tall" id="wall-fs">
+            <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
+            <span>To'liq ekran<i>Video devor rejimi</i></span>
+          </button>
+        </div>
+
+        <div id="wall-grid"></div>
+
+        <div class="wfoot">
+          <span id="wall-pager">
+            <button class="pg" id="wall-prev" title="Oldingi sahifa (←)"><svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+            <span class="wf-page"><b id="wall-page">1</b><i>Sahifalar</i></span>
+            <button class="pg" id="wall-next" title="Keyingi sahifa (→)"><svg viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+          </span>
+          <div class="wf-right">
+            <span class="wf-i"><span class="dot ok"></span><span id="wall-live">0 / 0 kamera onlayn</span></span>
+            <span class="wf-i"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg><span id="wall-conn">Ulanish barqaror</span></span>
+            <span class="wf-i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Oxirgi yangilanish: <span id="wall-upd">&mdash;</span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== BOSHQARUV ==================== -->
+      <section class="page" id="admin-view" hidden>
+        <div class="phead">
+          <div class="ph-main">
+            <h1>Kameralarni boshqarish</h1>
+            <p>Kuzatuv kameralari ro'yxati, sozlamalari va holatini boshqaring</p>
+          </div>
+          <div class="ph-side">
+            <svg class="ph-map" viewBox="0 0 200 100" aria-hidden="true"></svg>
+            <div class="ph-slogan">Xavfsiz hudud.<br>Barqaror nazorat.<br>Yaxshiroq kelajak.</div>
+          </div>
+        </div>
+
+        <div id="adm-kpis">
+          <div class="kpi">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">Jami kameralar</div>
+              <div class="kp-v"><span id="adm-k-total">0</span><span class="u">ta</span></div>
+              <div class="kp-n">Tizimdagi barcha kameralar</div>
+            </div>
+          </div>
+          <div class="kpi ok">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><path d="M5 12.5a9.5 9.5 0 0 1 14 0"/><path d="M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1.4"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">Onlayn</div>
+              <div class="kp-v"><span id="adm-k-on">0</span><span class="u">ta</span><span class="kp-tag" id="adm-k-on-pct">&mdash;</span></div>
+              <div class="kp-bar"><i id="adm-k-on-bar"></i></div>
+              <div class="kp-n">Hozirda faol kameralar</div>
+            </div>
+          </div>
+          <div class="kpi danger">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><path d="m3 3 18 18"/><path d="M10.6 5.6a9.5 9.5 0 0 1 8.4 2.9"/><path d="M5 12.5a9.5 9.5 0 0 1 3-2.1"/><circle cx="12" cy="19" r="1.4"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">Oflayn</div>
+              <div class="kp-v"><span id="adm-k-off">0</span><span class="u">ta</span><span class="kp-tag bad" id="adm-k-off-pct">&mdash;</span></div>
+              <div class="kp-bar"><i id="adm-k-off-bar" class="bad"></i></div>
+              <div class="kp-n">Aloqa uzilgan kameralar</div>
+            </div>
+          </div>
+          <div class="kpi accent">
+            <div class="kp-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/></svg></div>
+            <div class="kp-body">
+              <div class="kp-k">O'chirilgan</div>
+              <div class="kp-v"><span id="adm-k-dis">0</span><span class="u">ta</span></div>
+              <div class="kp-n">Xaritada ko'rsatilmaydi</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="adm-bar">
+          <div class="chipseg" id="adm-status">
+            <button data-st="" class="on">Barchasi <b id="adm-c-all">0</b></button>
+            <button data-st="online">Onlayn <b id="adm-c-on">0</b></button>
+            <button data-st="offline">Oflayn <b id="adm-c-off">0</b></button>
+            <button data-st="disabled">O'chirilgan <b id="adm-c-dis">0</b></button>
+          </div>
+          <div class="adm-acts">
+            <button class="btn acc" id="new-cam"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Kamera qo'shish</button>
+            <button class="btn" id="nvr-btn"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M7 8h.01"/><path d="M7 16h.01"/></svg>NVR ochish</button>
+            <button class="btn" id="adm-export"><svg viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m8 11 4 4 4-4"/><path d="M4 20h16"/></svg>Export</button>
+            <button class="btn" id="sync-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3.5 12h3"/><path d="M17.5 12h3"/><path d="M12 3.5v3"/><path d="M12 17.5v3"/></svg>Media sozlamalar</button>
+          </div>
+        </div>
+
+        <div class="adm-filters">
+          <div class="lh-search wide">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="admin-search" placeholder="Kamera nomi, IP manzil yoki hudud bo'yicha qidirish…" autocomplete="off">
+          </div>
+          <select id="adm-region" class="toolsel"><option value="">Barcha hududlar</option></select>
+          <select id="adm-codec" class="toolsel">
+            <option value="">Barcha kodeklar</option>
+            <option value="h265raw">H.265 xom</option>
+            <option value="trans">H.265 &rarr; H.264</option>
+            <option value="h264">H.264</option>
+          </select>
+          <select id="adm-mode" class="toolsel">
+            <option value="">Barcha rejimlar</option>
+            <option value="always">Doim tayyor</option>
+            <option value="ondemand">So'rov bo'yicha</option>
+          </select>
+          <button class="btn ghost" id="adm-clear"><svg viewBox="0 0 24 24"><path d="M3 5h18"/><path d="m6 5 1 14h10l1-14"/></svg>Filtrlarni tozalash</button>
+          <span class="meta" id="adm-shown"></span>
+        </div>
+
+        <div class="card flat">
+          <div id="admin-scroll">
+            <table id="admin-table">
+              <thead><tr>
+                <th class="num">#</th>
+                <th class="sortable" data-key="status">Holat<span class="arr"></span></th>
+                <th class="sortable" data-key="name">Kamera nomi<span class="arr"></span></th>
+                <th class="sortable" data-key="region">Hudud<span class="arr"></span></th>
+                <th>IP manzil / Stream URL</th>
+                <th class="sortable" data-key="codec">Kodek<span class="arr"></span></th>
+                <th class="sortable" data-key="mode">Rejim<span class="arr"></span></th>
+                <th class="act">Amallar</th>
+              </tr></thead>
+              <tbody id="admin-tbody"></tbody>
+            </table>
+          </div>
+          <div id="admin-foot">
+            <span class="meta" id="admin-count"></span>
+            <span class="meta" id="admin-total"></span>
+            <div class="pager">
+              <button class="pg" id="adm-prev" title="Oldingi"><svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+              <span id="adm-pages"></span>
+              <button class="pg" id="adm-next" title="Keyingi"><svg viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+            </div>
+            <label class="pg-size">Sahifada:
+              <select id="adm-size" class="toolsel sm">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ===== Kirish sahifasi ===== -->
+<div id="login-modal" class="login-screen">
+  <div class="ls-left">
+    <div class="ls-brand">
+      <span class="logo"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" class="o"/><circle cx="16" cy="16" r="5.5" class="i"/></svg></span>
+      <span class="bt"><b>NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
+    </div>
+    <h2>Xavfsiz<br>O'zbekiston uchun<br>birgalikda</h2>
+    <p class="ls-lead">Butun mamlakat bo'ylab video kuzatuv, real vaqt monitoringi
+      va tezkor boshqaruv bir platformada.</p>
+    <div class="ls-feats">
+      <div class="lf"><span class="lf-i"><svg viewBox="0 0 24 24"><path d="M12 3 4 6.5V12c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6.5z"/></svg></span>
+        <span class="lf-t"><b>Keng qamrov</b><i>Butun hudud bo'ylab nazorat</i></span></div>
+      <div class="lf"><span class="lf-i"><svg viewBox="0 0 24 24"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg></span>
+        <span class="lf-t"><b>Ishonchli texnologiya</b><i>24/7 barqaror ishlash</i></span></div>
+      <div class="lf"><span class="lf-i"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 19a6.5 6.5 0 0 1 13 0"/><path d="M17 11.5a3 3 0 0 0 0-6"/><path d="M18 19h3.5a5.5 5.5 0 0 0-3.5-5"/></svg></span>
+        <span class="lf-t"><b>Xavfsiz jamiyat</b><i>Tinch va farovon hayot sari</i></span></div>
+    </div>
+    <div class="ls-art">
+      <svg class="ph-map" viewBox="0 0 200 100" aria-hidden="true"></svg>
+      <!-- Kirmagan foydalanuvchiga tizim raqamlari ko'rsatilmaydi. -->
+      <div class="ls-stats">
+        <div><b>14</b><i>HUDUDLAR</i></div>
+        <div><b>24/7</b><i>DOIMIY NAZORAT</i></div>
+        <div><b>HD</b><i>JONLI TASVIR</i></div>
+      </div>
+    </div>
+    <div class="ls-foot">KUZATAMIZ &nbsp;|&nbsp; TAHLIL QILAMIZ &nbsp;|&nbsp; XAVFSIZROQ YARATAMIZ</div>
+  </div>
+
+  <div class="ls-right">
+    <div class="ls-card" role="dialog" aria-modal="true">
+      <div class="ls-brand center">
+        <span class="logo"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" class="o"/><circle cx="16" cy="16" r="5.5" class="i"/></svg></span>
+        <span class="bt"><b>NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
+      </div>
+      <h3>Tizimga kirish</h3>
+      <p class="ls-sub">Hisobingiz orqali NIGOH platformasiga kiring</p>
+      <div class="err" id="login-err"></div>
+
+      <div class="ls-field">
+        <svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></svg>
+        <input id="l-user" autocomplete="username" placeholder="Foydalanuvchi nomi">
+      </div>
+      <div class="ls-field">
+        <svg viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
+        <input id="l-pass" type="password" autocomplete="current-password" placeholder="Parol">
+        <button id="l-eye" title="Parolni ko'rsatish"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg></button>
+      </div>
+      <label class="ls-remember"><input type="checkbox" id="l-remember"><span>Meni esda saqlash</span></label>
+
+      <button class="btn acc block" id="l-submit">Kirish<svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button>
+      <button class="btn ghost block" id="l-guest" hidden>Mehmon sifatida davom etish</button>
+      <div class="ls-gate" id="ls-gate">Ma'lumotlarni ko'rish uchun tizimga kirish shart.</div>
+
+      <div class="ls-note"><svg viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>Xavfsiz ulanish &nbsp;|&nbsp; Ma'lumotlaringiz himoyalangan</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Kamera shakli ===== -->
+<div class="backdrop" id="cam-modal">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2 id="cam-title">Yangi kamera</h2>
+    <p class="lead">IP, login va parolni kiriting — qolganini tizim o'zi aniqlaydi.
+      Xaritadan nuqta tanlansa, hudud ham avtomatik to'ladi.</p>
+    <div class="err" id="cam-err"></div>
+
+    <div class="seg">
+      <button data-src="rtsp" class="on">IP kamera (RTSP)</button>
+      <button data-src="manual">Tayyor oqim manzili</button>
+    </div>
+
+    <div class="grid2">
+      <label>Nomi
+        <input id="f-name" placeholder="Chorsu bozori" maxlength="120">
+      </label>
+      <label>Hudud
+        <input id="f-region" placeholder="Toshkent" maxlength="120">
+      </label>
+    </div>
+
+    <div class="grid2">
+      <label>Kenglik (lat)
+        <input id="f-lat" type="number" step="0.00001" placeholder="41.32660">
+      </label>
+      <label>Uzunlik (lng)
+        <input id="f-lng" type="number" step="0.00001" placeholder="69.23450">
+      </label>
+    </div>
+    <div class="modal-actions" style="margin:-4px 0 14px">
+      <button class="btn" id="f-pick" style="margin-right:auto">Xaritadan tanlash</button>
+    </div>
+
+    <div id="rtsp-block">
+      <div class="section">
+        <div class="section-title">Kamera ulanishi</div>
+        <label>Ishlab chiqaruvchi
+          <select id="f-vendor"></select>
+        </label>
+        <div class="grid31">
+          <label>IP manzil
+            <input id="f-ip" placeholder="192.168.1.10" maxlength="100">
+          </label>
+          <label>Port
+            <input id="f-port" type="number" value="554" min="1" max="65535">
+          </label>
+        </div>
+        <div class="grid2">
+          <label>Login
+            <input id="f-user" placeholder="admin" maxlength="100" autocomplete="off">
+          </label>
+          <label>Parol
+            <input id="f-pass" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" maxlength="200" autocomplete="new-password">
+          </label>
+        </div>
+        <div class="hint" id="pass-hint" hidden>Bo'sh qoldirilsa — saqlangan parol o'zgarmaydi.</div>
+        <div class="modal-actions" style="margin:2px 0 6px">
+          <button class="btn acc" id="f-scan" style="margin-right:auto">&#128269; Qurilmani aniqlash</button>
+        </div>
+        <div class="hint">IP, login va parolni kiritib «Qurilmani aniqlash»ni
+          bosing — turi (kamera yoki NVR), ishlab chiqaruvchisi va kanallari
+          avtomatik topiladi. Pastdagi maydonlarni qo'lda to'ldirish shart emas.</div>
+        <div class="probe-out" id="f-scan-out"></div>
+        <div id="f-channels"></div>
+        <label>RTSP yo'li
+          <input id="f-path" placeholder="/Streaming/Channels/101" maxlength="300">
+        </label>
+        <div class="rtsp-preview" id="f-preview">rtsp://&hellip;</div>
+        <div class="modal-actions" style="margin:-6px 0 4px">
+          <button class="btn" id="f-test" style="margin-right:auto">Ulanishni tekshirish</button>
+        </div>
+        <div class="probe-out" id="f-probe"></div>
+      </div>
+    </div>
+
+    <div id="manual-block" hidden>
+      <div class="section">
+        <div class="section-title">Oqim manzili</div>
+        <label>HLS yoki MP4 manzil
+          <input id="f-url" placeholder="http://server:8888/kamera1/index.m3u8" maxlength="500">
+        </label>
+        <div class="hint">MediaMTX allaqachon sozlangan bo'lsa yoki tashqi oqim bo'lsa shu yerga yozing.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <label>Izoh (ixtiyoriy)
+        <textarea id="f-note" placeholder="Masalan: 3-qavat, kirish eshigi" maxlength="500"></textarea>
+      </label>
+      <label style="display:flex;align-items:center;gap:9px;color:var(--text);font-size:13px;font-weight:500">
+        <input type="checkbox" id="f-enabled" checked style="width:auto;margin:0">
+        Faol — xaritada ko'rsatilsin
+      </label>
+      <label style="display:flex;align-items:center;gap:9px;color:var(--text);font-size:13px;font-weight:500">
+        <input type="checkbox" id="f-always" style="width:auto;margin:0">
+        Tez ochilsin
+      </label>
+      <div class="hint">Yoqilsa kamera doim ulangan turadi va oqim qisqa
+        keyframe oralig'i bilan tayyorlanadi — ochilish ~2,5 s o'rniga ~1 s.
+        Buning evaziga kamera doimo resurs egallaydi (~200 MB va bir oz GPU),
+        shuning uchun faqat eng muhim kameralarda yoqing.
+        <br><br>Hamma kamerani tezlashtirishning bepul yo'li — registratorda
+        <b>I Frame Interval</b> ni kadr tezligiga tenglashtirish (masalan 25),
+        u odatda 100 ga qo'yilgan bo'ladi.</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" data-close="cam-modal">Bekor qilish</button>
+      <button class="btn acc" id="f-save">Saqlash</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== NVR dan ommaviy qo'shish ===== -->
+<div class="backdrop" id="nvr-modal">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2>Registratordan ommaviy qo'shish</h2>
+    <p class="lead">Bitta NVR/DVR dagi barcha kanallarni birdaniga kiritadi.
+      Kanallar parallel tekshiriladi — javob bermaganlari o'tkazib yuboriladi.</p>
+    <div class="err" id="nvr-err"></div>
+
+    <div class="grid31">
+      <label>NVR manzili
+        <input id="n-ip" placeholder="192.168.1.100" maxlength="100">
+      </label>
+      <label>Port
+        <input id="n-port" type="number" value="554" min="1" max="65535">
+      </label>
+    </div>
+    <div class="grid2">
+      <label>Login
+        <input id="n-user" placeholder="admin" maxlength="100" autocomplete="off">
+      </label>
+      <label>Parol
+        <input id="n-pass" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;" maxlength="200" autocomplete="new-password">
+      </label>
+    </div>
+    <div class="grid2">
+      <label>Ishlab chiqaruvchi
+        <select id="n-vendor"></select>
+      </label>
+      <label>Kanallar
+        <input id="n-channels" value="1-16" placeholder="1-16 yoki 1,3,5-8" maxlength="200">
+      </label>
+    </div>
+    <div class="grid2">
+      <label>Oqim turi
+        <select id="n-stream">
+          <option value="main">Asosiy — sifatli, og'irroq</option>
+          <option value="sub">Qo'shimcha — yengil, xarita uchun mos</option>
+        </select>
+      </label>
+      <label>Nuqtalar orasi (metr)
+        <input id="n-spread" type="number" value="120" min="0" max="5000">
+      </label>
+    </div>
+    <div class="grid2">
+      <label>Hudud
+        <input id="n-region" placeholder="Toshkent" maxlength="120">
+      </label>
+      <label>Nom oldiga
+        <input id="n-prefix" placeholder="Chorsu" maxlength="100">
+      </label>
+    </div>
+    <div class="grid2">
+      <label>Kenglik (lat)
+        <input id="n-lat" type="number" step="0.00001" placeholder="41.32660">
+      </label>
+      <label>Uzunlik (lng)
+        <input id="n-lng" type="number" step="0.00001" placeholder="69.23450">
+      </label>
+    </div>
+    <div class="modal-actions" style="margin:-4px 0 14px">
+      <button class="btn" id="n-pick" style="margin-right:auto">Xaritadan tanlash</button>
+    </div>
+    <div class="hint">Barcha kanallar shu nuqta atrofiga spiral bo'ylab
+      tarqatiladi — keyin har birini alohida joyiga surish mumkin.</div>
+
+    <div class="probe-out" id="n-out"></div>
+    <div id="n-table"></div>
+
+    <div class="modal-actions">
+      <button class="btn" data-close="nvr-modal">Yopish</button>
+      <button class="btn" id="n-scan" style="margin-right:auto">&#128269; Kanallarni avto-aniqlash</button>
+      <button class="btn" id="n-check">Tekshirish</button>
+      <button class="btn acc" id="n-save" disabled>Qo'shish</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MediaMTX oynasi ===== -->
+<div class="backdrop" id="mtx-modal">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2>MediaMTX konfiguratsiyasi</h2>
+    <p class="lead" id="mtx-lead">Bazadagi kameralardan yaratilgan.</p>
+    <pre class="config" id="mtx-text">&hellip;</pre>
+    <div class="modal-actions">
+      <button class="btn" data-close="mtx-modal">Yopish</button>
+      <button class="btn acc" id="mtx-apply">Faylga yozish va qo'llash</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Yordam ===== -->
+<div class="backdrop" id="help-modal">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2>Yordam va klaviatura</h2>
+    <p class="lead">Tizim bo'limlari va tez tugmalar.</p>
+    <div class="section">
+      <div class="section-title">Bo'limlar</div>
+      <div class="help-rows">
+        <div><b>Dashboard</b><span>Umumiy holat: onlaynlik, uzilishlar, hududlar va tizim servislari.</span></div>
+        <div><b>Xarita</b><span>Kameralar joylashuvi, hudud bo'yicha ro'yxat va jonli ko'rish paneli.</span></div>
+        <div><b>Video devor</b><span>Bir nechta kamerani setkada kuzatish, avto-almashish, to'liq ekran.</span></div>
+        <div><b>Boshqaruv</b><span>Kamera qo'shish, tahrirlash, NVR dan ommaviy import, MediaMTX.</span></div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">Klaviatura</div>
+      <div class="help-rows">
+        <div><b>Ctrl + K</b><span>Qidiruvga o'tish.</span></div>
+        <div><b>&larr; &rarr;</b><span>Video devorda sahifalarni almashtirish.</span></div>
+        <div><b>Esc</b><span>Oynani yopish, tanlovni bekor qilish.</span></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn acc" data-close="help-modal">Yopish</button>
+    </div>
+  </div>
+</div>
+
+<div id="cam-tip"><img alt=""><div class="cap"></div></div>
+
+<div id="chart-tip"><div class="v"></div><div class="l"></div></div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1" crossorigin="anonymous"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

@@ -11,7 +11,7 @@ echo.
 if not exist "venv\Scripts\python.exe" (
   echo   [!] venv topilmadi. Avval quyidagini bajaring:
   echo         py -m venv venv
-  echo         venv\Scripts\python.exe -m pip install -r requirements.txt
+  echo         venv\Scripts\python.exe -m pip install -r backend\requirements.txt
   echo.
   pause
   exit /b 1
@@ -26,4 +26,4 @@ if not exist "mediamtx\mediamtx.exe" (
 
 echo   [*] Sayt ishga tushmoqda (MediaMTX'ni tizim o'zi ko'taradi)...
 start "" http://localhost:8010
-venv\Scripts\python.exe main.py
+venv\Scripts\python.exe backend\main.py

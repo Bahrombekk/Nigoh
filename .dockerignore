@@ -12,13 +12,13 @@ auto.key
 
 # Lokal muhit va hosilalar
 venv/
-__pycache__/
-*.pyc
+**/__pycache__/
+**/*.pyc
 mediamtx/
 data/
 
 # Loglar
-*.log
+**/*.log
 nigoh.log.*
 
 # Boshqalar
@@ -30,6 +30,7 @@ nigoh.log.*
 .idea/
 ishga-tushirish.bat
 .github/
-tests/
-requirements-dev.txt
-ruff.toml
+backend/tests/
+backend/requirements-dev.txt
+backend/ruff.toml
+backend/pytest.ini
