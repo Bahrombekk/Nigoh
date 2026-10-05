@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from geo_import import Service, load_env_file
 
-load_env_file(str(pathlib.Path(__file__).resolve().parents[2] / ".env.mikroservis-zaxira"))
+load_env_file(str(pathlib.Path(__file__).resolve().parents[2] / ".env"))
 service = Service(os.environ["NIGOH_URL"], os.environ["NIGOH_KEY"])
 cameras = service.cameras()
 placed = [c for c in cameras

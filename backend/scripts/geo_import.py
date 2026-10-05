@@ -174,7 +174,7 @@ def main() -> int:
     parser.add_argument("excel", help="geolokatsiya fayli (.xlsx)")
     parser.add_argument("--apply", action="store_true",
                         help="haqiqatan yozsin (standart holatda faqat ko'rsatadi)")
-    parser.add_argument("--env-file", default=".env.mikroservis-zaxira",
+    parser.add_argument("--env-file", default=".env",
                         help="NIGOH_URL va NIGOH_KEY olinadigan fayl")
     parser.add_argument("--overwrite", action="store_true",
                         help="koordinatasi bor kameralarni ham qayta yozsin")

@@ -1,0 +1,31 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nigoh",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "backend/main.py"
+      ],
+      "port": 8010
+    },
+    {
+      "name": "nigoh-mehmon",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-c",
+        "import os, runpy, sys; os.environ['PUBLIC_VIEW'] = '1'; sys.path.insert(0, 'backend'); runpy.run_path('backend/main.py', run_name='__main__')"
+      ],
+      "port": 8010
+    },
+    {
+      "name": "nigoh-5000",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-c",
+        "import os, runpy, sys; os.environ['PUBLIC_VIEW']='1'; os.environ['NIGOH_DATA']=r'C:/Users/User/AppData/Local/Temp/claude/C--Users-User-Desktop-kamera-xarita/b8d73b10-1ba0-43b6-b137-4608801f93b4/scratchpad/yuk5000'; sys.path.insert(0, 'backend'); runpy.run_path('backend/main.py', run_name='__main__')"
+      ],
+      "port": 8010
+    }
+  ]
+}
