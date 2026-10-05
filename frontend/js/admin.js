@@ -1,14 +1,14 @@
 /* Boshqaruv jadvali: kameralar ro'yxati, filtr, saralash, eksport, MediaMTX tugmalari. */
-import { $, esc, state, toast } from "./holat.js";
+import { $, esc, state, toast } from "./state.js";
 import { api } from "./api.js";
-import { ICO } from "./ikonkalar.js";
-import { hasGeo, map } from "./xarita.js";
-import { loadCameras } from "./malumot.js";
-import { selectCamera } from "./tanlov.js";
+import { ICO } from "./icons.js";
+import { hasGeo, map } from "./map.js";
+import { loadCameras } from "./data.js";
+import { selectCamera } from "./selection.js";
 import { addEvent } from "./dashboard.js";
-import { showTab } from "./tablar.js";
-import { closeModal, openModal } from "./modallar.js";
-import { openCameraForm } from "./kamera-shakli.js";
+import { showTab } from "./tabs.js";
+import { closeModal, openModal } from "./modals.js";
+import { openCameraForm } from "./camera-form.js";
 
 /* ---------- Boshqaruv jadvali ---------- */
 export async function loadAdminCameras(offset) {

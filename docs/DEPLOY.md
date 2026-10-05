@@ -3,6 +3,7 @@
 ## Talablar
 
 - Linux server (Ubuntu 22.04+ tavsiya), Docker va docker compose plugin.
+- PostgreSQL 17 — hostning o'zida, oddiy servis sifatida (Docker'da emas).
 - Server kameralar tarmog'iga yeta olishi kerak (RTSP, odatda 554-port).
 - Video o'girish ko'p bo'lsa NVIDIA GPU foyda beradi, lekin shart emas —
   H.264 kameralar umuman o'girilmaydi.
@@ -13,14 +14,20 @@
 # 1. Loyihani serverga ko'chiring (git yoki papkani nusxalash)
 cd nigoh
 
-# 2. Sozlamalar
-cp .env.example .env
-nano .env          # kamida ADMIN_PAROL ni to'ldiring
+# 2. Baza (bir marta) — PostgreSQL 17, faqat 127.0.0.1 da tinglaydi
+sudo apt install -y postgresql-17          # yo'q bo'lsa: apt.postgresql.org repozitoriysi
+NIGOH_DB_PAROL=$(openssl rand -base64 24 | tr -d '/+=')
+sudo -u postgres psql -v parol="$NIGOH_DB_PAROL" -f deploy/postgres/setup-roles.sql
 
-# 3. Ishga tushirish
+# 3. Sozlamalar
+cp .env.example .env
+nano .env          # ADMIN_PAROL, NIGOH_DB_PAROL va DATABASE_URL
+                   # (postgresql://nigoh:<parol>@127.0.0.1:5432/nigoh)
+
+# 4. Ishga tushirish
 docker compose up -d --build
 
-# 4. Tekshirish
+# 5. Tekshirish
 docker logs nigoh          # "Uvicorn running" ko'rinishi kerak
 curl http://localhost:8010/api/v1/cameras
 ```
@@ -48,15 +55,33 @@ IP/domenni yozing — oqim manzillari shu manzil bilan beriladi.
 
 ## Ma'lumotlar va zaxira
 
-Hamma o'zgaruvchan narsa `./data` papkasida (baza, `secret.key`, loglar).
-Zaxira uchun shu papkani arxivlash yetarli:
+Ma'lumotlar (kameralar, foydalanuvchilar, tarix) — PostgreSQL'da
+(Ubuntu'da `/var/lib/postgresql/17/main`). Fayllar (`secret.key`, loglar,
+`mediamtx.yml`, suratlar) — `./data` papkasida.
+
+Baza papkasini nusxalab zaxira OLINMAYDI (ishlab turgan baza fayllari
+izchil bo'lmaydi). Zaxira — `pg_dump`; skript `secret.key` ni ham yoniga
+oladi:
 
 ```bash
-tar czf nigoh-backup-$(date +%F).tar.gz data/
+deploy/db-backup.sh                          # backups/nigoh-<vaqt>.dump
+# har kuni 03:15 (crontab -e):
+15 3 * * * cd /opt/nigoh && deploy/db-backup.sh >> backups/backup.log 2>&1
+```
+
+Tiklashni oldindan bir marta sinab ko'ring — tekshirilmagan zaxira
+zaxira emas:
+
+```bash
+pg_restore -d "$DATABASE_URL" --clean --if-exists --no-owner backups/nigoh-....dump
 ```
 
 `secret.key` yo'qolsa kameralarning saqlangan parollari **tiklanmaydi** —
 zaxirani alohida xavfsiz joyda ham saqlang.
+
+Bazani qo'lda ko'rish uchun faqat o'qiy oladigan `nigoh_readonly` roli bor
+(parolini bering: `sudo -u postgres psql -c "ALTER ROLE nigoh_readonly
+PASSWORD '...'"`). Ilovaning `nigoh` rolini qo'lda ishlatmang.
 
 Yangilash (ma'lumotlar joyida qoladi):
 

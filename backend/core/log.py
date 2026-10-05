@@ -6,7 +6,7 @@ Ikkita chiqish:
   * `nigoh.log` (ildizda, aylanma — 5 MB × 3) — har satr bitta JSON obyekt:
     {"ts": ..., "level": ..., "service": ..., "event": ..., ...maydonlar}.
     Keyinchalik Loki/OpenSearch'ga shu faylni yuborish mumkin.
-  * konsol — odam o'qiydigan qisqa satr (ishga-tushirish.bat oynasi uchun).
+  * konsol — odam o'qiydigan qisqa satr (start.bat oynasi uchun).
 
 Ishlatish:
     from core.log import log
@@ -19,7 +19,7 @@ import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
-from .db import DATA_DIR
+from .paths import DATA_DIR
 
 LOG_PATH = DATA_DIR / "nigoh.log"
 

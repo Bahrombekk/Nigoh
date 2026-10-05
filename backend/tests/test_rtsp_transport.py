@@ -18,7 +18,7 @@ qo'riqlaydi.
 import pytest
 import yaml
 
-from kamera import sync, transport
+from camera import sync, transport
 
 KAM = {"slug": "kam_1", "ip": "10.0.0.1", "port": 554, "rtsp_path": "/s1",
        "username": "u", "password": "p", "always_on": False}

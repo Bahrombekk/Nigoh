@@ -1,21 +1,31 @@
 """Nigoh — boshqaruv endpointlari: kameralar CRUD, NVR import, skaner,
 foydalanuvchilar va MediaMTX holati. Tugunlar alohida: api/nodes.py."""
 import math
-import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
+from camera import device_info as devinfo
+from camera import fast_start, health, reconciler
+from camera import sync as mediamtx_sync
+from camera.fast_start import channel_from_path, channel_marked
+from camera.rtsp_probe import probe
 from core import security
-from core.db import get_db, unique_slug
 from core.log import log
-from kamera import device_info as devinfo
-from kamera import fast_start, health, reconciler
-from kamera import sync as mediamtx_sync
-from kamera.fast_start import channel_from_path, channel_marked
-from kamera.rtsp_probe import probe
+from database import (
+    IntegrityError,
+    areas,
+    cameras,
+    events,
+    get_db,
+    rail,
+    unique_slug,
+    users,
+)
+from database import nodes as nodes_db
+from database.connection import database_size
 
 from .config import CHANNEL_VENDORS, VENDORS
 from .helpers import (
@@ -47,10 +57,7 @@ def _fill_passport(camera_ids: list[int], ip: str,
     if not info or not (info["model"] or info["firmware"]):
         return
     with get_db() as db:
-        db.executemany(
-            "UPDATE cameras SET model = ?, firmware = ? WHERE id = ?",
-            [(info["model"], info["firmware"], cid) for cid in camera_ids],
-        )
+        cameras.set_passport(db, camera_ids, info["model"], info["firmware"])
 
 
 def _enrich_new_camera(camera_ids: list[int], ip: str, port: int,
@@ -77,15 +84,10 @@ def _adopt_external_id(db, row, external_id: str):
     """
     if not external_id or (row["external_id"] or ""):
         return row
-    taken = db.execute(
-        "SELECT 1 FROM cameras WHERE external_id = ? AND id != ?",
-        (external_id, row["id"])).fetchone()
-    if taken:
+    if cameras.external_id_taken(db, external_id, exclude_id=row["id"]):
         return row
-    db.execute("UPDATE cameras SET external_id = ? WHERE id = ?",
-               (external_id, row["id"]))
-    return db.execute("SELECT * FROM cameras WHERE id = ?",
-                      (row["id"],)).fetchone()
+    cameras.set_external_id(db, row["id"], external_id)
+    return cameras.get(db, row["id"])
 
 
 # `CameraIn.rtsp_path` ning standart qiymati. Tanada yo'l bo'lmasa
@@ -138,16 +140,11 @@ def _rtsp_twin(db, cam, any_path: bool = False):
     if cam.source_type != "rtsp":
         return None
     ip, port = cam.ip.strip(), cam.port
-    row = db.execute(
-        "SELECT * FROM cameras WHERE ip = ? AND port = ? AND rtsp_path = ?",
-        (ip, port, cam.rtsp_path.strip()),
-    ).fetchone()
-    if row is not None:
-        return row
+    exact = cameras.find_by_address(db, ip, port, cam.rtsp_path.strip())
+    if exact:
+        return exact[0]
 
-    rows = db.execute(
-        "SELECT * FROM cameras WHERE ip = ? AND port = ? ORDER BY id",
-        (ip, port)).fetchall()
+    rows = cameras.find_by_address(db, ip, port)
     if not rows:
         return None
     if any_path:
@@ -175,6 +172,50 @@ def _existing_reply(row, cam, request, response):
     return admin_camera(row, request)
 
 
+def _camera_data(db, cam: CameraIn, *, sub_path: str, sub_codec: str, codec: str,
+                 transcode: bool, resolution: str, fps: float) -> dict:
+    """Formadan kelgan kamera -> database.cameras.create/update uchun maydonlar.
+
+    Joylashuv normallashtiriladi:
+      * 0,0 koordinata — "yo'q" (NULL), haqiqiy nuqta emas;
+      * hudud — nom ro'yxatda bo'lsa o'sha, aks holda koordinatadan; erkin
+        matn saqlanmaydi;
+      * km/piket — aniq berilmasa nomdan ("3428/1 km"), stansiya km
+        oralig'idan avtomatik topiladi.
+    """
+    lat, lng = cam.lat, cam.lng
+    if lat is None or lng is None or (lat == 0 and lng == 0):
+        lat = lng = None
+    km, picket, line_id = cam.km, cam.picket, cam.rail_line_id
+    if km is None:
+        parsed = rail.parse_km_picket(cam.name)
+        if parsed:
+            km, picket = parsed
+    if km is not None and line_id is None:
+        line_id = rail.default_line_id(db)
+    if line_id is None:
+        km = picket = None
+    rtsp = cam.source_type == "rtsp"
+    return {
+        "name": cam.name.strip(),
+        "admin_area_id": areas.resolve(db, cam.region, lat, lng),
+        "lat": lat, "lng": lng,
+        "rail_line_id": line_id, "km": km, "picket": picket,
+        "rail_unit_id": rail.unit_for_km(db, line_id, km),
+        "source_type": cam.source_type,
+        "stream_url": "" if rtsp else cam.stream_url.strip(),
+        "host": cam.ip.strip(), "port": cam.port, "vendor": cam.vendor,
+        "username": cam.username.strip(),
+        "rtsp_path": cam.rtsp_path.strip() if rtsp else "",
+        "sub_path": sub_path if rtsp else "",
+        "media_node_id": cam.node_id,
+        "enabled": cam.enabled, "always_on": cam.always_on,
+        "note": cam.note.strip(), "external_id": cam.external_id,
+        "codec": codec, "sub_codec": sub_codec, "resolution": resolution,
+        "fps": fps, "transcode": transcode,
+    }
+
+
 # ---------- kameralar CRUD ----------
 
 @router.get("/cameras")
@@ -184,20 +225,9 @@ def admin_list(request: Request, q: str = "", limit: int = 100, offset: int = 0)
     Kamera ko'p bo'lganda hammasini birdan yuborish ham tarmoqni, ham
     brauzerni bo'g'adi, shuning uchun bo'lib beriladi.
     """
-    where, params = "", []
-    if q.strip():
-        needle = f"%{q.strip()}%"
-        where = ("WHERE name LIKE ? OR region LIKE ? OR ip LIKE ? "
-                 "OR slug LIKE ? OR note LIKE ?")
-        params = [needle] * 5
-
     limit = max(1, min(limit, 500))
     with get_db() as db:
-        total = db.execute(f"SELECT COUNT(*) FROM cameras {where}", params).fetchone()[0]
-        rows = db.execute(
-            f"SELECT * FROM cameras {where} ORDER BY region, name LIMIT ? OFFSET ?",
-            params + [limit, max(0, offset)],
-        ).fetchall()
+        total, rows = cameras.search(db, q.strip(), limit, max(0, offset))
     return {
         "total": total,
         "offset": offset,
@@ -233,42 +263,33 @@ def admin_create(cam: CameraIn, request: Request, response: Response):
     codec, transcode, resolution, fps = detect_codec(cam, cam.password or "")
     sub_path, sub_codec = detect_sub_path(cam, cam.password or "")
     with get_db() as db:
-        slug = unique_slug(db, f"{cam.region}_{cam.name}")
+        data = _camera_data(db, cam, sub_path=sub_path, sub_codec=sub_codec,
+                            codec=codec, transcode=transcode,
+                            resolution=resolution, fps=fps)
+        # Slug bir marta, nomdan beriladi va keyin o'zgarmaydi.
+        data["slug"] = unique_slug(db, cam.name)
         try:
-            db.execute(
-                "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, ip, "
-                "port, username, password_enc, rtsp_path, sub_path, sub_codec, "
-                "vendor, enabled, "
-                "note, codec, resolution, fps, transcode, always_on, node_id, external_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    cam.name.strip(), cam.region.strip(), cam.lat, cam.lng,
-                    cam.stream_url.strip() if cam.source_type == "manual" else "",
-                    slug,
-                    cam.ip.strip() if cam.source_type == "rtsp" else "",
-                    cam.port, cam.username.strip(),
-                    security.encrypt(cam.password) if cam.password else "",
-                    cam.rtsp_path.strip(), sub_path, sub_codec, cam.vendor,
-                    int(cam.enabled),
-                    cam.note.strip(), codec, resolution, fps, int(transcode),
-                    int(cam.always_on), cam.node_id, cam.external_id,
-                ),
-            )
-        except sqlite3.IntegrityError:
+            # Savepoint: PostgreSQL xatodan keyin butun tranzaksiyani
+            # to'xtatadi — quyidagi `_rtsp_twin` so'rovi ishlay olsin.
+            with db.savepoint():
+                camera_id = cameras.create(
+                    db, data,
+                    password_enc=security.encrypt(cam.password) if cam.password else None)
+        except IntegrityError:
             # POYGA. Yuqoridagi tekshiruvdan keyin RTSP probe'lari bir
             # necha soniya ketdi va shu oraliqda o'sha kamera boshqa
             # so'rovda qo'shilgan bo'lishi mumkin — tashqi tizim javobni
             # kutmay takror yuborsa, dev va prod muhitlari bir vaqtda
             # ulansa, tugma ikki bosilsa. Tekshiruvning o'zi buni ushlay
-            # olmaydi, shuning uchun oxirgi so'z bazada:
-            # `idx_cameras_rtsp` nusxani yozdirmaydi. Javob esa
-            # tekshiruv ushlagandagidek — chaqiruvchi uchun farqi yo'q.
+            # olmaydi, shuning uchun oxirgi so'z bazada: (device_id,
+            # rtsp_path) cheklovi nusxani yozdirmaydi. Javob esa tekshiruv
+            # ushlagandagidek — chaqiruvchi uchun farqi yo'q.
             dup = _rtsp_twin(db, cam, any_path=not aniq_yol)
             if dup is None:            # RTSP takrori emas — external_id band
                 raise HTTPException(409, f"external_id band: {cam.external_id}")
             dup = _adopt_external_id(db, dup, cam.external_id)
             return _existing_reply(dup, cam, request, response)
-        row = db.execute("SELECT * FROM cameras WHERE slug = ?", (slug,)).fetchone()
+        row = cameras.get(db, camera_id)
     # Javob "Tekshirilmagan" bo'lib ketmasin: holat hozir aniqlanadi,
     # model/firmware fonda to'ladi.
     _enrich_new_camera([row["id"]], row["ip"] or "", row["port"] or 554,
@@ -285,67 +306,40 @@ def admin_update(ref: str, cam: CameraIn, request: Request):
             raise HTTPException(404, "Kamera topilmadi")
         camera_id = old["id"]
 
-        # Parol bo'sh qoldirilsa — eskisi saqlanadi.
-        if cam.password:
-            password_enc = security.encrypt(cam.password)
-        elif cam.source_type == "rtsp":
-            password_enc = old["password_enc"] or ""
-        else:
-            password_enc = ""
-
-        slug = old["slug"]
-        if cam.name.strip() != old["name"] or cam.region.strip() != old["region"]:
-            slug = unique_slug(db, f"{cam.region}_{cam.name}", exclude_id=camera_id)
+        # Parol bo'sh qoldirilsa — qurilmadagisi saqlanadi.
+        keep_password = not cam.password
+        password_enc = security.encrypt(cam.password) if cam.password else None
+        password = cam.password or security.decrypt(old["password_enc"])
 
         # Kodekni qayta aniqlaymiz — kamera sozlamasi o'zgargan bo'lishi mumkin.
-        password = cam.password or security.decrypt(password_enc)
         codec, transcode, resolution, fps = detect_codec(cam, password)
         responded = bool(codec)
         if not responded:                   # kamera javob bermadi — eskisi qoladi
             codec, transcode = old["codec"] or "", bool(old["transcode"])
             resolution = old["resolution"] or ""
-            fps = float(old["fps"] or 0.0) if "fps" in old.keys() else 0.0
+            fps = float(old["fps"] or 0.0)
 
         sub_path, sub_codec = detect_sub_path(cam, password)
         if not sub_path and not responded:  # kamera javob bermadi — eskisi qoladi
             sub_path = old["sub_path"] or ""
-            sub_codec = (old["sub_codec"] or "") if "sub_codec" in old.keys() else ""
+            sub_codec = old["sub_codec"] or ""
 
+        data = _camera_data(db, cam, sub_path=sub_path, sub_codec=sub_codec,
+                            codec=codec, transcode=transcode,
+                            resolution=resolution, fps=fps)
         try:
-            db.execute(
-                # sub_bad=0 — tahrirdan keyin sub qayta sinaladi (yo'l/parol
-                # o'zgargan bo'lishi mumkin). rtsp_udp=0 ham shu sababdan:
-                # tahrir — kamera qaytadan baholansin degan buyruq, TCP
-                # tiklangan bo'lsa (firmware yangilandi, tarmoq tuzatildi)
-                # sifatliroq transportga qaytamiz. Kamera baribir TCP
-                # bermasa, media/transport.py uni bir daqiqada qaytadan
-                # UDP'ga o'tkazadi.
-                "UPDATE cameras SET name=?, region=?, lat=?, lng=?, stream_url=?, "
-                "slug=?, ip=?, port=?, username=?, password_enc=?, rtsp_path=?, "
-                "sub_path=?, sub_codec=?, vendor=?, enabled=?, note=?, codec=?, "
-                "resolution=?, fps=?, sub_bad=0, rtsp_udp=0, "
-                "transcode=?, always_on=?, node_id=?, external_id=? WHERE id=?",
-                (
-                    cam.name.strip(), cam.region.strip(), cam.lat, cam.lng,
-                    cam.stream_url.strip() if cam.source_type == "manual" else "",
-                    slug,
-                    cam.ip.strip() if cam.source_type == "rtsp" else "",
-                    cam.port, cam.username.strip(), password_enc,
-                    cam.rtsp_path.strip(), sub_path, sub_codec, cam.vendor,
-                    int(cam.enabled),
-                    cam.note.strip(), codec, resolution, fps, int(transcode),
-                    int(cam.always_on), cam.node_id, cam.external_id, camera_id,
-                ),
-            )
-        except sqlite3.IntegrityError:
+            # sub_bad va rtsp_udp tushiriladi — tahrir kamera qaytadan
+            # baholansin degani (database/cameras.update).
+            with db.savepoint():
+                cameras.update(db, camera_id, data, password_enc=password_enc,
+                               keep_password=keep_password)
+        except IntegrityError:
             # Ikki cheklov bor — sababini aytib beramiz. external_id
             # avval tekshiriladi: `_rtsp_twin` kanal bo'yicha ham
             # izlaydi, ya'ni bandligi external_id'dan bo'lsa ham shu
             # IP'dagi qo'shnini topib, xato sababini almashtirib
             # qo'yishi mumkin edi.
-            if cam.external_id and db.execute(
-                    "SELECT 1 FROM cameras WHERE external_id = ? AND id != ?",
-                    (cam.external_id, camera_id)).fetchone():
+            if cameras.external_id_taken(db, cam.external_id, exclude_id=camera_id):
                 raise HTTPException(409, f"external_id band: {cam.external_id}")
             twin = _rtsp_twin(db, cam)
             if twin is not None and twin["id"] != camera_id:
@@ -353,7 +347,7 @@ def admin_update(ref: str, cam: CameraIn, request: Request):
                     409, f"Bu manzil boshqa kameraga tegishli: "
                          f"«{twin['name']}» (o'sha IP, port va RTSP yo'l)")
             raise HTTPException(409, f"external_id band: {cam.external_id}")
-        row = db.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
+        row = cameras.get(db, camera_id)
     # Manzil/parol o'zgargan bo'lishi mumkin — holat va pasport yangilanadi.
     _enrich_new_camera([camera_id], row["ip"] or "", row["port"] or 554,
                        row["username"] or "", password)
@@ -369,10 +363,7 @@ def admin_detect_sub():
     tekshiriladi — faqat javob berganlari saqlanadi.
     """
     with get_db() as db:
-        rows = db.execute(
-            "SELECT * FROM cameras WHERE enabled = 1 AND ip IS NOT NULL "
-            "AND ip != '' AND (sub_path IS NULL OR sub_path = '')"
-        ).fetchall()
+        rows = [r for r in cameras.list_rtsp(db, enabled_only=True) if not r["sub_path"]]
 
     def job(row) -> tuple[int, str, str]:
         main = (row["rtsp_path"] or "").strip()
@@ -393,9 +384,7 @@ def admin_detect_sub():
     found = [(sub, codec, cam_id) for cam_id, sub, codec in results if sub]
     if found:
         with get_db() as db:
-            db.executemany(
-                "UPDATE cameras SET sub_path = ?, sub_codec = ? WHERE id = ?",
-                found)
+            cameras.set_sub_streams(db, found)
     return {"checked": len(rows), "found": len(found)}
 
 
@@ -405,7 +394,7 @@ def admin_delete(ref: str):
         row = resolve_ref(db, ref)
         if row is None:
             raise HTTPException(404, "Kamera topilmadi")
-        db.execute("DELETE FROM cameras WHERE id = ?", (row["id"],))
+        cameras.delete(db, row["id"])
 
 
 @router.post("/cameras/{ref}/enabled")
@@ -417,10 +406,8 @@ def admin_set_enabled(ref: str, body: EnabledIn, request: Request):
         row = resolve_ref(db, ref)
         if row is None:
             raise HTTPException(404, "Kamera topilmadi")
-        db.execute("UPDATE cameras SET enabled = ? WHERE id = ?",
-                   (int(body.enabled), row["id"]))
-        row = db.execute("SELECT * FROM cameras WHERE id = ?",
-                         (row["id"],)).fetchone()
+        cameras.set_enabled(db, row["id"], body.enabled)
+        row = cameras.get(db, row["id"])
     return admin_camera(row, request)
 
 
@@ -436,15 +423,10 @@ def admin_uptime(ref: str, hours: int = 168):
         row = resolve_ref(db, ref)
         if row is None:
             raise HTTPException(404, "Kamera topilmadi")
-        transitions = db.execute(
-            "SELECT ts, kind FROM events WHERE slug = ? "
-            "AND kind IN ('online', 'offline') AND ts >= ? ORDER BY ts, id",
-            (row["slug"], since.strftime("%Y-%m-%d %H:%M:%S")),
-        ).fetchall()
+        transitions = events.transitions(db, row["id"], since)
 
-    def parse(ts: str) -> datetime:
-        # SQLite datetime('now') — UTC, lekin zonasiz satr.
-        return datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
+    def parse(ts: datetime) -> datetime:
+        return ts.astimezone(timezone.utc)
 
     # Davr boshidagi holat: birinchi o'tishning teskarisi; o'tish umuman
     # bo'lmasa — hozirgi holat butun davrga taalluqli.
@@ -538,8 +520,7 @@ def admin_nvr_import(body: NvrIn):
     password = body.password
     if not password and body.camera_id:
         with get_db() as db:
-            row = db.execute("SELECT password_enc FROM cameras WHERE id = ?",
-                             (body.camera_id,)).fetchone()
+            row = cameras.get(db, body.camera_id)
         if row:
             password = security.decrypt(row["password_enc"])
 
@@ -611,44 +592,48 @@ def admin_nvr_import(body: NvrIn):
 
     # Javob bermagan kanallar saqlanmaydi — NVR'da bo'sh slotlar ko'p bo'ladi.
     keep = [p for p in planned if p["ok"] or not body.probe]
-    password_enc = security.encrypt(password) if password else ""
+    password_enc = security.encrypt(password) if password else None
     created = 0
     created_ids: list[int] = []
     with get_db() as db:
+        line_id = None
         for item in keep:
             # Takror kanal (o'sha IP+port+yo'l) qayta saqlanmaydi.
-            if db.execute(
-                "SELECT 1 FROM cameras WHERE ip = ? AND port = ? "
-                "AND rtsp_path = ?",
-                (body.ip.strip(), body.port, item["rtsp_path"]),
-            ).fetchone():
+            if cameras.find_by_address(db, body.ip.strip(), body.port, item["rtsp_path"]):
                 item["message"] = "allaqachon qo'shilgan — o'tkazib yuborildi"
                 continue
-            slug = unique_slug(db, f"{body.region}_{item['name']}")
+            lat, lng = item["lat"], item["lng"]
+            if lat == 0 and lng == 0:
+                lat = lng = None
+            km_picket = rail.parse_km_picket(item["name"])
+            if km_picket and line_id is None:
+                line_id = rail.default_line_id(db)
+            data = {
+                "name": item["name"], "slug": unique_slug(db, item["name"]),
+                "admin_area_id": areas.resolve(db, body.region, lat, lng),
+                "lat": lat, "lng": lng,
+                "rail_line_id": line_id if km_picket else None,
+                "km": km_picket[0] if km_picket and line_id else None,
+                "picket": km_picket[1] if km_picket and line_id else None,
+                "source_type": "rtsp", "host": body.ip.strip(), "port": body.port,
+                "vendor": body.vendor, "username": body.username.strip(),
+                "rtsp_path": item["rtsp_path"], "sub_path": item["sub_path"],
+                "media_node_id": body.node_id, "enabled": body.enabled,
+                "always_on": False,
+                "note": f"{body.ip} · {item['channel']}-kanal",
+                "codec": item["codec"], "sub_codec": item["sub_codec"],
+                "resolution": item["resolution"], "transcode": item["transcode"],
+            }
             try:
-                cur = db.execute(
-                    "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, "
-                    "ip, port, username, password_enc, rtsp_path, sub_path, "
-                    "sub_codec, vendor, enabled, "
-                    "note, codec, resolution, transcode, always_on, node_id) "
-                    "VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                    "?, ?, 0, ?)",
-                    (item["name"], body.region.strip(), item["lat"], item["lng"],
-                     slug, body.ip.strip(), body.port, body.username.strip(),
-                     password_enc,
-                     item["rtsp_path"], item["sub_path"], item["sub_codec"],
-                     body.vendor, int(body.enabled),
-                     f"{body.ip} · {item['channel']}-kanal",
-                     item["codec"], item["resolution"], int(item["transcode"]),
-                     body.node_id),
-                )
-            except sqlite3.IntegrityError:
+                with db.savepoint():
+                    camera_id = cameras.create(db, data, password_enc=password_enc)
+            except IntegrityError:
                 # Kanal shu orada boshqa so'rovda qo'shilgan — cheklov
-                # bazada (`idx_cameras_rtsp`). Bitta kanal butun importni
+                # bazada (device_id, rtsp_path). Bitta kanal butun importni
                 # yiqitmaydi: qolganlari saqlanaveradi.
                 item["message"] = "allaqachon qo'shilgan — o'tkazib yuborildi"
                 continue
-            created_ids.append(cur.lastrowid)
+            created_ids.append(camera_id)
             created += 1
 
     # NVR manzili bitta — holat bir tekshiruvda, pasport fonda to'ladi.
@@ -688,8 +673,7 @@ def admin_scan(body: ScanIn):
     user, pw = body.username.strip(), body.password
     if not pw and body.camera_id:
         with get_db() as db:
-            row = db.execute("SELECT password_enc FROM cameras WHERE id = ?",
-                             (body.camera_id,)).fetchone()
+            row = cameras.get(db, body.camera_id)
         if row:
             pw = security.decrypt(row["password_enc"])
 
@@ -748,9 +732,7 @@ def admin_probe(body: ProbeIn):
     password = body.password or ""
     if not password and body.camera_id:
         with get_db() as db:
-            row = db.execute(
-                "SELECT password_enc FROM cameras WHERE id = ?", (body.camera_id,)
-            ).fetchone()
+            row = cameras.get(db, body.camera_id)
         if row:
             password = security.decrypt(row["password_enc"])
     return probe(body.ip.strip(), body.port, body.rtsp_path.strip(),
@@ -766,8 +748,9 @@ def admin_probe(body: ProbeIn):
 def _user_view(db, row) -> dict:
     return {
         "id": row["id"], "username": row["username"], "role": row["role"],
-        "created_at": row["created_at"],
-        "regions": (security.user_regions(db, row["id"])
+        "full_name": row["full_name"] or "", "is_active": row["is_active"],
+        "created_at": row["created_at"], "last_login_at": row["last_login_at"],
+        "regions": (users.region_names(db, row["id"])
                     if row["role"] == "operator" else []),
     }
 
@@ -779,13 +762,32 @@ def _check_password(password: str | None, required: bool) -> None:
         raise HTTPException(400, "Parol kamida 6 belgidan iborat bo'lsin")
 
 
+def _set_regions(db, user_id: int, body: UserIn) -> None:
+    """Operator hududlari — faqat ro'yxatdagi nomlar (erkin matn yo'q)."""
+    unknown = users.set_regions(db, user_id, body.regions if body.role == "operator" else [])
+    if unknown:
+        known = ", ".join(r["name"] for r in areas.list_regions(db))
+        raise HTTPException(400, f"Noma'lum hudud: {', '.join(unknown)}. Mavjudlari: {known}")
+
+
+def _keep_one_admin(db, user_id: int, new_role: str | None) -> None:
+    """Oxirgi admin operator qilinmasin va o'chirilmasin.
+
+    Bir vaqtdagi ikki so'rov tizimni adminsiz qoldirmasin — tranzaksiya qulfi.
+    """
+    users.lock_admin_changes(db)
+    old = users.get(db, user_id)
+    if old is None:
+        raise HTTPException(404, "Foydalanuvchi topilmadi")
+    if old["role"] == "admin" and new_role != "admin" and users.count(db, "admin") <= 1:
+        raise HTTPException(400, "Oxirgi adminni operator qilib bo'lmaydi"
+                            if new_role else "Oxirgi admin o'chirilmaydi")
+
+
 @router.get("/users")
 def admin_users():
     with get_db() as db:
-        rows = db.execute(
-            "SELECT id, username, role, created_at FROM admins ORDER BY id"
-        ).fetchall()
-        return {"users": [_user_view(db, r) for r in rows]}
+        return {"users": [_user_view(db, r) for r in users.list_all(db)]}
 
 
 @router.post("/users", status_code=201)
@@ -794,17 +796,11 @@ def admin_user_create(body: UserIn):
     pw_hash, salt = security.hash_password(body.password)
     with get_db() as db:
         try:
-            cur = db.execute(
-                "INSERT INTO admins (username, pw_hash, pw_salt, role) "
-                "VALUES (?, ?, ?, ?)",
-                (body.username.strip(), pw_hash, salt, body.role),
-            )
-        except sqlite3.IntegrityError:
+            with db.savepoint():
+                row = users.create(db, body.username.strip(), pw_hash, salt, body.role)
+        except IntegrityError:
             raise HTTPException(400, "Bunday login allaqachon bor")
-        security.set_user_regions(
-            db, cur.lastrowid, body.regions if body.role == "operator" else [])
-        row = db.execute("SELECT id, username, role, created_at FROM admins "
-                         "WHERE id = ?", (cur.lastrowid,)).fetchone()
+        _set_regions(db, row["id"], body)
         return _user_view(db, row)
 
 
@@ -812,31 +808,18 @@ def admin_user_create(body: UserIn):
 def admin_user_update(user_id: int, body: UserIn):
     _check_password(body.password, required=False)
     with get_db() as db:
-        old = db.execute("SELECT * FROM admins WHERE id = ?",
-                         (user_id,)).fetchone()
-        if old is None:
-            raise HTTPException(404, "Foydalanuvchi topilmadi")
-        if old["role"] == "admin" and body.role != "admin":
-            admins = db.execute("SELECT COUNT(*) FROM admins "
-                                "WHERE role = 'admin'").fetchone()[0]
-            if admins <= 1:
-                raise HTTPException(400, "Oxirgi adminni operator qilib bo'lmaydi")
+        _keep_one_admin(db, user_id, body.role)
         try:
-            db.execute("UPDATE admins SET username = ?, role = ? WHERE id = ?",
-                       (body.username.strip(), body.role, user_id))
-        except sqlite3.IntegrityError:
+            with db.savepoint():
+                users.update_identity(db, user_id, body.username.strip(), body.role)
+        except IntegrityError:
             raise HTTPException(400, "Bunday login allaqachon bor")
         if body.password:
+            # Parol almashdi — eski sessiyalar bekor (users.set_password).
             pw_hash, salt = security.hash_password(body.password)
-            db.execute("UPDATE admins SET pw_hash = ?, pw_salt = ? WHERE id = ?",
-                       (pw_hash, salt, user_id))
-            # Parol almashdi — eski sessiyalar bekor.
-            db.execute("DELETE FROM sessions WHERE admin_id = ?", (user_id,))
-        security.set_user_regions(
-            db, user_id, body.regions if body.role == "operator" else [])
-        row = db.execute("SELECT id, username, role, created_at FROM admins "
-                         "WHERE id = ?", (user_id,)).fetchone()
-        return _user_view(db, row)
+            users.set_password(db, user_id, pw_hash, salt)
+        _set_regions(db, user_id, body)
+        return _user_view(db, users.get(db, user_id))
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -844,18 +827,16 @@ def admin_user_delete(user_id: int, me=Depends(require_admin)):
     if me["id"] == user_id:
         raise HTTPException(400, "O'z hisobingizni o'chira olmaysiz")
     with get_db() as db:
-        row = db.execute("SELECT role FROM admins WHERE id = ?",
-                         (user_id,)).fetchone()
-        if row is None:
-            raise HTTPException(404, "Foydalanuvchi topilmadi")
-        if row["role"] == "admin":
-            admins = db.execute("SELECT COUNT(*) FROM admins "
-                                "WHERE role = 'admin'").fetchone()[0]
-            if admins <= 1:
-                raise HTTPException(400, "Oxirgi admin o'chirilmaydi")
-        db.execute("DELETE FROM admins WHERE id = ?", (user_id,))
-        db.execute("DELETE FROM sessions WHERE admin_id = ?", (user_id,))
-        db.execute("DELETE FROM user_regions WHERE user_id = ?", (user_id,))
+        _keep_one_admin(db, user_id, None)
+        # Sessiyalar va hududlar FOREIGN KEY ... ON DELETE CASCADE bilan ketadi.
+        users.delete(db, user_id)
+
+
+@router.get("/regions")
+def admin_regions():
+    """Hududlar ro'yxati — kamera formasi va operator ruxsatlari uchun."""
+    with get_db() as db:
+        return {"regions": areas.list_regions(db)}
 
 
 # ---------- MediaMTX ----------
@@ -923,9 +904,8 @@ def admin_status():
     raqam bilan kuzatish uchun: MediaMTX tirikmi, health sweep intervalga
     sig'ayaptimi, qaysi faol oqimlar muzlagan, tugunlar qay ahvolda."""
     with get_db() as db:
-        node_rows = db.execute(
-            "SELECT id, name, api_base FROM nodes WHERE enabled = 1 ORDER BY id"
-        ).fetchall()
+        node_rows = nodes_db.list_enabled(db)
+        db_bytes = database_size(db)
     nodes = []
     for row in node_rows:
         runtime = mediamtx_sync.node_runtime(row["api_base"])
@@ -942,10 +922,9 @@ def admin_status():
             # shu davrda kameralar sekinroq ochiladi (jurnalda ko'rsatma).
             "pending_paths": reconciler.pending_count(row["id"]),
         })
-    from core.db import DB_PATH
+    from camera import snapshots
     from core.log import LOG_PATH
-    from kamera import snapshots
-    db_mb = round(DB_PATH.stat().st_size / 1_048_576, 1) if DB_PATH.exists() else 0
+    db_mb = round(db_bytes / 1_048_576, 1)
     log_mb = round(LOG_PATH.stat().st_size / 1_048_576, 1) if LOG_PATH.exists() else 0
     snap_mb, snap_files = _dir_size_mb(snapshots.SNAP_DIR)
     return {
@@ -963,10 +942,7 @@ def admin_events(limit: int = 100):
     """Media qatlamining so'nggi hodisalari: oqim muzladi/tiklandi,
     MediaMTX qayta ishga tushdi. Jonli holat o'zgarishlari SSE'da (/events)."""
     with get_db() as db:
-        rows = db.execute(
-            "SELECT ts, kind, ip, port, slug, detail FROM events "
-            "ORDER BY id DESC LIMIT ?", (max(1, min(limit, 500)),),
-        ).fetchall()
+        rows = events.recent(db, max(1, min(limit, 500)))
     return {"events": [dict(r) for r in rows]}
 
 
@@ -980,8 +956,7 @@ def admin_sync():
     """
     with get_db() as db:
         cameras = cameras_for_mediamtx(db)
-        nodes = [dict(r) for r in db.execute(
-            "SELECT * FROM nodes WHERE enabled = 1 ORDER BY id").fetchall()]
+        nodes = [dict(r) for r in nodes_db.list_enabled(db)]
     written = mediamtx_sync.write_config(cameras)
     if not nodes:
         nodes = [{"id": 1, "name": "Asosiy", "api_base": None}]

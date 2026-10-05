@@ -9,7 +9,7 @@ jimlik muzlash emas.
 """
 import pytest
 
-from kamera import reconciler
+from camera import reconciler
 
 NODE = {"id": 1, "name": "Asosiy", "api_base": "http://127.0.0.1:9997"}
 

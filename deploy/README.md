@@ -54,7 +54,7 @@ curl -s "https://negoh.das-uty.uz/media/hls/<slug>/index.m3u8?token=<chipta>" | 
 
 Servis jurnalida ham ko'rinadi: `hls_bearer_yoq` ogohlantirishi.
 
-## yangilash.sh
+## update.sh
 
 Pull-based deploy (cron'dan). Nginx'ga tegmaydi — konfiguratsiya
 o'zgarganda yuqoridagi buyruqni qo'lda bajaring.

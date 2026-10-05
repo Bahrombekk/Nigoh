@@ -17,7 +17,9 @@ from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from .db import DATA_DIR
+from database import users
+
+from .paths import DATA_DIR
 
 # Kalit fayli ma'lumotlar katalogida — baza bilan yonma-yon turadi.
 KEY_PATH = DATA_DIR / "secret.key"
@@ -234,63 +236,44 @@ def verify_password(password: str, pw_hash: str, salt: str) -> bool:
 
 
 # ---------- sessiyalar ----------
+#
+# Bazada tokenning o'zi emas, SHA-256 xeshi turadi: baza nusxasi (zaxira,
+# sizib chiqqan dump) qo'lga tushsa ham undan tayyor kirish tokeni
+# olinmaydi. Token 256 bitli tasodifiy satr — tuzsiz xesh yetarli.
 
-def create_session(db, admin_id: int) -> str:
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_session(db, user_id: int, ip: str | None = None,
+                   user_agent: str | None = None) -> str:
     token = secrets.token_urlsafe(32)
     expires = datetime.now(timezone.utc) + timedelta(hours=SESSION_HOURS)
-    db.execute(
-        "INSERT INTO sessions (token, admin_id, expires_at) VALUES (?, ?, ?)",
-        (token, admin_id, expires.isoformat()),
-    )
+    users.add_session(db, _token_hash(token), user_id, expires, ip, user_agent)
+    users.mark_login(db, user_id)
     return token
 
 
-def session_admin(db, token: str | None):
-    """Yaroqli sessiya bo'lsa admin yozuvini, aks holda None qaytaradi."""
+def session_user(db, token: str | None):
+    """Yaroqli sessiya bo'lsa foydalanuvchi yozuvini, aks holda None qaytaradi."""
     if not token:
         return None
-    row = db.execute(
-        "SELECT s.expires_at, a.id, a.username, a.role "
-        "FROM sessions s JOIN admins a ON a.id = s.admin_id "
-        "WHERE s.token = ?",
-        (token,),
-    ).fetchone()
+    row = users.session_user(db, _token_hash(token))
     if row is None:
         return None
-    if datetime.fromisoformat(row["expires_at"]) < datetime.now(timezone.utc):
-        db.execute("DELETE FROM sessions WHERE token = ?", (token,))
+    if row["expires_at"] < datetime.now(timezone.utc):
+        users.delete_session(db, _token_hash(token))
         return None
     return row
 
 
-def user_regions(db, user_id: int) -> list[str]:
-    """Operatorga biriktirilgan hududlar (admin uchun bo'sh — u hammasini ko'radi)."""
-    rows = db.execute(
-        "SELECT region FROM user_regions WHERE user_id = ? ORDER BY region",
-        (user_id,),
-    ).fetchall()
-    return [r["region"] for r in rows]
-
-
-def set_user_regions(db, user_id: int, regions: list[str]) -> None:
-    db.execute("DELETE FROM user_regions WHERE user_id = ?", (user_id,))
-    cleaned = sorted({r.strip() for r in regions if r.strip()})
-    db.executemany(
-        "INSERT OR IGNORE INTO user_regions (user_id, region) VALUES (?, ?)",
-        [(user_id, region) for region in cleaned],
-    )
-
-
 def delete_session(db, token: str | None) -> None:
     if token:
-        db.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        users.delete_session(db, _token_hash(token))
 
 
 def purge_expired_sessions(db) -> None:
-    db.execute(
-        "DELETE FROM sessions WHERE expires_at < ?",
-        (datetime.now(timezone.utc).isoformat(),),
-    )
+    users.purge_expired_sessions(db, datetime.now(timezone.utc))
 
 
 # ---------- admin yaratish ----------
@@ -301,7 +284,7 @@ def ensure_admin(db) -> str | None:
     Parol ADMIN_PAROL muhit o'zgaruvchisidan olinadi; berilmagan bo'lsa
     tasodifiy parol yaratiladi va konsolga chiqarish uchun qaytariladi.
     """
-    if db.execute("SELECT COUNT(*) FROM admins").fetchone()[0] > 0:
+    if users.count(db) > 0:
         return None
 
     username = os.environ.get("ADMIN_LOGIN", "admin")
@@ -311,27 +294,17 @@ def ensure_admin(db) -> str | None:
         password = secrets.token_urlsafe(9)
 
     pw_hash, salt = hash_password(password)
-    db.execute(
-        "INSERT INTO admins (username, pw_hash, pw_salt) VALUES (?, ?, ?)",
-        (username, pw_hash, salt),
-    )
+    users.create(db, username, pw_hash, salt, role="admin")
     return password if generated else None
 
 
 def set_password(db, username: str, password: str) -> bool:
+    """Parolni o'rnatadi (foydalanuvchi bo'lmasa admin qilib yaratadi);
+    eski sessiyalar bekor qilinadi."""
     pw_hash, salt = hash_password(password)
-    cur = db.execute(
-        "UPDATE admins SET pw_hash = ?, pw_salt = ? WHERE username = ?",
-        (pw_hash, salt, username),
-    )
-    if cur.rowcount == 0:
-        db.execute(
-            "INSERT INTO admins (username, pw_hash, pw_salt) VALUES (?, ?, ?)",
-            (username, pw_hash, salt),
-        )
-    # Parol almashgach eski sessiyalar bekor qilinadi.
-    db.execute(
-        "DELETE FROM sessions WHERE admin_id IN (SELECT id FROM admins WHERE username = ?)",
-        (username,),
-    )
+    user_id = users.id_by_username(db, username)
+    if user_id is None:
+        users.create(db, username, pw_hash, salt, role="admin")
+    else:
+        users.set_password(db, user_id, pw_hash, salt)
     return True

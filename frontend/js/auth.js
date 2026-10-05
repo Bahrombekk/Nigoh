@@ -1,10 +1,10 @@
 /* Kirish ekrani, sessiya (/api/auth/*), rol (admin/operator) va mehmon rejimi. */
-import { $, state, toast } from "./holat.js";
+import { $, state, toast } from "./state.js";
 import { api } from "./api.js";
-import { loadCameras } from "./malumot.js";
-import { AUTH_TABS, showTab } from "./tablar.js";
-import { closeModal, openModal } from "./modallar.js";
-import { stopPicking } from "./kamera-shakli.js";
+import { loadCameras } from "./data.js";
+import { AUTH_TABS, showTab } from "./tabs.js";
+import { closeModal, openModal } from "./modals.js";
+import { stopPicking } from "./camera-form.js";
 
 /* ---------- Autentifikatsiya ---------- */
 export function setAdmin(admin) {

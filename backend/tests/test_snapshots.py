@@ -1,7 +1,7 @@
 """Snapshot jadvali: faza tarqatish, oynalar, restart, klapan, semafor."""
 import time
 
-from kamera import health, snapshots
+from camera import health, snapshots
 
 
 def _row(camera_id, slug="snap_test", ip="10.77.0.1", port=10554):
@@ -93,12 +93,11 @@ def test_yetim_fayllar_tozalanadi(tmp_path, monkeypatch):
     os.utime(eski, (old, old))
     # bazadagi kamera surati — yoshi qancha bo'lsa ham tegilmaydi
     # (baza endi bo'sh boshlanadi — kamerani testning o'zi yaratadi)
-    from core.db import get_db
+    from database import get_db
+    from tests.factories import add_camera
     slug = "test_yetim_bor_kamera"
     with get_db() as db:
-        db.execute(
-            "INSERT INTO cameras (name, region, lat, lng, stream_url, slug) "
-            "VALUES ('Yetim test', 'Test', 0, 0, '', ?)", (slug,))
+        add_camera(db, slug, name="Yetim test", ip=None)
     bor = tmp_path / f"{slug}.jpg"
     bor.write_bytes(b"x")
     os.utime(bor, (old, old))
@@ -133,7 +132,7 @@ def test_keyframe_ikki_marta_yuboriladi(monkeypatch):
     """
     import time
 
-    from kamera import fast_start
+    from camera import fast_start
 
     urinishlar = []
     monkeypatch.setattr(fast_start, "_onvif_keyframe",
@@ -149,7 +148,7 @@ def test_keyframe_ikki_marta_yuboriladi(monkeypatch):
 
 def test_keyframe_uchinchi_sorov_tosiladi(monkeypatch):
     """Bosim himoyasi joyida qoladi: oynada ikkitadan ortiq o'tmaydi."""
-    from kamera import fast_start
+    from camera import fast_start
 
     n = []
     monkeypatch.setattr(fast_start, "_onvif_keyframe",

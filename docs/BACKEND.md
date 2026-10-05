@@ -181,7 +181,7 @@ Hammasi `/data` volume'ida (compose'da `./data`):
 
 | Fayl | Nima | Ehtiyot |
 |---|---|---|
-| `cameras.db` | SQLite: kameralar, foydalanuvchilar, hodisalar | zaxiralang |
+| PostgreSQL (`nigoh-pg` volume) | kameralar, foydalanuvchilar, hodisalar, statistika | `deploy/db-backup.sh` bilan har kuni zaxiralang |
 | `secret.key` | kamera parollarini ochadigan kalit | **yo'qolsa parollar tiklanmaydi**; zaxiralang, hech kimga bermang |
 | `mediamtx.yml` | avto-yaratiladi | qo'lda tahrirlamang — qayta yoziladi |
 | `nigoh.log`, `mediamtx.log` | loglar (aylanma) | — |
@@ -218,5 +218,5 @@ To'liq ro'yxat izohlari bilan: **`.env.example`**. Eng muhimlari:
 ## Nimalarga tegmaslik kerak
 
 - MediaMTX API (9997) va uning konfiguratsiyasi — Nigoh o'zi boshqaradi.
-- `secret.key` va `cameras.db` sxemasi.
+- `secret.key` va baza sxemasi (o'zgarish faqat `database/schema.py` dagi yangi migratsiya bilan).
 - Oqim chiptalari formati — ichki mexanizm, o'zingiz yasamang.

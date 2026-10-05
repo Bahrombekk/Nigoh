@@ -30,6 +30,10 @@ services:
     # avvalgidek o'zi kutib oladi — bunga tegmaydi.
     init: true
     network_mode: host
+    # Baza — hostdagi PostgreSQL (Docker'da EMAS): `apt install postgresql-17`,
+    # keyin deploy/postgres/setup-roles.sql (docs/DEPLOY.md). Host tarmog'i
+    # tufayli konteyner unga .env dagi DATABASE_URL (127.0.0.1:5432) orqali
+    # ulanadi; PostgreSQL tashqi tarmoqqa ochilmaydi.
     env_file: .env
     volumes:
       # Baza, shifrlash kaliti, loglar — konteyner yangilansa ham qoladi.

@@ -20,8 +20,9 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.db import get_db
-from kamera import health
+from camera import health
+from database import cameras, events, get_db
+from database import nodes as nodes_db
 
 from .helpers import require_admin, resolve_ref
 
@@ -42,13 +43,10 @@ STRIP_MINUTES = 15
 STRIP_CELLS = 24 * 60 // STRIP_MINUTES
 
 
-def _parse_ts(ts: str) -> datetime:
-    """SQLite `datetime('now')` — UTC, lekin zonasiz satr."""
-    return datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
-
-
-def _sqlite_since(moment: datetime) -> str:
-    return moment.strftime("%Y-%m-%d %H:%M:%S")
+def _parse_ts(ts: datetime) -> datetime:
+    """TIMESTAMPTZ ulanish zonasida keladi — hisob-kitob UTC'da yuradi
+    (soat bo'yicha taqsimlashda mijozning `tz_offset_minutes` qo'shiladi)."""
+    return ts.astimezone(timezone.utc)
 
 
 def _offline_seconds(transitions: list[tuple[datetime, str]],
@@ -116,22 +114,16 @@ def _spread(intervals: list[tuple[datetime, datetime]], edges: list[datetime]) -
     return buckets
 
 
-def _transitions_by_slug(db, since: datetime) -> dict[str, list]:
-    """Davr ichidagi barcha online/offline o'tishlari, slug bo'yicha.
+def _transitions_by_camera(db, since: datetime) -> dict[int, list]:
+    """Davr ichidagi barcha online/offline o'tishlari, kamera bo'yicha.
 
     Bitta so'rov — 5000 kamera uchun ham. Kamera kesimida alohida
     so'rov yuborilsa 5000 ta so'rov bo'lardi.
     """
-    rows = db.execute(
-        "SELECT slug, ts, kind FROM events "
-        "WHERE kind IN ('online', 'offline') AND ts >= ? AND slug IS NOT NULL "
-        "ORDER BY slug, ts, id",
-        (_sqlite_since(since),),
-    ).fetchall()
-    grouped: dict[str, list] = {}
-    for row in rows:
-        grouped.setdefault(row["slug"], []).append((_parse_ts(row["ts"]),
-                                                    row["kind"]))
+    grouped: dict[int, list] = {}
+    for row in events.transitions_all(db, since):
+        grouped.setdefault(row["camera_id"], []).append((_parse_ts(row["ts"]),
+                                                         row["kind"]))
     return grouped
 
 
@@ -152,16 +144,13 @@ def _collect(hours: int):
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
     with get_db() as db:
-        rows = db.execute(
-            "SELECT id, external_id, name, region, slug, ip, port, node_id, "
-            "enabled FROM cameras"
-        ).fetchall()
-        by_slug = _transitions_by_slug(db, since)
-        nodes = {r["id"]: r["name"] for r in db.execute("SELECT id, name FROM nodes")}
+        rows = cameras.list_all(db)
+        by_camera = _transitions_by_camera(db, since)
+        nodes = nodes_db.names(db)
 
     out = []
     for row in rows:
-        transitions = by_slug.get(row["slug"] or "", [])
+        transitions = by_camera.get(row["id"], [])
         online_now = health.online(row["ip"], row["port"])
         offline = _offline_seconds(transitions, since, now, online_now)
         outages = sum(1 for _, kind in transitions if kind == "offline")
@@ -207,10 +196,10 @@ def fleet_uptime(hours: int = Query(default=24, ge=1, le=MAX_HOURS),
               "to": now.isoformat(timespec="seconds")}
 
     if not group_by:
-        cameras = sorted(
+        ranked = sorted(
             collected,
             key=lambda item: (-item["outages"], -item["offline_seconds"]))[:limit]
-        return {**window, "total": len(collected), "shown": len(cameras),
+        return {**window, "total": len(collected), "shown": len(ranked),
                 "cameras": [{
                     "id": item["row"]["id"],
                     "external_id": item["row"]["external_id"] or "",
@@ -221,7 +210,7 @@ def fleet_uptime(hours: int = Query(default=24, ge=1, le=MAX_HOURS),
                     "offline_seconds": item["offline_seconds"],
                     "uptime_pct": _uptime_pct(item["offline_seconds"], total_seconds),
                     "last_offline_at": item["last_offline_at"],
-                } for item in cameras]}
+                } for item in ranked]}
 
     def key_of(row) -> str:
         if group_by == "region":
@@ -269,20 +258,14 @@ def outages_hourly(hours: int = Query(default=24, ge=1, le=MAX_HOURS),
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
 
-    sql = ("SELECT ts FROM events WHERE kind = 'offline' AND ts >= ?")
-    params: list = [_sqlite_since(since)]
-    slug = ""
-    if ref:
-        with get_db() as db:
-            row = resolve_ref(db, ref)
-        if row is None:
-            raise HTTPException(404, "Kamera topilmadi")
-        slug = row["slug"] or ""
-        sql += " AND slug = ?"
-        params.append(slug)
-
+    camera_id = None
     with get_db() as db:
-        rows = db.execute(sql, params).fetchall()
+        if ref:
+            row = resolve_ref(db, ref)
+            if row is None:
+                raise HTTPException(404, "Kamera topilmadi")
+            camera_id = row["id"]
+        rows = events.offline_times(db, since, camera_id)
 
     buckets = [0] * 24
     shift = timedelta(minutes=tz_offset_minutes)
@@ -344,26 +327,13 @@ def camera_history(ref: str,
         row = resolve_ref(db, ref)
         if row is None:
             raise HTTPException(404, "Kamera topilmadi")
-        events = db.execute(
-            "SELECT ts, kind FROM events WHERE slug = ? AND kind IN "
-            "('online', 'offline') AND ts >= ? ORDER BY ts, id",
-            (row["slug"], _sqlite_since(since)),
-        ).fetchall()
-        # Harakatlar jurnali: shu kundagi BARCHA hodisalar, jumladan
-        # oqim muzlashi (stalled/resumed) va MediaMTX qayta ishga
-        # tushishi. Sub va o'girilgan yo'llar ham shu kameraga tegishli,
-        # lekin LIKE ishlatilmaydi — slug'da "_" bor va u LIKE uchun
-        # joker belgi, ya'ni "kam_1" tasodifan "kam11" ni ham tutardi.
-        slug = row["slug"] or ""
-        actions = db.execute(
-            "SELECT ts, kind, detail, slug FROM events "
-            "WHERE slug IN (?, ?, ?) AND ts >= ? AND ts < ? "
-            "ORDER BY ts DESC, id DESC LIMIT 200",
-            (slug, slug + "_sub", slug + "_h264",
-             _sqlite_since(sel_start), _sqlite_since(sel_end)),
-        ).fetchall()
+        history = events.transitions(db, row["id"], since)
+        # Harakatlar jurnali: shu kundagi BARCHA hodisalar, jumladan oqim
+        # muzlashi (stalled/resumed). Sub va o'girilgan yo'llar ham shu
+        # kameraga tegishli — hammasi camera_id bilan bog'langan.
+        actions = events.for_camera(db, row["id"], sel_start, sel_end)
 
-    transitions = [(_parse_ts(r["ts"]), r["kind"]) for r in events]
+    transitions = [(_parse_ts(r["ts"]), r["kind"]) for r in history]
     online_now = health.online(row["ip"], row["port"])
     intervals = _offline_intervals(transitions, since, now, online_now)
 
@@ -481,8 +451,8 @@ def camera_history(ref: str,
             "kind": a["kind"],
             "detail": a["detail"] or "",
             # Qaysi yo'l: asosiy, sub yoki o'girilgan.
-            "path": ("sub" if (a["slug"] or "").endswith("_sub")
-                     else "h264" if (a["slug"] or "").endswith("_h264")
+            "path": ("sub" if (a["path"] or "").endswith("_sub")
+                     else "h264" if (a["path"] or "").endswith("_h264")
                      else "asosiy"),
         } for a in actions],
     }

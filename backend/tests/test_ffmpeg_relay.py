@@ -12,7 +12,7 @@ qo'riqlaydi — chunki xato tomonga og'sa butun flot bir zumda o'zgaradi.
 """
 import pytest
 
-from kamera import sync
+from camera import sync
 
 KAM = {"slug": "kam_1", "ip": "10.0.0.1", "port": 554, "rtsp_path": "/s1",
        "username": "u", "password": "p", "always_on": False}
@@ -72,7 +72,7 @@ def test_ffmpeg_only_tanlab_yoqiladi(monkeypatch):
     """
     import importlib
 
-    from kamera import sync
+    from camera import sync
 
     monkeypatch.setenv("FFMPEG_ONLY", "kam_a, kam_b")
     monkeypatch.delenv("RTSP_VIA_FFMPEG", raising=False)
@@ -95,7 +95,7 @@ def test_ffmpeg_only_global_bayroqdan_ustun(monkeypatch):
     """
     import importlib
 
-    from kamera import sync
+    from camera import sync
 
     monkeypatch.setenv("FFMPEG_ONLY", "kam_a")
     monkeypatch.setenv("FFMPEG_EXCLUDE", "kam_a")

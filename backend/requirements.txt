@@ -1,6 +1,8 @@
 # Aniq versiyalar — build har doim bir xil chiqsin (CI ham shu bilan
-# testlaydi). Yangilash: versiyani ko'tarib, pytest + qabul_test yuritish.
+# testlaydi). Yangilash: versiyani ko'tarib, pytest + acceptance_test yuritish.
 fastapi==0.141.1
 uvicorn[standard]==0.52.1
 cryptography==50.0.0
 PyYAML==6.0.3
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3

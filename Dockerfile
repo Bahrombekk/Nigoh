@@ -2,7 +2,7 @@
 #
 # Nega bitta konteyner: MediaMTX'ning o'girish yo'llari (H.265 -> H.264)
 # stream_launcher.py ni MediaMTX turgan mashinada chaqiradi, backend esa
-# MediaMTX'ni o'zi kuzatib qayta ko'taradi (kamera/reconciler.py). Ikkalasini
+# MediaMTX'ni o'zi kuzatib qayta ko'taradi (camera/reconciler.py). Ikkalasini
 # ajratish shu ikkala mexanizmni buzadi. Tashqaridan bu baribir bitta
 # servis: HTTP API (8010) + media portlari.
 #

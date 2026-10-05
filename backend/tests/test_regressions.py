@@ -7,9 +7,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import create_app
+from camera import health
 from core import bus
-from core.db import get_db
-from kamera import health
+from database import get_db
+from tests.factories import add_camera
 
 KEY = {"X-API-Key": "test-kalit"}
 
@@ -28,10 +29,8 @@ def test_bbox_totalni_ham_filtrlaydi(client):
     hech qachon oxiriga yetmasdi."""
     with get_db() as db:
         for i in range(3):
-            db.execute(
-                "INSERT INTO cameras (name, region, lat, lng, stream_url, "
-                "slug, enabled) VALUES (?, 'BboxTest', ?, ?, '', ?, 1)",
-                (f"bbox-{i}", 5.0 + i * 0.01, 5.0 + i * 0.01, f"bbox_test_{i}"))
+            add_camera(db, f"bbox_test_{i}", name=f"bbox-{i}", ip=None,
+                       lat=5.0 + i * 0.01, lng=5.0 + i * 0.01)
 
     body = client.get("/api/v1/cameras?bbox=4.9,4.9,5.005,5.005",
                       headers=KEY).json()
@@ -58,11 +57,8 @@ def test_check_now_holatni_sseda_elon_qiladi(monkeypatch):
     yozilardi va asosiy tizim keyingi sweep'gacha (60 s) eskisini ko'rardi.
     """
     with get_db() as db:
-        db.execute(
-            "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, "
-            "ip, port, enabled, external_id) "
-            "VALUES ('sse', 'SseTest', 0, 0, '', 'sse_test', "
-            "'10.255.255.7', 554, 1, 'ext-sse-1')")
+        add_camera(db, "sse_test", name="sse", ip="10.255.255.7",
+                   external_id="ext-sse-1")
 
     published = []
     monkeypatch.setattr(bus, "publish",
@@ -234,81 +230,30 @@ def test_tcp_faqat_timeoutdan_keyin_qayta_urinadi(monkeypatch):
 
 # ---------- ikkilangan kameralar ----------
 
-def test_migratsiya_takror_kameralarni_tozalaydi(tmp_path):
-    """`_m3_takror_kamera` nusxalarni olib tashlaydi va indeks quriladi.
+def test_baza_takror_kamerani_rad_etadi():
+    """BITTA IP+PORT+RTSP YO'L — BITTA KAMERA, cheklov bazaning o'zida.
 
-    Cheklov eski bazaga qo'shilyapti — unda allaqachon ikkilangan
-    yozuvlar bor (ishlab chiqarishda 195 dan 30 tasi). Ular tozalanmasa
-    `CREATE UNIQUE INDEX` yiqiladi va indeks umuman paydo bo'lmaydi,
-    ya'ni tuzatish ishlamaydi.
+    Qo'shishdan oldingi tekshiruv yetmaydi: tekshiruv bilan yozuv orasida
+    RTSP probe'lari soniyalab ketadi va o'sha oraliqda kelgan ikkinchi
+    so'rov ham o'tib ketardi (prodda 195 kameradan 30 tasi shunday
+    ikkilangan). Manual kameralar (IP'siz) cheklovga tushmaydi.
     """
-    import sqlite3
+    from database import UniqueViolation
+    from database import cameras as cameras_db
 
-    from core.db import INDEXES, _m3_takror_kamera
-
-    db = sqlite3.connect(tmp_path / "t.db")
-    db.row_factory = sqlite3.Row
-    db.execute("CREATE TABLE cameras (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-               "name TEXT, ip TEXT, port INTEGER, rtsp_path TEXT)")
-    db.executemany(
-        "INSERT INTO cameras (id, name, ip, port, rtsp_path) VALUES (?,?,?,?,?)",
-        [(1, "Birinchi", "10.0.0.1", 554, "/s1"),
-         (2, "Nusxa", "10.0.0.1", 554, "/s1"),
-         (3, "Yana nusxa", "10.0.0.1", 554, "/s1"),
-         (4, "Boshqa yo'l", "10.0.0.1", 554, "/s2"),
-         (5, "Boshqa IP", "10.0.0.2", 554, "/s1"),
-         # Manual kameralar (IP'siz) cheklovga tushmaydi — ikkitasi ham qoladi.
-         (6, "Manual", "", 554, ""),
-         (7, "Manual 2", "", 554, "")])
-
-    _m3_takror_kamera(db)
-
-    qolgan = [r["id"] for r in db.execute("SELECT id FROM cameras ORDER BY id")]
-    assert qolgan == [1, 4, 5, 6, 7]        # birinchisi qoldi, nusxalar ketdi
-
-    rtsp_index = [s for s in INDEXES if "idx_cameras_rtsp" in s]
-    assert rtsp_index, "indeks INDEXES ro'yxatida bo'lishi kerak"
-    db.execute(rtsp_index[0])               # takror qolganda shu yerda yiqilardi
-
-    with pytest.raises(sqlite3.IntegrityError):
-        db.execute("INSERT INTO cameras (name, ip, port, rtsp_path) "
-                   "VALUES ('Yangi nusxa', '10.0.0.1', 554, '/s1')")
-    db.close()
-
-
-def test_migratsiya_yolsiz_takrorni_tozalaydi(tmp_path):
-    """`_m4_yolsiz_takror` — IP bo'yicha takror, o'lik `/stream1` yozuvlari.
-
-    Tashqi tizim faqat IP yuborganda yo'l standart `/stream1` bo'lib
-    qolgan, kamera esa bazada o'zining haqiqiy yo'li bilan turgan —
-    yo'llar farq qilgani uchun `idx_cameras_rtsp` bunday nusxani
-    ushlamaydi. Registratorning haqiqiy `/stream1` kanaliga (kodegi bor)
-    tegilmasligi shu testda qulflanadi.
-    """
-    import sqlite3
-
-    from core.db import _m4_yolsiz_takror
-
-    db = sqlite3.connect(tmp_path / "t4.db")
-    db.row_factory = sqlite3.Row
-    db.execute("CREATE TABLE cameras (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-               "name TEXT, ip TEXT, port INTEGER, rtsp_path TEXT, codec TEXT)")
-    db.executemany(
-        "INSERT INTO cameras (id, name, ip, port, rtsp_path, codec) "
-        "VALUES (?,?,?,?,?,?)",
-        [(1, "Dahua 1-kanal", "10.0.0.1", 554, "/cam/realmonitor", "H264"),
-         (2, "IP bilan qo'shilgan nusxa", "10.0.0.1", 554, "/stream1", ""),
-         # Haqiqiy /stream1 kamerasi — kodegi bor, o'chirilmaydi.
-         (3, "Ishlayotgan stream1", "10.0.0.2", 554, "/stream1", "H264"),
-         (4, "Boshqa yo'l", "10.0.0.2", 554, "/cam/realmonitor", "H264"),
-         # Yolg'iz o'zi — takror emas, tekshirilmagan bo'lsa ham qoladi.
-         (5, "Yolg'iz", "10.0.0.3", 554, "/stream1", ""),
-         # O'sha IP'da ishlaydigan kamera yo'q — hukm chiqarilmaydi.
-         (6, "Ikkisi ham o'lik A", "10.0.0.4", 554, "/cam/realmonitor", ""),
-         (7, "Ikkisi ham o'lik B", "10.0.0.4", 554, "/stream1", "")])
-
-    _m4_yolsiz_takror(db)
-
-    qolgan = [r["id"] for r in db.execute("SELECT id FROM cameras ORDER BY id")]
-    assert qolgan == [1, 3, 4, 5, 6, 7], "faqat 2-yozuv — o'lik IP takrori"
-    db.close()
+    with get_db() as db:
+        ids = [
+            add_camera(db, "takror_asl", ip="10.99.0.1", rtsp_path="/s1"),
+            add_camera(db, "takror_boshqa_yol", ip="10.99.0.1", rtsp_path="/s2"),
+            add_camera(db, "takror_manual_1", ip=None, stream_url="http://x.test/a.m3u8"),
+            add_camera(db, "takror_manual_2", ip=None, stream_url="http://x.test/a.m3u8"),
+        ]
+        with pytest.raises(UniqueViolation), db.savepoint():
+            add_camera(db, "takror_nusxa", ip="10.99.0.1", rtsp_path="/s1")
+        # Bitta manzildagi ikki kanal — bitta qurilma (NVR).
+        kinds = {r["device_kind"] for r in cameras_db.list_by_ids(db, ids[:2])}
+        assert kinds == {"nvr"}
+        for camera_id in ids:
+            cameras_db.delete(db, camera_id)
+        assert db.execute("SELECT COUNT(*) FROM devices WHERE host = '10.99.0.1'"
+                          ).fetchone()[0] == 0          # kamerasiz qurilma qolmadi

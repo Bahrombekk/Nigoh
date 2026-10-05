@@ -9,13 +9,14 @@ Yozuvchi (`start_recorder`) har daqiqada kameralarning yagona holatini
 """
 import threading
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter
 
 from core import stats
-from core.db import get_db
 from core.log import log
+from database import cameras, get_db
+from database import stats as stats_db
 
 from .helpers import camera_state
 
@@ -26,36 +27,29 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 @router.get("/dashboard")
 def dashboard_stats():
     now = datetime.now(timezone.utc)
-    iso24 = (now - timedelta(hours=24)).isoformat()
-    iso7 = (now - timedelta(days=8)).isoformat()   # 7 kunlik oynaga zaxira bilan
+    since24 = now - timedelta(hours=24)
+    since7 = now - timedelta(days=8)   # 7 kunlik oynaga zaxira bilan
 
     with get_db() as db:
         # 24 soatlik chiziq: har bir surat vaqtida jami nechta onlayn edi.
         timeline = [
             {"ts": r["ts"], "online": r["online"], "total": r["total"]}
-            for r in db.execute(
-                "SELECT ts, SUM(online) AS online, SUM(total) AS total "
-                "FROM stats_region WHERE ts >= ? GROUP BY ts ORDER BY ts",
-                (iso24,))
+            for r in stats_db.timeline(db, since24)
         ]
 
         # Kunlik kesim (mahalliy sana bo'yicha): o'rtacha onlayn ulushi
-        # va uzilish hodisalari soni.
+        # va uzilish hodisalari soni. "Mahalliy" — ulanish zonasi
+        # (NIGOH_TZ, database/connection.py): `ts::date` va CURRENT_DATE
+        # shu zonada hisoblanadi.
         daily_up = {
             r["d"]: (r["online"], r["total"])
-            for r in db.execute(
-                "SELECT date(ts, 'localtime') AS d, SUM(online) AS online, "
-                "SUM(total) AS total FROM stats_region WHERE ts >= ? GROUP BY d",
-                (iso7,))
+            for r in stats_db.daily_uptime(db, since7)
         }
         daily_ev = {
             r["d"]: r["n"]
-            for r in db.execute(
-                "SELECT date(ts, 'localtime') AS d, COUNT(*) AS n "
-                "FROM stats_event WHERE kind = 'offline' AND ts >= ? GROUP BY d",
-                (iso7,))
+            for r in stats_db.daily_outages(db, since7)
         }
-        today = date.today()
+        today = stats_db.today(db)
         daily = []
         for i in range(6, -1, -1):
             d = (today - timedelta(days=i)).isoformat()
@@ -69,11 +63,7 @@ def dashboard_stats():
         # Hudud kesimi: 24 soatlik o'rtacha onlayn ulushi va bugungi uzilishlar.
         reg_ev = {
             r["region"]: r["n"]
-            for r in db.execute(
-                "SELECT region, COUNT(*) AS n FROM stats_event "
-                "WHERE kind = 'offline' "
-                "AND date(ts, 'localtime') = date('now', 'localtime') "
-                "GROUP BY region")
+            for r in stats_db.outages_today_by_region(db)
         }
         regions = [
             {
@@ -82,17 +72,12 @@ def dashboard_stats():
                             if r["total"] else None,
                 "events_today": reg_ev.get(r["region"], 0),
             }
-            for r in db.execute(
-                "SELECT region, SUM(online) AS online, SUM(total) AS total "
-                "FROM stats_region WHERE ts >= ? GROUP BY region", (iso24,))
+            for r in stats_db.uptime_by_region(db, since24)
         ]
 
         # Bugungi uzilishlar soat kesimida — 24 katakli ustuncha uchun.
         hourly = [0] * 24
-        for r in db.execute(
-                "SELECT CAST(strftime('%H', ts, 'localtime') AS INTEGER) AS h, "
-                "COUNT(*) AS n FROM stats_event WHERE kind = 'offline' "
-                "AND date(ts, 'localtime') = date('now', 'localtime') GROUP BY h"):
+        for r in stats_db.outages_today_by_hour(db):
             if 0 <= r["h"] <= 23:
                 hourly[r["h"]] = r["n"]
 
@@ -100,9 +85,7 @@ def dashboard_stats():
         events = [
             {"ts": r["ts"], "name": r["name"], "region": r["region"],
              "kind": r["kind"]}
-            for r in db.execute(
-                "SELECT ts, name, region, kind FROM stats_event "
-                "ORDER BY id DESC LIMIT 40")
+            for r in stats_db.recent_changes(db, 40)
         ]
 
     return {
@@ -123,15 +106,16 @@ _recorder_started = False
 
 def _record_once() -> None:
     with get_db() as db:
-        rows = db.execute("SELECT * FROM cameras").fetchall()
+        rows = cameras.list_all(db)
     snapshot = []
     for row in rows:
         state = camera_state(row)
         # unknown/disabled — holati o'lchanmaydi, foizlarga kirmaydi;
         # stalled — port ochiq-u tasvir yo'q, ya'ni ishlamayapti.
         online = None if state in ("unknown", "disabled") else state == "online"
-        snapshot.append({"id": row["id"], "name": row["name"],
-                         "region": row["region"], "online": online})
+        snapshot.append({"id": row["id"], "name": row["name"], "region": row["region"],
+                         "organization_id": row["organization_id"],
+                         "admin_area_id": row["admin_area_id"], "online": online})
     stats.record_states(snapshot)
 
 

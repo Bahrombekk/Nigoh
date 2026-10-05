@@ -13,12 +13,12 @@ import time
 
 from fastapi import HTTPException, Request
 
+from camera import health, reconciler
+from camera import sync as mediamtx_sync
+from camera.fast_start import channel_from_path
+from camera.rtsp_probe import probe
 from core import security
-from core.db import get_db
-from kamera import health, reconciler
-from kamera import sync as mediamtx_sync
-from kamera.fast_start import channel_from_path
-from kamera.rtsp_probe import probe
+from database import cameras, get_db, nodes, users
 
 from .config import API_KEY, HLS_PORT, MEDIA_BASE, MEDIA_HOST, PUBLIC_VIEW, WEBRTC_PORT
 from .models import CameraIn
@@ -40,11 +40,9 @@ def resolve_ref(db, ref: str):
     """
     ref = (ref or "").strip()
     if ref.startswith("ext:"):
-        return db.execute("SELECT * FROM cameras WHERE external_id = ?",
-                          (ref[4:],)).fetchone()
+        return cameras.get_by_external_id(db, ref[4:])
     if ref.isdigit():
-        return db.execute("SELECT * FROM cameras WHERE id = ?",
-                          (int(ref),)).fetchone()
+        return cameras.get(db, int(ref))
     return None
 
 
@@ -69,7 +67,7 @@ def node_info(node_id: int | None) -> dict | None:
     if cached and cached[0] > now:
         return cached[1]
     with get_db() as db:
-        row = db.execute("SELECT * FROM nodes WHERE id = ?", (nid,)).fetchone()
+        row = nodes.get(db, nid)
     info = dict(row) if row else None
     _node_cache[nid] = (now + _NODE_TTL, info)
     return info
@@ -227,32 +225,39 @@ def admin_camera(row, request: Request) -> dict:
         "external_id": row["external_id"] or "",
         "state": camera_state(row),
         "resolution": row["resolution"] or "",
-        "source_type": "rtsp" if row["ip"] else "manual",
+        "source_type": row["source_type"],
         "ip": row["ip"] or "",
         "port": row["port"] or 554,
         "username": row["username"] or "",
         "has_password": bool(row["password_enc"]),
         "rtsp_path": row["rtsp_path"] or "",
         "sub_path": row["sub_path"] or "",
-        "sub_codec": (row["sub_codec"] or "") if "sub_codec" in row.keys() else "",
-        "sub_bad": bool(row["sub_bad"]) if "sub_bad" in row.keys() else False,
+        "sub_codec": row["sub_codec"] or "",
+        "sub_bad": bool(row["sub_bad"]),
         # Kamera TCP'da bermagani uchun UDP'ga o'tkazilganmi (avtomatik
         # aniqlanadi — media/transport.py). Admin ko'rinishida turadi:
         # "nega aynan shu kamerada tasvir biroz sinadi" savoliga javob.
-        "rtsp_udp": bool(row["rtsp_udp"]) if "rtsp_udp" in row.keys() else False,
+        "rtsp_udp": bool(row["rtsp_udp"]),
         "node_id": row["node_id"] or 1,
         "vendor": row["vendor"] or "boshqa",
         "enabled": bool(row["enabled"]),
         "note": row["note"] or "",
         "raw_stream_url": row["stream_url"] or "",
-        "model": (row["model"] or "") if "model" in row.keys() else "",
-        "firmware": (row["firmware"] or "") if "firmware" in row.keys() else "",
-        "last_seen": (row["last_seen"] or "") if "last_seen" in row.keys() else "",
+        "model": row["model"] or "",
+        "firmware": row["firmware"] or "",
+        "last_seen": row["last_seen"] or "",
+        # Joylashuv: viloyat (region) va temir yo'l bo'yicha km/piket.
+        "admin_area_id": row["admin_area_id"],
+        "rail_line_id": row["rail_line_id"],
+        "km": row["km"],
+        "picket": row["picket"],
+        "device_id": row["device_id"],
+        "device_kind": row["device_kind"] or "",
         "codec": row["codec"] or "",
         # SDP'dagi kadr tezligi (0 — kamera bermagan). "25 fps deb
         # sozlangan kamera 8 fps beryapti" degan xulosa shu maydonsiz
         # chiqmaydi.
-        "fps": (float(row["fps"] or 0.0) if "fps" in row.keys() else 0.0),
+        "fps": float(row["fps"] or 0.0),
         "transcode": bool(row["transcode"]),
         "always_on": bool(row["always_on"]),
     })
@@ -328,7 +333,7 @@ def current_user(request: Request):
     """Sessiyadagi foydalanuvchi (admin yoki operator), bo'lmasa None."""
     token = request.cookies.get(security.SESSION_COOKIE)
     with get_db() as db:
-        return security.session_admin(db, token)
+        return security.session_user(db, token)
 
 
 def require_admin(request: Request):
@@ -343,11 +348,12 @@ def require_admin(request: Request):
     return user
 
 
-def allowed_regions(request: Request) -> list[str] | None:
-    """Foydalanuvchi qaysi hududlarni ko'ra oladi.
+def allowed_areas(request: Request) -> list[int] | None:
+    """Foydalanuvchi qaysi hududlarni ko'ra oladi (admin_areas id'lari).
 
     None — cheklov yo'q (API kalit, admin yoki, PUBLIC_VIEW yoqiq bo'lsa,
-    mehmon); ro'yxat — operator: faqat shu hududlar (bo'sh = hech narsa).
+    mehmon); ro'yxat — operator: biriktirilgan hududlar va ularning ichki
+    bo'g'inlari (viloyat berilsa — tumanlari ham); bo'sh = hech narsa.
     PUBLIC_VIEW o'chiq bo'lsa mehmon bu yerga yetib kelmaydi —
     `deps.require_viewer` uni oldinroq qaytaradi; baribir bo'sh ro'yxat.
     """
@@ -359,12 +365,16 @@ def allowed_regions(request: Request) -> list[str] | None:
     if user["role"] == "admin":
         return None
     with get_db() as db:
-        return security.user_regions(db, user["id"])
+        return users.allowed_area_ids(db, user["id"])
 
 
-def check_region(row, regions: list[str] | None) -> None:
+def area_allowed(row, areas: list[int] | None) -> bool:
+    return areas is None or row["admin_area_id"] in areas
+
+
+def check_area(row, areas: list[int] | None) -> None:
     """Operator cheklovi: kamera ruxsat etilgan hududda bo'lsin (aks holda 403)."""
-    if regions is not None and row["region"] not in regions:
+    if not area_allowed(row, areas):
         raise HTTPException(403, "Bu kamerani ko'rishga ruxsat yo'q")
 
 
@@ -381,15 +391,14 @@ def camera_for_mediamtx(row) -> dict | None:
         "always_on": bool(row["always_on"]),
         "sub_path": row["sub_path"] or "",
         "node_id": row["node_id"] or 1,
-        # TCP'da bermaydigan kamera (core/db.py: rtsp_udp izohi) — yo'l
+        # TCP'da bermaydigan kamera (camera_status.rtsp_udp) — yo'l
         # konfiguratsiyasiga UDP bo'lib tushadi.
-        "rtsp_udp": bool(row["rtsp_udp"]) if "rtsp_udp" in row.keys() else False,
+        "rtsp_udp": bool(row["rtsp_udp"]),
     }
 
 
 def cameras_for_mediamtx(db) -> list[dict]:
-    rows = db.execute("SELECT * FROM cameras WHERE ip IS NOT NULL AND ip != ''").fetchall()
-    return [c for c in (camera_for_mediamtx(r) for r in rows) if c]
+    return [c for c in (camera_for_mediamtx(r) for r in cameras.list_rtsp(db)) if c]
 
 
 def channel_path(vendor: str, channel: int, stream: str) -> str:

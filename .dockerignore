@@ -28,9 +28,10 @@ nigoh.log.*
 .claude/
 .vscode/
 .idea/
-ishga-tushirish.bat
+start.bat
 .github/
 backend/tests/
 backend/requirements-dev.txt
 backend/ruff.toml
 backend/pytest.ini
+backups/

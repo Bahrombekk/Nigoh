@@ -4,15 +4,16 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from core.db import get_db
-from kamera import fast_start, health, snapshots
-from kamera import sync as mediamtx_sync
+from camera import fast_start, health, snapshots
+from camera import sync as mediamtx_sync
+from database import cameras, get_db
 
 from .helpers import (
-    allowed_regions,
+    allowed_areas,
+    area_allowed,
     camera_for_mediamtx,
     camera_state,
-    check_region,
+    check_area,
     node_info,
     resolve_ref,
     stream_urls,
@@ -40,35 +41,20 @@ def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
     Ko'rinish: admin, API kalit va (PUBLIC_VIEW=1 bo'lsa) mehmon hammasini
     ko'radi; operator faqat o'ziga biriktirilgan hududlarni.
     """
-    regions = allowed_regions(request)
-    if regions is not None and not regions:
+    areas = allowed_areas(request)
+    if areas is not None and not areas:
         return {"total": 0, "shown": 0, "cameras": []}
-    columns = ("id, external_id, name, region, lat, lng, ip, port, slug, "
-               "enabled, last_seen, codec, sub_codec, resolution, transcode, "
-               "always_on")
-    where = "WHERE enabled = 1"
-    params: list = []
+    box = None
     if bbox:
         try:
-            min_lat, min_lng, max_lat, max_lng = (float(v) for v in bbox.split(","))
+            box = tuple(float(v) for v in bbox.split(","))
+            if len(box) != 4:
+                raise ValueError
         except ValueError:
             raise HTTPException(400, "bbox formati: minLat,minLng,maxLat,maxLng")
-        where += " AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?"
-        params += [min_lat, max_lat, min_lng, max_lng]
-    if regions is not None:
-        where += f" AND region IN ({','.join('?' * len(regions))})"
-        params += regions
-
     with get_db() as db:
-        # Sanoq va tanlov AYNAN bitta shart bo'yicha — ilgari sanoq bbox
-        # qo'shilishidan oldin tuzilardi va xaritada `total` butun bazani
-        # ko'rsatib turardi (sahifalaydigan mijoz cheksiz aylanardi).
-        total = db.execute(f"SELECT COUNT(*) FROM cameras {where}",
-                           params).fetchone()[0]
-        rows = db.execute(
-            f"SELECT {columns} FROM cameras {where} ORDER BY region, name LIMIT ?",
-            params + [max(1, min(limit, 50000))],
-        ).fetchall()
+        total, rows = cameras.list_visible(db, bbox=box, area_ids=areas,
+                                           limit=max(1, min(limit, 50000)))
     return {
         "total": total,
         "shown": len(rows),
@@ -101,7 +87,7 @@ def cameras_status(request: Request, ids: str = "", all: int = 0):
     """
     with get_db() as db:
         if all:
-            rows = db.execute("SELECT * FROM cameras ORDER BY id").fetchall()
+            rows = cameras.list_all(db)
         elif ids.strip():
             refs = [p.strip() for p in ids.split(",") if p.strip()]
             if len(refs) > 1024:
@@ -110,21 +96,19 @@ def cameras_status(request: Request, ids: str = "", all: int = 0):
                     if r is not None]
         else:
             raise HTTPException(400, "ids=1,2,... yoki all=1 bering")
-    regions = allowed_regions(request)
-    if regions is not None:
-        rows = [r for r in rows if r["region"] in regions]
+    areas = allowed_areas(request)
+    rows = [r for r in rows if area_allowed(r, areas)]
 
     def out(r):
-        keys = r.keys()
         return {
             "id": r["id"],
             "external_id": r["external_id"] or "",
             "state": camera_state(r),
             "codec": r["codec"] or "",
-            "sub_codec": (r["sub_codec"] or "") if "sub_codec" in keys else "",
+            "sub_codec": r["sub_codec"] or "",
             "resolution": r["resolution"] or "",
             "last_seen": r["last_seen"] or "",
-            "snapshot_at": (r["snapshot_at"] or "") if "snapshot_at" in keys else "",
+            "snapshot_at": r["snapshot_at"] or "",
         }
 
     return {"total": len(rows), "cameras": [out(r) for r in rows]}
@@ -144,7 +128,7 @@ def camera_stream(ref: str, request: Request, hevc: int = 0,
         row = resolve_ref(db, ref)
         if row is None or not row["enabled"]:
             raise HTTPException(404, "Kamera topilmadi")
-        check_region(row, allowed_regions(request))
+        check_area(row, allowed_areas(request))
         camera = camera_for_mediamtx(row)
 
     # Yo'l o'z tugunidagi MediaMTX'da borligiga ishonch hosil qilamiz —
@@ -196,7 +180,7 @@ def camera_snapshot(ref: str, request: Request, stale: int = 0):
         row = resolve_ref(db, ref)
     if row is None or not row["enabled"] or not row["ip"]:
         raise HTTPException(404, "Kamera topilmadi")
-    check_region(row, allowed_regions(request))
+    check_area(row, allowed_areas(request))
 
     # DIQQAT: holat va yosh tekshiruvi ETag/304 dan OLDIN turadi — aks
     # holda keshi bor mijoz offline kamerada ham 304 olib eski kadrni
@@ -245,7 +229,7 @@ async def push_snapshot(ref: str, request: Request):
         row = resolve_ref(db, ref)
     if row is None or not row["enabled"]:
         raise HTTPException(404, "Kamera topilmadi")
-    check_region(row, allowed_regions(request))
+    check_area(row, allowed_areas(request))
     data = await request.body()
     # Katta yuklamadan himoya + JPEG tekshiruvi store_frame ichida.
     if len(data) > 3_000_000:
@@ -267,6 +251,6 @@ def mark_sub_bad(ref: str, request: Request):
         row = resolve_ref(db, ref)
         if row is None:
             raise HTTPException(404, "Kamera topilmadi")
-        check_region(row, allowed_regions(request))
-        db.execute("UPDATE cameras SET sub_bad = 1 WHERE id = ?", (row["id"],))
+        check_area(row, allowed_areas(request))
+        cameras.set_sub_bad_by_id(db, row["id"])
     return Response(status_code=204)

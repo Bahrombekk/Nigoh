@@ -7,7 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import create_app, deps
-from core.db import get_db
+from database import get_db
+from tests.factories import add_camera, count_at, delete_at
 
 KEY = {"X-API-Key": "test-kalit"}
 
@@ -97,11 +98,8 @@ def test_takror_ip_qoshilmaydi_lekin_201(client):
     ya'ni test tarmoqqa chiqmaydi.
     """
     with get_db() as db:
-        db.execute(
-            "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, "
-            "ip, port, rtsp_path, enabled) "
-            "VALUES ('Takror', 'TakrorTest', 0, 0, '', 'takror_test', "
-            "'10.255.255.9', 554, '/stream1', 1)")
+        add_camera(db, "takror_test", name="Takror", ip="10.255.255.9",
+                   rtsp_path="/stream1")
 
     payload = {"name": "Boshqa nom", "region": "Boshqa", "source_type": "rtsp",
                "ip": "10.255.255.9", "port": 554, "rtsp_path": "/stream1",
@@ -122,12 +120,11 @@ def test_takror_ip_qoshilmaydi_lekin_201(client):
         assert r2.json()["external_id"] == "takror-ext-1"
 
         with get_db() as db:
-            soni = db.execute("SELECT COUNT(*) FROM cameras WHERE ip = ?",
-                              ("10.255.255.9",)).fetchone()[0]
+            soni = count_at(db, "10.255.255.9")
         assert soni == 1                                # nusxa yaratilmadi
     finally:
         with get_db() as db:
-            db.execute("DELETE FROM cameras WHERE ip = ?", ("10.255.255.9",))
+            delete_at(db, "10.255.255.9")
 
 
 def test_takror_poyga_paytida_ham_nusxa_yaratilmaydi(client, monkeypatch):
@@ -148,11 +145,8 @@ def test_takror_poyga_paytida_ham_nusxa_yaratilmaydi(client, monkeypatch):
 
     def _probe_paytida_boshqasi_qoshadi(cam, password):
         with get_db() as db:
-            db.execute(
-                "INSERT INTO cameras (name, region, lat, lng, stream_url, "
-                "slug, ip, port, rtsp_path, enabled) "
-                "VALUES (?, 'PoygaTest', 0, 0, '', 'poyga_test', "
-                "'10.255.255.10', 554, '/stream1', 1)", ("Poyga g'olibi",))
+            add_camera(db, "poyga_test", name="Poyga g'olibi", ip="10.255.255.10",
+                       rtsp_path="/stream1")
         monkeypatch.setattr("api.admin.detect_codec", haqiqiy)
         return "H264", False, "", 0.0
 
@@ -171,12 +165,11 @@ def test_takror_poyga_paytida_ham_nusxa_yaratilmaydi(client, monkeypatch):
         assert r.json()["external_id"] == "poyga-ext"   # ID unga biriktirildi
 
         with get_db() as db:
-            soni = db.execute("SELECT COUNT(*) FROM cameras WHERE ip = ?",
-                              ("10.255.255.10",)).fetchone()[0]
+            soni = count_at(db, "10.255.255.10")
         assert soni == 1
     finally:
         with get_db() as db:
-            db.execute("DELETE FROM cameras WHERE ip = ?", ("10.255.255.10",))
+            delete_at(db, "10.255.255.10")
 
 
 def test_yol_korsatilmagan_takror_ip_nusxa_yaratmaydi(client, monkeypatch):
@@ -189,12 +182,8 @@ def test_yol_korsatilmagan_takror_ip_nusxa_yaratmaydi(client, monkeypatch):
     paydo bo'lardi — konsolda bitta kamera ikkita bo'lib ko'rinardi.
     """
     with get_db() as db:
-        db.execute(
-            "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, "
-            "ip, port, rtsp_path, codec, enabled) "
-            "VALUES ('Dahua 1-kanal', 'YolTest', 0, 0, '', 'yol_test', "
-            "'10.255.255.11', 554, '/cam/realmonitor?channel=1&subtype=0', "
-            "'H264', 1)")
+        add_camera(db, "yol_test", name="Dahua 1-kanal", ip="10.255.255.11",
+                   rtsp_path="/cam/realmonitor?channel=1&subtype=0", codec="H264")
     try:
         r = client.post("/api/v1/admin/cameras", headers=KEY, json={
             "name": "16/9 (10.255.255.11)", "region": "16/9",
@@ -235,12 +224,11 @@ def test_yol_korsatilmagan_takror_ip_nusxa_yaratmaydi(client, monkeypatch):
         assert r4.status_code == 201 and not r4.headers.get("X-Nigoh-Existing")
 
         with get_db() as db:
-            soni = db.execute("SELECT COUNT(*) FROM cameras WHERE ip = ?",
-                              ("10.255.255.11",)).fetchone()[0]
+            soni = count_at(db, "10.255.255.11")
         assert soni == 2                            # 1 ta asl + 1 ta 2-kanal
     finally:
         with get_db() as db:
-            db.execute("DELETE FROM cameras WHERE ip = ?", ("10.255.255.11",))
+            delete_at(db, "10.255.255.11")
 
 
 def test_batch_streams(client):

@@ -6,7 +6,7 @@ Shuning uchun test.
 """
 import yaml
 
-from kamera import sync
+from camera import sync
 
 
 def _conf(**node) -> dict:
@@ -56,7 +56,7 @@ def test_webrtc_hosti_media_basedan_olinadi(monkeypatch):
     MEDIA_BASE berilgan bo'lsa, brauzer o'sha domenga yetadi degani —
     ikkinchi o'zgaruvchini talab qilishning ma'nosi yo'q.
     """
-    from kamera import sync
+    from camera import sync
     for key in ("WEBRTC_HOSTS", "MEDIA_HOST", "MEDIA_BASE"):
         monkeypatch.delenv(key, raising=False)
 
@@ -81,7 +81,7 @@ def test_webrtc_hosti_media_basedan_olinadi(monkeypatch):
 
 
 def test_hech_narsa_berilmasa_bosh(monkeypatch):
-    from kamera import sync
+    from camera import sync
     for key in ("WEBRTC_HOSTS", "MEDIA_HOST", "MEDIA_BASE"):
         monkeypatch.delenv(key, raising=False)
     assert sync._webrtc_hosts() == []

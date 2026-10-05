@@ -6,8 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import create_app
-from core.db import get_db
-from kamera import health, snapshots
+from camera import health, snapshots
+from database import cameras, get_db
+from tests.factories import add_camera
 
 KEY = {"X-API-Key": "test-kalit"}
 IP, PORT = "10.88.0.1", 10554
@@ -22,12 +23,7 @@ def client():
 @pytest.fixture()
 def cam(client):
     with get_db() as db:
-        db.execute(
-            "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, "
-            "ip, port, enabled) VALUES ('Snap EP', 'T', 0, 0, '', "
-            "'snap_ep_sinov', ?, ?, 1)", (IP, PORT))
-        cam_id = db.execute("SELECT id FROM cameras WHERE slug = "
-                            "'snap_ep_sinov'").fetchone()[0]
+        cam_id = add_camera(db, "snap_ep_sinov", name="Snap EP", ip=IP, port=PORT)
     p = snapshots.path_for("snap_ep_sinov")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(b"\xff\xd8sinov-jpeg")
@@ -36,7 +32,7 @@ def cam(client):
     health._statuses.pop((IP, PORT), None)
     snapshots._done.pop(cam_id, None)
     with get_db() as db:
-        db.execute("DELETE FROM cameras WHERE id = ?", (cam_id,))
+        cameras.delete(db, cam_id)
 
 
 def test_online_kamera_sarlavhalar_bilan(client, cam):

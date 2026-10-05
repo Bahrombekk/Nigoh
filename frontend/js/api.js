@@ -1,7 +1,7 @@
 /* Backend bilan aloqa: `api(path, options)` — JSON so'rov, xatoni tushunarli xabarga
    aylantiradi, 401 da kirish oynasini ochadi. Endpointlar: backend/README.md. */
-import { state } from "./holat.js";
-import { openModal } from "./modallar.js";
+import { state } from "./state.js";
+import { openModal } from "./modals.js";
 import { setAdmin } from "./auth.js";
 
 /* ---------- API ---------- */

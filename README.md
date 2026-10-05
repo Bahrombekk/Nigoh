@@ -22,7 +22,7 @@ cp .env.example .env       # ADMIN_PAROL ni to'ldiring
 docker compose up -d --build
 ```
 
-Windows'da (lokal ishlab chiqish) eng oson yo'l: **`ishga-tushirish.bat`**
+Windows'da (lokal ishlab chiqish) eng oson yo'l: **`start.bat`**
 faylini ikki marta bosing. U saytni ishga tushiradi va brauzerni ochadi.
 
 Qo'lda:
@@ -272,7 +272,7 @@ frontend/            INTERFEYS — frontendchi (frontend/README.md)
 backend/             SERVER — backendchi (backend/README.md)
   ├─ main.py         kirish nuqtasi: CLI, bootstrap, uvicorn
   ├─ api/            HTTP qatlami: endpointlar, kirish, rollar
-  ├─ kamera/         KAMERA QATLAMI: MediaMTX, holat kuzatuvi, RTSP, suratlar
+  ├─ camera/         KAMERA QATLAMI: MediaMTX, holat kuzatuvi, RTSP, suratlar
   ├─ core/           umumiy: baza, xavfsizlik, log, statistika
   ├─ tests/  scripts/
   └─ stream_launcher.py   MediaMTX chaqiradigan qobiq
@@ -280,19 +280,21 @@ mediamtx/            MediaMTX'ning o'zi (exe) — yuklab olinadi, git'da yo'q
 deploy/  docs/  Dockerfile  docker-compose.yml
 ```
 
-Bog'lanish yo'nalishi: `api/` -> `kamera/` -> `core/`. Frontend backend
+Bog'lanish yo'nalishi: `api/` -> `camera/` -> `core/`. Frontend backend
 bilan faqat HTTP (`/api/...`) orqali gaplashadi.
 
-Ildizda qoladigan ma'lumot fayllari (git'ga tushmaydi): `cameras.db`,
-`secret.key`, `mediamtx.yml`, `auto.crt/key` — yo'llari kod ko'chganda ham
-o'zgarmasligi uchun ataylab ildizda.
+Ma'lumotlar (kameralar, foydalanuvchilar, tarix) — PostgreSQL'da
+(hostda oddiy servis, `docs/DEPLOY.md`; manzil `.env` dagi `DATABASE_URL`).
+Ildizda qoladigan fayllar (git'ga tushmaydi): `secret.key`, `mediamtx.yml`,
+`auto.crt/key`, `snapshots/`.
 
 ## Maxfiylik
 
 Bu fayllar **hech qachon** repozitoriyga tushmasligi kerak (`.gitignore` da):
 
 - `secret.key` — kamera parollarini ochadigan kalit
-- `cameras.db` — kameralar va shifrlangan parollar
+- `.env` — baza parollari (`POSTGRES_PASSWORD`, `NIGOH_DB_PAROL`)
+- `backups/` — baza zaxiralari (`deploy/db-backup.sh`)
 - `mediamtx.yml` — ichida **ochiq** RTSP login/parollar (MediaMTX shunday talab qiladi)
 
 Kamera parollari bazada shifrlangan holda yotadi va brauzerga hech qachon
@@ -313,5 +315,4 @@ $env:MEDIA_HOST = "192.168.1.50"; venv\Scripts\python.exe backend\main.py
 ## Keyingi qadamlar
 
 - HTTPS (nginx + sertifikat) — parollar ochiq tarmoqdan o'tmasligi uchun
-- Kamera ko'payganda SQLite o'rniga PostgreSQL
 - Kameralarni yozib borish (MediaMTX `record: yes`)

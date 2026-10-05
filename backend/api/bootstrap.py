@@ -1,11 +1,11 @@
 """Nigoh — birinchi ishga tushirish tayyorgarligi."""
 import os
 
+from camera import health, reconciler, snapshots
+from camera import sync as mediamtx_sync
 from core import security
-from core.db import get_db, init_db
 from core.log import log
-from kamera import health, reconciler, snapshots
-from kamera import sync as mediamtx_sync
+from database import cameras, get_db, init_db
 
 from . import stats
 from .config import API_KEY
@@ -43,9 +43,7 @@ def _streaming_pairs() -> set[tuple[str, int]]:
     if not ready:
         return set()
     with get_db() as db:
-        rows = db.execute(
-            "SELECT ip, port FROM cameras WHERE slug IN "
-            f"({','.join('?' * len(ready))})", tuple(ready)).fetchall()
+        rows = [r for r in cameras.list_rtsp(db) if r["slug"] in ready]
     return {(r["ip"], r["port"] or 554) for r in rows if r["ip"]}
 
 

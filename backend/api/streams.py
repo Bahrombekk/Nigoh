@@ -10,12 +10,13 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from core.db import get_db
-from kamera import fast_start
-from kamera import sync as mediamtx_sync
+from camera import fast_start
+from camera import sync as mediamtx_sync
+from database import get_db
 
 from .helpers import (
-    allowed_regions,
+    allowed_areas,
+    area_allowed,
     camera_for_mediamtx,
     camera_state,
     node_info,
@@ -60,13 +61,13 @@ def batch_streams(body: StreamsIn, request: Request):
 
     with get_db() as db:
         rows = {str(ref): resolve_ref(db, str(ref)) for ref in body.ids}
-    regions = allowed_regions(request)
+    areas = allowed_areas(request)
 
     def job(item):
         key, row = item
         if row is None:
             return key, {"error": "topilmadi"}, 0.0
-        if regions is not None and row["region"] not in regions:
+        if not area_allowed(row, areas):
             return key, {"error": "ruxsat yo'q"}, 0.0
         state = camera_state(row)
         if state in ("disabled", "offline"):

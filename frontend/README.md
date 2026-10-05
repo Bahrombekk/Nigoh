@@ -23,26 +23,26 @@ frontend/
 ├─ assets/             O'zbekiston va viloyat chegaralari (geojson), fon rasmi
 └─ js/
    ├─ main.js          kirish nuqtasi — ishga tushirish ketma-ketligi
-   ├─ holat.js         `state` (butun holat), `$`, `esc`, `toast` — hamma shuni oladi
+   ├─ state.js         `state` (butun holat), `$`, `esc`, `toast` — hamma shuni oladi
    ├─ api.js           backend bilan aloqa: api(path, options)
    ├─ auth.js          kirish ekrani, sessiya, rol, mehmon rejimi
-   ├─ malumot.js       kameralar ro'yxatini yuklash va 30 s da yangilash
-   ├─ xarita.js        Leaflet: plitkalar, chegara, markerlar, klasterlar
-   ├─ royxat.js        chap panel: ro'yxat, qidiruv, filtrlar
-   ├─ tanlov.js        tanlangan kamera paneli
-   ├─ pleyer.js        video pleyer: WebRTC (WHEP) -> HLS zaxira
-   ├─ devor.js         video devor: setka, sifat tanlovi, avto-almashish
+   ├─ data.js       kameralar ro'yxatini yuklash va 30 s da yangilash
+   ├─ map.js        Leaflet: plitkalar, chegara, markerlar, klasterlar
+   ├─ camera-list.js        chap panel: ro'yxat, qidiruv, filtrlar
+   ├─ selection.js        tanlangan kamera paneli
+   ├─ player.js        video pleyer: WebRTC (WHEP) -> HLS zaxira
+   ├─ video-wall.js         video devor: setka, sifat tanlovi, avto-almashish
    ├─ dashboard.js     dashboard ma'lumotlari va bloklari
-   ├─ grafiklar.js     SVG grafiklar (kutubxonasiz)
-   ├─ tablar.js        bo'limlar orasida o'tish, yon menyu, bildirishnomalar
+   ├─ charts.js     SVG grafiklar (kutubxonasiz)
+   ├─ tabs.js        bo'limlar orasida o'tish, yon menyu, bildirishnomalar
    ├─ admin.js         boshqaruv jadvali
-   ├─ kamera-shakli.js kamera qo'shish/tahrirlash shakli
+   ├─ camera-form.js kamera qo'shish/tahrirlash shakli
    ├─ nvr.js           registrator kanallarini ommaviy qo'shish
-   ├─ modallar.js mavzu.js ikonkalar.js
+   ├─ modals.js theme.js icons.js
 ```
 
 Har bir fayl tepasida nima qilishi yozilgan; bog'liqliklar `import` qatorlarida
-ko'rinadi. Umumiy holat bitta joyda — `holat.js` dagi `state` obyekti.
+ko'rinadi. Umumiy holat bitta joyda — `state.js` dagi `state` obyekti.
 
 ## Tashqi kutubxonalar (CDN)
 

@@ -1,10 +1,10 @@
 /* Registrator (NVR) kanallarini ommaviy qo'shish. */
-import { $, esc, state, toast } from "./holat.js";
+import { $, esc, state, toast } from "./state.js";
 import { api } from "./api.js";
-import { loadCameras } from "./malumot.js";
+import { loadCameras } from "./data.js";
 import { addEvent } from "./dashboard.js";
-import { showTab } from "./tablar.js";
-import { closeModal, openModal } from "./modallar.js";
+import { showTab } from "./tabs.js";
+import { closeModal, openModal } from "./modals.js";
 import { loadAdminCameras } from "./admin.js";
 
 /* ---------- NVR dan ommaviy qo'shish ---------- */

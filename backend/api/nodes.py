@@ -7,9 +7,10 @@ mashinadagi asosiy MediaMTX.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from core.db import get_db
-from kamera import reconciler
-from kamera import sync as mediamtx_sync
+from camera import reconciler
+from camera import sync as mediamtx_sync
+from database import get_db
+from database import nodes as nodes_db
 
 from .config import PORT
 from .helpers import clear_node_cache, require_admin
@@ -18,6 +19,13 @@ from .models import NodeIn
 # Prefiks /admin bo'lib qoladi — debug UI va mavjud mijozlar buzilmasin.
 router = APIRouter(prefix="/admin", tags=["nodes"],
                    dependencies=[Depends(require_admin)])
+
+
+def _node_data(body: NodeIn) -> dict:
+    return {"name": body.name.strip(), "api_base": body.api_base.strip().rstrip("/"),
+            "public_host": body.public_host.strip(), "rtsp_port": body.rtsp_port,
+            "hls_port": body.hls_port, "webrtc_port": body.webrtc_port,
+            "enabled": bool(body.enabled)}
 
 
 @router.get("/nodes")
@@ -29,10 +37,7 @@ def admin_nodes():
     (yangi kameralarni bunday tugunga biriktirmang).
     """
     with get_db() as db:
-        rows = db.execute(
-            "SELECT n.*, (SELECT COUNT(*) FROM cameras c WHERE c.node_id = n.id) "
-            "AS cameras FROM nodes n ORDER BY n.id"
-        ).fetchall()
+        rows = nodes_db.list_with_counts(db)
     nodes = []
     for row in rows:
         node = dict(row)
@@ -51,15 +56,7 @@ def admin_nodes():
 @router.post("/nodes", status_code=201)
 def admin_node_create(body: NodeIn):
     with get_db() as db:
-        cur = db.execute(
-            "INSERT INTO nodes (name, api_base, public_host, rtsp_port, "
-            "hls_port, webrtc_port, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (body.name.strip(), body.api_base.strip().rstrip("/"),
-             body.public_host.strip(), body.rtsp_port, body.hls_port,
-             body.webrtc_port, int(body.enabled)),
-        )
-        row = db.execute("SELECT * FROM nodes WHERE id = ?",
-                         (cur.lastrowid,)).fetchone()
+        row = nodes_db.create(db, _node_data(body))
     clear_node_cache()
     return dict(row)
 
@@ -67,16 +64,9 @@ def admin_node_create(body: NodeIn):
 @router.put("/nodes/{node_id}")
 def admin_node_update(node_id: int, body: NodeIn):
     with get_db() as db:
-        cur = db.execute(
-            "UPDATE nodes SET name=?, api_base=?, public_host=?, rtsp_port=?, "
-            "hls_port=?, webrtc_port=?, enabled=? WHERE id=?",
-            (body.name.strip(), body.api_base.strip().rstrip("/"),
-             body.public_host.strip(), body.rtsp_port, body.hls_port,
-             body.webrtc_port, int(body.enabled), node_id),
-        )
-        if cur.rowcount == 0:
+        row = nodes_db.update(db, node_id, _node_data(body))
+        if row is None:
             raise HTTPException(404, "Tugun topilmadi")
-        row = db.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
     clear_node_cache()
     return dict(row)
 
@@ -86,13 +76,11 @@ def admin_node_delete(node_id: int):
     if node_id == 1:
         raise HTTPException(400, "Asosiy tugunni o'chirib bo'lmaydi")
     with get_db() as db:
-        used = db.execute("SELECT COUNT(*) FROM cameras WHERE node_id = ?",
-                          (node_id,)).fetchone()[0]
+        used = nodes_db.camera_count(db, node_id)
         if used:
             raise HTTPException(400, f"Tugunda {used} ta kamera bor — avval "
                                      f"ularni boshqa tugunga o'tkazing")
-        cur = db.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
-        if cur.rowcount == 0:
+        if not nodes_db.delete(db, node_id):
             raise HTTPException(404, "Tugun topilmadi")
     clear_node_cache()
 
@@ -106,7 +94,7 @@ def admin_node_config(node_id: int, request: Request):
     ko'radigan manzili; kerak bo'lsa STREAM_AUTH_URL bilan almashtiring.
     """
     with get_db() as db:
-        row = db.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+        row = nodes_db.get(db, node_id)
     if row is None:
         raise HTTPException(404, "Tugun topilmadi")
     auth_url = f"http://{request.url.hostname}:{PORT}/api/auth/stream"

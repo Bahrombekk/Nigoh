@@ -1,11 +1,11 @@
 /* Dashboard: KPI kartalar, hodisalar lentasi, hudud kesimi (/api/stats/dashboard). */
-import { $, esc, state } from "./holat.js";
+import { $, esc, state } from "./state.js";
 import { api } from "./api.js";
-import { hasGeo, map } from "./xarita.js";
-import { setQuery } from "./royxat.js";
-import { selectCamera } from "./tanlov.js";
-import { renderDailyCharts, renderEvents, renderHourly, renderSystem, renderTimeline } from "./grafiklar.js";
-import { showTab } from "./tablar.js";
+import { hasGeo, map } from "./map.js";
+import { setQuery } from "./camera-list.js";
+import { selectCamera } from "./selection.js";
+import { renderDailyCharts, renderEvents, renderHourly, renderSystem, renderTimeline } from "./charts.js";
+import { showTab } from "./tabs.js";
 
 /* ---------- Dashboard ---------- */
 export function addEvent(text, kind) {

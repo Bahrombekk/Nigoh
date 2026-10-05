@@ -3,7 +3,7 @@ from fastapi import HTTPException
 
 from api.admin import parse_channels, spread_point
 from api.helpers import channel_path
-from kamera.fast_start import channel_from_path, channel_marked
+from camera.fast_start import channel_from_path, channel_marked
 
 
 def test_parse_channels():

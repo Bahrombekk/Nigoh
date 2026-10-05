@@ -108,7 +108,7 @@ def test_togri_parol_bilan_kirish_ishlaydi(ui_client):
     brauzer uni saqlamaydi va lokal debug UI umuman kira olmaydi.
     """
     from core import security
-    from core.db import get_db
+    from database import get_db
 
     with get_db() as db:
         security.set_password(db, "sinov-admin", "SinovParol123")

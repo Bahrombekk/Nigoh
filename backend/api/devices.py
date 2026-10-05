@@ -16,11 +16,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
+from camera import device_info as devinfo
+from camera import fast_start
+from camera.rtsp_probe import build_rtsp_url, probe
 from core import security
-from core.db import get_db
-from kamera import device_info as devinfo
-from kamera import fast_start
-from kamera.rtsp_probe import build_rtsp_url, probe
+from database import cameras, get_db
 
 from .config import CHANNEL_VENDORS, VENDORS
 from .helpers import channel_path, resolve_ref
@@ -198,9 +198,7 @@ def device_information(ip: str = "", username: str = "", password: str = "",
                                  "o'chiq yoki login noto'g'ri")
     if camera_id is not None and (info["model"] or info["firmware"]):
         with get_db() as db:
-            db.execute("UPDATE cameras SET model = ?, firmware = ? "
-                       "WHERE id = ?",
-                       (info["model"], info["firmware"], camera_id))
+            cameras.set_passport(db, [camera_id], info["model"], info["firmware"])
     return info
 
 
@@ -215,8 +213,7 @@ def scan_start(body: ScanIn):
     pw = body.password
     if not pw and body.camera_id:
         with get_db() as db:
-            row = db.execute("SELECT password_enc FROM cameras WHERE id = ?",
-                             (body.camera_id,)).fetchone()
+            row = cameras.get(db, body.camera_id)
         if row:
             pw = security.decrypt(row["password_enc"])
 

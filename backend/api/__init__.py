@@ -29,7 +29,7 @@ API ikki prefiksda tinglaydi:
                   ishlaydi; hujjatda ko'rinmaydi.
 
 MediaMTX bilan aloqa alohida `media/` paketida — backend unga faqat
-`from kamera import sync` orqali murojaat qiladi. Umumiy infratuzilma
+`from camera import sync` orqali murojaat qiladi. Umumiy infratuzilma
 (db, security, health, rtsp_probe, fast_start, stats) `core/` paketida.
 """
 import asyncio

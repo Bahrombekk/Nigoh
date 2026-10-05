@@ -12,13 +12,13 @@ va bitta oqimni bo'lishadi.
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from camera import walls as walls_registry
+from camera.mosaic import grid_for
 from core import security
-from core.db import get_db
-from kamera import walls as walls_registry
-from kamera.mosaic import grid_for
+from database import cameras, get_db
 
 from .config import HLS_PORT, MEDIA_BASE, WEBRTC_PORT
-from .helpers import allowed_regions, media_host
+from .helpers import allowed_areas, area_allowed, media_host
 
 router = APIRouter(prefix="/walls", tags=["walls"])
 
@@ -39,13 +39,9 @@ def create_wall(body: WallIn, request: Request):
     """
     ids = list(dict.fromkeys(body.camera_ids))   # takrorlarni olib tashlaymiz, tartib saqlanadi
     with get_db() as db:
-        q = ",".join("?" * len(ids))
-        found = {r["id"]: r for r in db.execute(
-            f"SELECT id, name, region, node_id, ip, codec FROM cameras "
-            f"WHERE id IN ({q})", ids)}
-    regions = allowed_regions(request)
-    ids = [i for i in ids if i in found
-           and (regions is None or found[i]["region"] in regions)]
+        found = {r["id"]: r for r in cameras.list_by_ids(db, ids)}
+    areas = allowed_areas(request)
+    ids = [i for i in ids if i in found and area_allowed(found[i], areas)]
     if not ids:
         raise HTTPException(404, "Birorta kamera topilmadi")
 

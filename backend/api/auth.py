@@ -7,9 +7,9 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from core import security
-from core.db import get_db
 from core.log import log
 from core.throttle import Throttle
+from database import get_db, users
 
 from .config import PUBLIC_VIEW
 from .helpers import TRUSTED_PROXIES as helpers_trusted
@@ -238,11 +238,7 @@ def login(body: LoginIn, request: Request, response: Response):
 
     with get_db() as db:
         security.purge_expired_sessions(db)
-        row = db.execute(
-            "SELECT id, username, pw_hash, pw_salt, role FROM admins "
-            "WHERE username = ?",
-            (body.username,),
-        ).fetchone()
+        row = users.get_for_login(db, body.username)
         if row is None or not security.verify_password(
             body.password, row["pw_hash"], row["pw_salt"]
         ):
@@ -251,7 +247,8 @@ def login(body: LoginIn, request: Request, response: Response):
                 ip=ip, username=body.username)
             raise HTTPException(401, "Login yoki parol noto'g'ri")
         _clear_fails(ip)
-        token = security.create_session(db, row["id"])
+        token = security.create_session(db, row["id"], ip,
+                                        request.headers.get("user-agent"))
         username, role = row["username"], row["role"]
 
     response.set_cookie(
@@ -278,8 +275,8 @@ def logout(request: Request, response: Response):
 def me(request: Request):
     token = request.cookies.get(security.SESSION_COOKIE)
     with get_db() as db:
-        user = security.session_admin(db, token)
-        regions = (security.user_regions(db, user["id"])
+        user = security.session_user(db, token)
+        regions = (users.region_names(db, user["id"])
                    if user is not None and user["role"] == "operator" else [])
     # public_view — interfeys uchun: kirmagan foydalanuvchi xaritani ko'ra
     # oladimi. Frontend shunga qarab kirish ekranida "Mehmon sifatida

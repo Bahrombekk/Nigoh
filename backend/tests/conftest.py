@@ -1,7 +1,12 @@
-"""Test muhiti: har seans uchun toza vaqtinchalik baza va API kalit.
+"""Test muhiti: har seans uchun toza PostgreSQL sxemasi va API kalit.
 
-Muhit o'zgaruvchilari modul import bo'lishidan OLDIN o'rnatilishi shart —
-core.db import paytida NIGOH_DATA'ni o'qiydi.
+Testlar alohida bazada yuradi — TEST_DATABASE_URL (`.env` yoki muhit).
+Seans boshida uning `public` sxemasi o'chirilib qayta quriladi, shuning
+uchun bu manzil HECH QACHON asosiy bazaga qaramasligi kerak: baza nomi
+`_test` bilan tugamasa testlar umuman boshlanmaydi.
+
+Muhit o'zgaruvchilari modullar import bo'lishidan OLDIN o'rnatilishi
+shart — core.paths NIGOH_DATA'ni, database esa DATABASE_URL'ni o'qiydi.
 """
 import os
 import sys
@@ -23,11 +28,27 @@ os.environ["PUBLIC_VIEW"] = "0"
 # Loyiha ildizi import yo'lida bo'lsin (pytest'ni istalgan joydan yuritish uchun).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# .env ni yuklab (TEST_DATABASE_URL o'sha yerda), DATABASE_URL'ni test
+# bazasiga MAJBURAN almashtiramiz — .env dagi asosiy manzil ishlatilmasin.
+from core import env  # noqa: E402,F401
+
+_test_url = os.environ.get("TEST_DATABASE_URL", "")
+if not _test_url.split("?", 1)[0].rstrip("/").endswith("_test"):
+    raise SystemExit(
+        "TEST_DATABASE_URL berilmagan yoki baza nomi '_test' bilan tugamaydi.\n"
+        "Testlar shu bazani tozalab yuboradi — asosiy bazani ko'rsatmang.\n"
+        "Masalan: TEST_DATABASE_URL="
+        "postgresql://nigoh:<parol>@127.0.0.1:5432/nigoh_test")
+os.environ["DATABASE_URL"] = _test_url
+
 import pytest  # noqa: E402
 
-from core.db import init_db  # noqa: E402
+from database import get_db, init_db  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _db():
+    with get_db() as db:
+        db.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        db.execute("CREATE SCHEMA public")
     init_db()

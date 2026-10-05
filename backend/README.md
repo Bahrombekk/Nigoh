@@ -16,10 +16,15 @@ python -m venv ../venv
   o'zgaruvchilari `.env` dan ustun turadi.
 - MediaMTX dasturi `../mediamtx/mediamtx(.exe)` da bo'lishi kerak — backend
   uni o'zi ishga tushiradi, kuzatadi va yiqilsa qayta ko'taradi.
-- Ma'lumot (baza `cameras.db`, kalit `secret.key`, loglar, `mediamtx.yml`,
-  suratlar) standart holda repo ildizida, `NIGOH_DATA` bilan boshqa joyga.
+- Baza — PostgreSQL (`DATABASE_URL`, `.env`). Ko'tarish:
+  PostgreSQL 17 servisi + `deploy/postgres/setup-roles.sql` (`docs/DEPLOY.md`). Eski `cameras.db` dan
+  ko'chirish: `python scripts/migrate_sqlite_to_postgres.py --apply`.
+- Fayllar (kalit `secret.key`, loglar, `mediamtx.yml`, suratlar) standart
+  holda repo ildizida, `NIGOH_DATA` bilan boshqa joyga.
   **`secret.key` yo'qolsa kamera parollari ochilmaydi** — bazadan alohida
-  zaxiralang.
+  zaxiralang (`deploy/db-backup.sh` ikkalasini birga oladi).
+- Testlar alohida `nigoh_test` bazasida (`TEST_DATABASE_URL`), har seansda
+  tozalanadi.
 - Admin paroli: `python main.py --admin-parol YangiParol`.
 
 ## Tuzilma
@@ -37,7 +42,7 @@ backend/
 │  ├─ cameras.py streams.py walls.py events.py metrics.py   ko'rish
 │  ├─ stats.py         dashboard tarixi (+ har daqiqada yozuvchi)
 │  └─ admin.py nodes.py devices.py analytics.py              boshqaruv
-├─ kamera/             kamera va video qatlami (HTTP'ni bilmaydi)
+├─ camera/             kamera va video qatlami (HTTP'ni bilmaydi)
 │  ├─ sync.py          MediaMTX konfiguratsiyasi va API (yo'llar talab bo'yicha)
 │  ├─ reconciler.py    MediaMTX kuzatuvi, muzlagan oqimlar, sub tekshiruvi
 │  ├─ health.py        kameralar tirikligi (TCP sweep, har 60 s)
@@ -45,16 +50,20 @@ backend/
 │  ├─ snapshots.py     suratlar (diskda, pog'onali yangilanadi)
 │  ├─ fast_start.py device_info.py transport.py launcher.py mosaic.py walls.py
 │  └─ events.py        media hodisalari jurnali (uptime manbai)
+├─ database/           PostgreSQL qatlami — bazaga tegadigan umumiy kod shu yerda
+│  ├─ connection.py    ulanishlar hovuzi, get_db() (tranzaksiya), qator turi
+│  ├─ schema.py        jadvallar, cheklovlar, raqamlangan migratsiyalar
+│  └─ cameras.py       slug va sub oqim yordamchilari
 ├─ core/               umumiy infratuzilma
-│  ├─ db.py            SQLite: sxema, migratsiyalar, yo'llar (ROOT_DIR, DATA_DIR)
+│  ├─ env.py paths.py  .env yuklash; yo'llar (ROOT_DIR, DATA_DIR)
 │  ├─ security.py      parollar (scrypt), kamera parollari (Fernet), sessiyalar, chiptalar
 │  ├─ log.py bus.py throttle.py watchdog.py metrics.py
 │  └─ stats.py alerts.py   dashboard tarixi, Telegram ogohlantirishlari
 ├─ tests/              pytest
-└─ scripts/            yordamchi skriptlar (qabul_test, servis_bazasini_kochirish, ...)
+└─ scripts/            yordamchi skriptlar (acceptance_test, migrate_sqlite_to_postgres, ...)
 ```
 
-Qoida: `api/` -> `kamera/` -> `core/` yo'nalishida bog'lanadi. `kamera/`
+Qoida: `api/` -> `camera/` -> `core/` yo'nalishida bog'lanadi. `camera/`
 HTTP'ni, `core/` esa kamerani bilmaydi.
 
 ## Kirish (autentifikatsiya)
@@ -92,7 +101,7 @@ Kamera holati (`state`): `disabled / unknown / offline / stalled / online`.
 ```bash
 ../venv/Scripts/python -m pytest tests -q      # 241 test
 ../venv/Scripts/python -m ruff check .
-python scripts/qabul_test.py                   # toza konteynerga qarshi (ichida yo'riqnoma)
+python scripts/acceptance_test.py                   # toza konteynerga qarshi (ichida yo'riqnoma)
 ```
 
 ## Miqyos (5000+ kamera)

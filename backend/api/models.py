@@ -12,11 +12,17 @@ class LoginIn(BaseModel):
 
 class CameraIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    region: str = Field(min_length=1, max_length=120)
+    # Viloyat nomi (GET /admin/regions ro'yxatidan). Bo'sh yoki ro'yxatda
+    # yo'q bo'lsa hudud koordinatadan aniqlanadi; erkin matn saqlanmaydi.
+    region: str = Field(default="", max_length=120)
     # Koordinata ixtiyoriy: tashqi backend xarita/joylashuvni o'z bazasida
     # yuritsa, bermasligi mumkin (0,0 — "joyi ko'rsatilmagan" degani).
-    lat: float = Field(default=0.0, ge=-90, le=90)
-    lng: float = Field(default=0.0, ge=-180, le=180)
+    lat: float | None = Field(default=0.0, ge=-90, le=90)
+    lng: float | None = Field(default=0.0, ge=-180, le=180)
+    # Temir yo'l bo'yicha joy. Berilmasa nomdan olinadi ("3428/1 km").
+    rail_line_id: int | None = Field(default=None, ge=1)
+    km: int | None = Field(default=None, ge=0, le=100000)
+    picket: int | None = Field(default=None, ge=1, le=10)
     source_type: str = "rtsp"          # "rtsp" | "manual"
     node_id: int = Field(default=1, ge=1)   # qaysi MediaMTX tuguni tortadi
     enabled: bool = True
@@ -59,6 +65,16 @@ class CameraIn(BaseModel):
                              "va pastki chiziqdan iborat bo'lishi mumkin")
         return v
 
+    @field_validator("ip")
+    @classmethod
+    def _check_ip(cls, v: str) -> str:
+        v = v.strip()
+        # IP yoki DNS nomi (DDNS orqali ulanadigan registratorlar). Bazadagi
+        # CHECK bilan bir xil qoida — xato bu yerda tushunarli matn bilan chiqsin.
+        if v and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.:-]*", v):
+            raise ValueError("IP manzil yoki host nomi noto'g'ri")
+        return v
+
     def validate_complete(self) -> None:
         if self.source_type == "rtsp" and not self.ip.strip():
             raise HTTPException(400, "IP manzil kiritilmagan")
@@ -77,7 +93,7 @@ class NvrIn(BaseModel):
     1000 ta kamerani qo'lda kiritib bo'lmaydi — odatda ular 30-40 ta
     registratorga ulangan bo'ladi, har birida 16-64 kanal.
     """
-    ip: str = Field(min_length=1, max_length=100)
+    ip: str = Field(min_length=1, max_length=100, pattern=r"^\s*[A-Za-z0-9][A-Za-z0-9.:-]*\s*$")
     port: int = Field(default=554, ge=1, le=65535)
     username: str = Field(default="", max_length=100)
     password: str = Field(default="", max_length=200)
@@ -124,7 +140,7 @@ class NodeIn(BaseModel):
 
 
 class ProbeIn(BaseModel):
-    ip: str = Field(min_length=1, max_length=100)
+    ip: str = Field(min_length=1, max_length=100, pattern=r"^\s*[A-Za-z0-9][A-Za-z0-9.:-]*\s*$")
     port: int = Field(default=554, ge=1, le=65535)
     username: str = Field(default="", max_length=100)
     password: str | None = None
@@ -134,7 +150,7 @@ class ProbeIn(BaseModel):
 
 class ScanIn(BaseModel):
     """Qurilmani avtomatik aniqlash: IP+login yetadi, qolganini skaner topadi."""
-    ip: str = Field(min_length=1, max_length=100)
+    ip: str = Field(min_length=1, max_length=100, pattern=r"^\s*[A-Za-z0-9][A-Za-z0-9.:-]*\s*$")
     port: int = Field(default=554, ge=1, le=65535)
     username: str = Field(default="", max_length=100)
     password: str = Field(default="", max_length=200)

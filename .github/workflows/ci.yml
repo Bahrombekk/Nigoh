@@ -9,6 +9,21 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Testlar haqiqiy PostgreSQL'da yuradi — prod bilan bir xil versiya.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nigoh
+          POSTGRES_PASSWORD: nigoh
+          POSTGRES_DB: nigoh_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nigoh -d nigoh_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://nigoh:nigoh@127.0.0.1:5432/nigoh_test
     defaults:
       run:
         working-directory: backend

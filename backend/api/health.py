@@ -14,9 +14,9 @@ import time
 
 from fastapi import APIRouter
 
+from camera import health, reconciler, snapshots
+from camera import sync as mediamtx_sync
 from core import bus, metrics
-from kamera import health, reconciler, snapshots
-from kamera import sync as mediamtx_sync
 
 router = APIRouter(tags=["health"])
 

@@ -1,21 +1,21 @@
 /* Kirish nuqtasi: ilovani ishga tushiradi (kim kirgan, ma'lumot yuklash, splash)
    va global klaviatura qisqartmalari. */
-import { $, state, toast } from "./holat.js";
+import { $, state, toast } from "./state.js";
 import { api } from "./api.js";
-import { setTheme } from "./mavzu.js";
-import { loadCameras } from "./malumot.js";
-import { MOBILE, setListOpen } from "./royxat.js";
-import { closeSel, fmtLastSeen, setSelOpen } from "./tanlov.js";
+import { setTheme } from "./theme.js";
+import { loadCameras } from "./data.js";
+import { MOBILE, setListOpen } from "./camera-list.js";
+import { closeSel, fmtLastSeen, setSelOpen } from "./selection.js";
 import { addEvent } from "./dashboard.js";
-import { AUTH_TABS, drawHeadMaps, showTab, startClock } from "./tablar.js";
-import { closeModal, openModal } from "./modallar.js";
+import { AUTH_TABS, drawHeadMaps, showTab, startClock } from "./tabs.js";
+import { closeModal, openModal } from "./modals.js";
 import { applyMe, kirishniKut, openLogin } from "./auth.js";
-import { loadVendors, stopPicking, xaritaTanlashniUlash } from "./kamera-shakli.js";
-import "./ikonkalar.js";
-import "./xarita.js";
-import "./pleyer.js";
-import "./devor.js";
-import "./grafiklar.js";
+import { loadVendors, stopPicking, xaritaTanlashniUlash } from "./camera-form.js";
+import "./icons.js";
+import "./map.js";
+import "./player.js";
+import "./video-wall.js";
+import "./charts.js";
 import "./admin.js";
 import "./nvr.js";
 

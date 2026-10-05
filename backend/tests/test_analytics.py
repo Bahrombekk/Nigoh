@@ -9,14 +9,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api import create_app
-from core.db import get_db
+from database import get_db
+from tests.factories import add_camera, add_event
 
 KEY = {"X-API-Key": "test-kalit"}
 NOW = datetime.now(timezone.utc)
 
 
-def _stamp(hours_ago: float) -> str:
-    return (NOW - timedelta(hours=hours_ago)).strftime("%Y-%m-%d %H:%M:%S")
+def _stamp(hours_ago: float) -> datetime:
+    return NOW - timedelta(hours=hours_ago)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -24,22 +25,16 @@ def seed():
     """Ikki hududda uch kamera va ma'lum o'tishlar."""
     with get_db() as db:
         for slug, name, region in (
-            ("tah_a", "Tahlil A", "TahlilHudud"),
-            ("tah_b", "Tahlil B", "TahlilHudud"),
-            ("tah_c", "Tahlil C", "TahlilBoshqa"),
+            ("tah_a", "Tahlil A", "Jizzax"),
+            ("tah_b", "Tahlil B", "Jizzax"),
+            ("tah_c", "Tahlil C", "Navoiy"),
         ):
-            db.execute(
-                "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, "
-                "ip, port, enabled) VALUES (?, ?, 0, 0, '', ?, '10.9.9.1', 554, 1)",
-                (name, region, slug))
+            add_camera(db, slug, name=name, region=region, ip="10.9.9.1")
         # A: 3 soat oldin uzildi, 2 soat oldin qaytdi -> 1 uzilish, 1 soat offline
-        db.execute("INSERT INTO events (ts, kind, slug) VALUES (?, 'offline', 'tah_a')",
-                   (_stamp(3),))
-        db.execute("INSERT INTO events (ts, kind, slug) VALUES (?, 'online', 'tah_a')",
-                   (_stamp(2),))
+        add_event(db, "offline", "tah_a", _stamp(3))
+        add_event(db, "online", "tah_a", _stamp(2))
         # C: 1 soat oldin uzildi va hali qaytmagan -> 1 uzilish, 1 soat offline
-        db.execute("INSERT INTO events (ts, kind, slug) VALUES (?, 'offline', 'tah_c')",
-                   (_stamp(1),))
+        add_event(db, "offline", "tah_c", _stamp(1))
         # B: hodisa yo'q -> uzilishsiz, 100%
 
 
@@ -88,9 +83,9 @@ def test_hudud_kesimida_guruhlash(client):
     body = client.get("/api/v1/admin/uptime?hours=24&group_by=region",
                       headers=KEY).json()
     groups = {g["key"]: g for g in body["groups"]}
-    assert groups["TahlilHudud"]["cameras"] == 2
-    assert groups["TahlilHudud"]["outages"] == 1
-    assert groups["TahlilBoshqa"]["outages"] == 1
+    assert groups["Jizzax"]["cameras"] == 2
+    assert groups["Jizzax"]["outages"] == 1
+    assert groups["Navoiy"]["outages"] == 1
     # Guruh reytingi ham eng yomonidan boshlanadi.
     outages = [g["outages"] for g in body["groups"]]
     assert outages == sorted(outages, reverse=True)
@@ -227,12 +222,9 @@ def test_harakatlar_jurnali_sub_yolni_ham_oladi(client):
     """Oqim muzlashi sub yo'lda qayd etiladi, lekin u ham shu kameraga
     tegishli. LIKE ishlatilmaydi: slug'dagi "_" LIKE uchun joker."""
     with get_db() as db:
-        db.execute("INSERT INTO events (ts, kind, slug, detail) "
-                   "VALUES (?, 'stalled', 'tah_a_sub', 'oqim muzladi')",
-                   (_stamp(1),))
+        add_event(db, "stalled", "tah_a_sub", _stamp(1), "oqim muzladi")
         # Boshqa kameraning yozuvi aralashib ketmasligi kerak.
-        db.execute("INSERT INTO events (ts, kind, slug, detail) "
-                   "VALUES (?, 'stalled', 'tah_c', 'begona')", (_stamp(1),))
+        add_event(db, "stalled", "tah_c", _stamp(1), "begona")
     d = client.get(f"/api/v1/admin/cameras/{_cam_id(client, 'Tahlil A')}/history"
                    "?tz_offset_minutes=0", headers=KEY).json()
     kinds = {a["kind"] for a in d["actions"]}

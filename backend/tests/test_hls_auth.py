@@ -94,7 +94,7 @@ def test_cdn_kaliti_ozgarmaydi():
 def test_mediamtx_konfiguratsiyasida_kalit_bor():
     import yaml
 
-    from kamera import sync
+    from camera import sync
     conf = yaml.safe_load(sync.build_config([]))
     assert conf["hlsCDNSecret"] == security.hls_cdn_secret()
 

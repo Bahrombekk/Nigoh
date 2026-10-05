@@ -54,3 +54,6 @@ image*.png
 !.env.example
 .vscode/
 .idea/
+
+# PostgreSQL zaxiralari (deploy/db-backup.sh)
+backups/

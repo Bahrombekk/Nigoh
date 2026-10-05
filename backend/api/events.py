@@ -17,9 +17,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from core import bus
-from core.db import get_db
+from database import cameras, get_db
 
-from .helpers import allowed_regions
+from .helpers import allowed_areas, area_allowed
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(tags=["events"])
@@ -34,12 +34,11 @@ async def sse_events(request: Request):
     Operator faqat o'z hududlaridagi kameralar hodisalarini oladi —
     ruxsatli id'lar ulanish paytida bir marta aniqlanadi.
     """
-    regions = allowed_regions(request)
+    areas = allowed_areas(request)
     allowed: set[int] | None = None
-    if regions is not None:
+    if areas is not None:
         with get_db() as db:
-            allowed = {r["id"] for r in db.execute(
-                "SELECT id, region FROM cameras") if r["region"] in regions}
+            allowed = {r["id"] for r in cameras.list_all(db) if area_allowed(r, areas)}
     q = bus.subscribe()
     if q is None:
         raise HTTPException(

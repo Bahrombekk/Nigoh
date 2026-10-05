@@ -8,18 +8,8 @@ mo'ljallangan.
 import os
 from pathlib import Path
 
-# `.env` — kalitlarni bat-fayl yoki muhitga yozmasdan berish yo'li.
-# Docker compose ham shu faylni yuklaydi — u yerda qiymatlar allaqachon
-# muhitda bo'ladi va setdefault ularni almashtirmaydi.
-# Repo ildizida (backend/ dan bir pog'ona yuqori).
-_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
-if _ENV_PATH.exists():
-    for _line in _ENV_PATH.read_text(encoding="utf-8").splitlines():
-        _line = _line.strip()
-        if not _line or _line.startswith("#") or "=" not in _line:
-            continue
-        _k, _v = _line.split("=", 1)
-        os.environ.setdefault(_k.strip(), _v.strip())
+# `.env` — core/env.py yuklaydi (muhitdagi qiymatlar ustun turadi).
+from core import env  # noqa: E402,F401
 
 PORT = int(os.environ.get("PORT", "8010"))
 

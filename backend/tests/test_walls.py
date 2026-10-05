@@ -4,15 +4,15 @@
 darhol o'zini ko'rsatdi: yangi `~^wall_...$` shabloni `desired_paths`
 testini jimgina buzdi. Bu yerda registrning o'zi qulflanadi.
 """
-from core.db import get_db
-from kamera import walls
-from kamera.mosaic import grid_for
+from camera import walls
+from camera.mosaic import grid_for
+from database import get_db
+from database import walls as walls_db
 
 
 def _tozala():
-    walls.ensure_table()
     with get_db() as db:
-        db.execute("DELETE FROM walls")
+        walls_db.clear(db)
 
 
 # ---------- kalit ----------
@@ -54,7 +54,7 @@ def test_registr_cheksiz_osmaydi(monkeypatch):
     for i in range(25):
         walls.save_wall([i, i + 1], 2, 1)
     with get_db() as db:
-        soni = db.execute("SELECT COUNT(*) FROM walls").fetchone()[0]
+        soni = db.execute("SELECT COUNT(*) FROM video_walls").fetchone()[0]
     assert soni <= 10
 
 

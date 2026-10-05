@@ -17,7 +17,8 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core import security  # noqa: E402
-from core.db import DATA_DIR, get_db, init_db, unique_slug  # noqa: E402
+from core.paths import DATA_DIR  # noqa: E402
+from database import get_db, init_db, unique_slug  # noqa: E402
 
 # mediamtx.yml ma'lumotlar katalogida (standart — repo ildizi).
 CONFIG_PATH = DATA_DIR / "mediamtx.yml"
@@ -122,9 +123,9 @@ def main() -> None:
                              f'{parsed["ip"]}:{parsed["port"]} biriktiriladi'))
                 if apply:
                     db.execute(
-                        "UPDATE cameras SET slug=?, ip=?, port=?, username=?, "
-                        "password_enc=?, rtsp_path=?, vendor=?, stream_url='', "
-                        "enabled=1 WHERE id=?",
+                        "UPDATE cameras SET slug=%s, ip=%s, port=%s, username=%s, "
+                        "password_enc=%s, rtsp_path=%s, vendor=%s, stream_url='', "
+                        "enabled=1 WHERE id=%s",
                         (path_name, parsed["ip"], parsed["port"], parsed["username"],
                          security.encrypt(parsed["password"]) if parsed["password"] else "",
                          parsed["rtsp_path"], vendor, match["id"]),
@@ -140,7 +141,7 @@ def main() -> None:
                     db.execute(
                         "INSERT INTO cameras (name, region, lat, lng, stream_url, slug, "
                         "ip, port, username, password_enc, rtsp_path, vendor, enabled, note) "
-                        "VALUES (?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, 1, ?)",
+                        "VALUES (%s, %s, %s, %s, '', %s, %s, %s, %s, %s, %s, %s, 1, %s)",
                         (name, region, lat, lng, slug, parsed["ip"], parsed["port"],
                          parsed["username"],
                          security.encrypt(parsed["password"]) if parsed["password"] else "",
