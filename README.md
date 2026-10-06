@@ -9,16 +9,22 @@ Servis sifatida ishlatish uchun hujjatlar:
 
 | Kim uchun | Fayl |
 |---|---|
-| Serverga qo'yuvchi | [docs/DEPLOY.md](docs/DEPLOY.md) — Docker, portlar, HTTPS, zaxira |
+| Loyiha egasi | [docs/OVERVIEW.md](docs/OVERVIEW.md) — tizimni 0 dan tushunish |
+| Serverga qo'yuvchi | [docs/DEPLOY.md](docs/DEPLOY.md) — Docker, PostgreSQL, portlar, HTTPS, zaxira |
 | Backendchi | [backend/README.md](backend/README.md) — tuzilma, API, kirish; batafsil: [docs/BACKEND.md](docs/BACKEND.md) |
 | Frontendchi | [frontend/README.md](frontend/README.md) — modullar, video oqimi; batafsil: [docs/FRONTEND.md](docs/FRONTEND.md) |
+| Statistika API | [docs/STATS_API.md](docs/STATS_API.md) — `/stats/*` endpointlari |
 
 ## Ishga tushirish
+
+Avval baza kerak: PostgreSQL 17 + `backend/database/sql/setup-roles.sql`
+(batafsil: [docs/DEPLOY.md](docs/DEPLOY.md)), manzili `.env` dagi
+`DATABASE_URL` da.
 
 Serverda (Docker):
 
 ```bash
-cp .env.example .env       # ADMIN_PAROL ni to'ldiring
+cp .env.example .env       # ADMIN_PAROL, NIGOH_DB_PAROL, DATABASE_URL ni to'ldiring
 docker compose up -d --build
 ```
 
@@ -89,7 +95,7 @@ Interaktiv hujjat serverning o'zida: **`/docs`** (Swagger) va **`/redoc`**.
 | Bo'lim | Prefiks | Kirish |
 |---|---|---|
 | Kameralar (xarita, oqim, surat) | `/api/v1/cameras` | ochiq |
-| Dashboard tarixi | `/api/v1/stats` | ochiq |
+| Statistika ([qo'llanma](docs/STATS_API.md)) | `/api/v1/stats/*` | kirgan / kalit |
 | Kirish/chiqish | `/api/v1/auth` | — |
 | Boshqaruv (CRUD, NVR, skaner, tugunlar) | `/api/v1/admin` | sessiya |
 
@@ -123,11 +129,13 @@ muzlagan oqim yo'q; `degraded` — kamida bitta faol oqim muzlagan;
 sozlangan/tayyor yo'llar, tomoshabinlar soni, o'tgan trafik. Xuddi shu
 qisqartma `/api/v1/admin/status` da ham bor.
 
-Eski `/api/...` manzillari ham xuddi shu endpointlarga olib boradi (ichki
-test interfeys va MediaMTX auth uchun saqlangan), lekin hujjatda faqat v1.
+Eski `/api/...` manzillari ham xuddi shu endpointlarga olib boradi (o'z
+interfeysimiz va MediaMTX auth uchun saqlangan), lekin hujjatda faqat v1.
 
-Fon xizmatlari hodisalarni **`nigoh.log`** ga JSON satrlar bilan yozadi
-(aylanma, 5 MB × 3) — keyinchalik Loki/OpenSearch'ga ulash mumkin.
+Loglar **`logs/`** papkasida, toifalarga ajratilgan (app, camera, stats,
+security, database, access, errors, mediamtx): kunlik JSON fayllar, har
+so'rovga `X-Request-ID`, parollar avtomatik yashiriladi. Ko'rish:
+`GET /api/v1/admin/logs`. Batafsil: [docs/LOGGING.md](docs/LOGGING.md).
 
 ## Tizim qanday ishlaydi
 
@@ -231,7 +239,7 @@ har 2–4 soniyada bir marta yuboriladi.
 Xom oqimda vaqt tasodifiy: keyframe siklining qayeriga tushishingizga
 bog'liq. O'girilgan oqimda GOP 1,2 s bo'lgani uchun barqaror.
 
-Sayt bu kutishni ikki tomondan qisqartiradi (`fast_start.py`):
+Sayt bu kutishni ikki tomondan qisqartiradi (`backend/camera/media/fast_start.py`):
 
 - **Surat darhol ko'rsatiladi.** Kamera bosilganda avval uning JPEG surati
   chiqadi (~0,2 s), video orqa fonda ulanadi. Ochilish bir zumda his
@@ -262,28 +270,37 @@ tarmoqda qoladi, magistralga faqat ko'rilayotgan oqim chiqadi.
 
 ## Kod tuzilishi
 
-Loyiha uch qismga bo'lingan — har biri o'z README'si bilan, alohida
-odamga topshirish mumkin:
+Loyiha ikki qismga bo'lingan — har biri o'z README'si bilan, alohida
+odamga topshirish mumkin. Backend ichida kod **mavzu bo'yicha** bo'lingan
+(har papkada o'z README'si):
 
 ```
-frontend/            INTERFEYS — frontendchi (frontend/README.md)
+frontend/              INTERFEYS — frontendchi (frontend/README.md)
   ├─ index.html  css/  assets/
-  └─ js/             ES modullar: xarita, pleyer, devor, dashboard, admin ...
-backend/             SERVER — backendchi (backend/README.md)
-  ├─ main.py         kirish nuqtasi: CLI, bootstrap, uvicorn
-  ├─ api/            HTTP qatlami: endpointlar, kirish, rollar
-  ├─ camera/         KAMERA QATLAMI: MediaMTX, holat kuzatuvi, RTSP, suratlar
-  ├─ core/           umumiy: baza, xavfsizlik, log, statistika
+  └─ js/               main.js + core/ auth/ layout/ map/ player/ wall/ dashboard/ admin/
+backend/               SERVER — backendchi (backend/README.md)
+  ├─ main.py           kirish nuqtasi: CLI, bootstrap, uvicorn
+  ├─ app/              ilovani yig'ish: create_app (factory.py), sozlamalar, kirish, /health
+  ├─ database/         BAZA: PostgreSQL ulanishi, migratsiyalar, repozitoriylar,
+  │                    rollar SQL'i, zaxira skriptlari va zaxiralar
+  ├─ camera/           KAMERA: endpointlar, MediaMTX boshqaruvi, holat va suratlar
+  │                    kuzatuvi, RTSP/ONVIF/ISAPI tekshiruvi (camera/README.md)
+  ├─ stats/            STATISTIKA: /stats/*, dashboard, uptime hisobi
+  ├─ users/            FOYDALANUVCHILAR: /auth/*, rollar, operator hududlari
+  ├─ walls/            VIDEO DEVOR: server tomonidagi mozaika
+  ├─ core/             umumiy: env, paths, log, bus, security, alerts, watchdog
   ├─ tests/  scripts/
   └─ stream_launcher.py   MediaMTX chaqiradigan qobiq
-mediamtx/            MediaMTX'ning o'zi (exe) — yuklab olinadi, git'da yo'q
+mediamtx/              MediaMTX'ning o'zi (exe) — yuklab olinadi, git'da yo'q
 deploy/  docs/  Dockerfile  docker-compose.yml
 ```
 
-Bog'lanish yo'nalishi: `api/` -> `camera/` -> `core/`. Frontend backend
-bilan faqat HTTP (`/api/...`) orqali gaplashadi.
+Bog'lanish yo'nalishi: `app/` -> mavzu papkalari (`camera/`, `stats/`,
+`users/`, `walls/`) -> `database/` -> `core/`. Bazaga faqat `database/`
+orqali murojaat qilinadi. Frontend backend bilan faqat HTTP (`/api/...`)
+orqali gaplashadi.
 
-Ma'lumotlar (kameralar, foydalanuvchilar, tarix) — PostgreSQL'da
+Ma'lumotlar (kameralar, foydalanuvchilar, tarix) — PostgreSQL 17'da
 (hostda oddiy servis, `docs/DEPLOY.md`; manzil `.env` dagi `DATABASE_URL`).
 Ildizda qoladigan fayllar (git'ga tushmaydi): `secret.key`, `mediamtx.yml`,
 `auto.crt/key`, `snapshots/`.
@@ -293,8 +310,9 @@ Ildizda qoladigan fayllar (git'ga tushmaydi): `secret.key`, `mediamtx.yml`,
 Bu fayllar **hech qachon** repozitoriyga tushmasligi kerak (`.gitignore` da):
 
 - `secret.key` — kamera parollarini ochadigan kalit
-- `.env` — baza parollari (`POSTGRES_PASSWORD`, `NIGOH_DB_PAROL`)
-- `backups/` — baza zaxiralari (`deploy/db-backup.sh`)
+- `.env` — baza paroli (`NIGOH_DB_PAROL`, `DATABASE_URL` ichida ham)
+- `backend/database/backups/` — baza zaxiralari (`backend/database/scripts/backup.sh`)
+- `backend/database/pgdata/` — PostgreSQL ma'lumot katalogi (ko'chirilgandan keyin)
 - `mediamtx.yml` — ichida **ochiq** RTSP login/parollar (MediaMTX shunday talab qiladi)
 
 Kamera parollari bazada shifrlangan holda yotadi va brauzerga hech qachon

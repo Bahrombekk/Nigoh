@@ -6,8 +6,8 @@ faqat ma'lumot noto'g'ri bo'lardi.
 import pytest
 from fastapi.testclient import TestClient
 
-from api import create_app
-from camera import health
+from app.factory import create_app
+from camera.monitoring import health
 from core import bus
 from database import get_db
 from tests.factories import add_camera
@@ -64,11 +64,11 @@ def test_check_now_holatni_sseda_elon_qiladi(monkeypatch):
     monkeypatch.setattr(bus, "publish",
                         lambda event, data: published.append((event, data)))
     # Tarmoqqa chiqmaymiz: avval "tirik", keyin "o'chiq" deb ko'rsatamiz.
-    monkeypatch.setattr(health, "_tcp_ok", lambda pair: True)
+    monkeypatch.setattr(health.service, "_tcp_ok", lambda pair: True)
     health.check_now("10.255.255.7", 554)
     assert published == []                       # birinchi o'lchov — o'tish emas
 
-    monkeypatch.setattr(health, "_tcp_ok", lambda pair: False)
+    monkeypatch.setattr(health.service, "_tcp_ok", lambda pair: False)
     health.check_now("10.255.255.7", 554)
 
     assert len(published) == 1
@@ -91,9 +91,9 @@ def test_nvr_import_sub_kodegini_saqlaydi(client, monkeypatch):
                 "needs_transcode": not sub,
                 "resolution": "1920x1080", "fps": 25.0, "audio": False}
 
-    monkeypatch.setattr("api.admin.probe", fake_probe)
-    monkeypatch.setattr("api.admin.health.check_now", lambda ip, port: True)
-    monkeypatch.setattr("api.admin.devinfo.device_info",
+    monkeypatch.setattr("camera.api.admin.probe", fake_probe)
+    monkeypatch.setattr("camera.api.admin.health.check_now", lambda ip, port: True)
+    monkeypatch.setattr("camera.api.admin.devinfo.device_info",
                         lambda ip, u, p: None)
 
     r = client.post("/api/v1/admin/nvr/import", headers=KEY, json={
@@ -118,7 +118,7 @@ def test_skan_xato_parolda_bitta_urinish_bilan_toxtaydi(client, monkeypatch):
     registratordagi HAMMA kamera offline bo'lib qoladi. Shuning uchun
     parol xato ekani birinchi urinishdayoq aniqlanib, skan to'xtashi
     kerak — ilgari bu yerda 7 ta shablon parallel sinalardi."""
-    from api import devices
+    from camera.api import devices
 
     tries = []
 
@@ -150,7 +150,7 @@ def test_nvr_import_xato_parolda_kanallarni_tekshirmaydi(client, monkeypatch):
                 "codec": "", "needs_transcode": False,
                 "resolution": "", "fps": 0.0, "audio": False}
 
-    monkeypatch.setattr("api.admin.probe", fake_probe)
+    monkeypatch.setattr("camera.api.admin.probe", fake_probe)
     r = client.post("/api/v1/admin/nvr/import", headers=KEY, json={
         "ip": "10.9.9.9", "username": "admin", "password": "xato",
         "vendor": "hikvision", "channels": "1-64", "region": "Blok"})
@@ -170,11 +170,11 @@ def test_oqim_ketayotgan_kamera_offline_deb_belgilanmaydi(monkeypatch):
     kameradan bayt olib turgan bo'ladi, ya'ni kamera aniq tirik.
     """
     pair = ("10.255.255.11", 554)
-    monkeypatch.setattr(health, "_tcp_ok", lambda p: False)
+    monkeypatch.setattr(health.service, "_tcp_ok", lambda p: False)
     health.set_streaming_probe(lambda: {pair})
     try:
         fresh = {pair: False}
-        rescued = health._rescue_streaming(fresh)
+        rescued = health.service._rescue_streaming(fresh)
         assert rescued == [pair]
         assert fresh[pair] is True, "oqim ketyapti — kamera tirik hisoblanadi"
     finally:
@@ -188,7 +188,7 @@ def test_oqim_yoq_bolsa_offline_qoladi(monkeypatch):
     health.set_streaming_probe(lambda: set())
     try:
         fresh = {pair: False}
-        assert health._rescue_streaming(fresh) == []
+        assert health.service._rescue_streaming(fresh) == []
         assert fresh[pair] is False
     finally:
         health.set_streaming_probe(None)
@@ -201,7 +201,7 @@ def test_streaming_probe_yiqilsa_sweep_toxtamaydi(monkeypatch):
     health.set_streaming_probe(boom)
     try:
         fresh = {("10.255.255.13", 554): False}
-        assert health._rescue_streaming(fresh) == []
+        assert health.service._rescue_streaming(fresh) == []
     finally:
         health.set_streaming_probe(None)
 
@@ -214,8 +214,8 @@ def test_tcp_faqat_timeoutdan_keyin_qayta_urinadi(monkeypatch):
     def fake_connect(pair, timeout):
         calls.append(timeout)
         return False, "refused"
-    monkeypatch.setattr(health, "_connect", fake_connect)
-    assert health._tcp_ok(("10.0.0.1", 554)) is False
+    monkeypatch.setattr(health.service, "_connect", fake_connect)
+    assert health.service._tcp_ok(("10.0.0.1", 554)) is False
     assert calls == [health.TIMEOUT], "rad etilganda qayta urinilmaydi"
 
     calls.clear()
@@ -223,8 +223,8 @@ def test_tcp_faqat_timeoutdan_keyin_qayta_urinadi(monkeypatch):
     def slow_then_ok(pair, timeout):
         calls.append(timeout)
         return (True, "") if timeout == health.RETRY_TIMEOUT else (False, "timeout")
-    monkeypatch.setattr(health, "_connect", slow_then_ok)
-    assert health._tcp_ok(("10.0.0.2", 554)) is True
+    monkeypatch.setattr(health.service, "_connect", slow_then_ok)
+    assert health.service._tcp_ok(("10.0.0.2", 554)) is True
     assert calls == [health.TIMEOUT, health.RETRY_TIMEOUT], "timeout'da bir marta qayta urinadi"
 
 

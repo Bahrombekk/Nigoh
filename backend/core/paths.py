@@ -3,11 +3,16 @@
     BACKEND_DIR — backend kodi (main.py, stream_launcher.py shu yerda);
     ROOT_DIR    — repo ildizi: .env, mediamtx/ (dastur), frontend/;
     DATA_DIR    — mashinaga xos fayllar: shifrlash kaliti, loglar,
-                  mediamtx.yml, kamera suratlari.
+                  mediamtx.yml, kamera suratlari (papka yo'q bo'lsa yaratiladi).
 
 Ma'lumotlarning o'zi (kameralar, foydalanuvchilar, tarix) PostgreSQL'da —
-`database/` paketiga qarang. DATA_DIR standart holatda repo ildizi; konteynerda
-NIGOH_DATA orqali alohida volume beriladi.
+`database/` paketiga qarang. DATA_DIR standart holatda repo ildizi;
+konteynerda NIGOH_DATA orqali alohida volume beriladi (NIGOH_DATA `.env`
+da bo'lishi mumkin, shuning uchun core.env avval yuklanadi).
+
+Kim ishlatadi: core/{log,security}.py, camera/media/{reconciler,sync}.py,
+    camera/monitoring/snapshots.py, scripts/import_mediamtx.py,
+    database/scripts/migrate_sqlite_to_postgres.py, tests/conftest.py.
 """
 import os
 from pathlib import Path

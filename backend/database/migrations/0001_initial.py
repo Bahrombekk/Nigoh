@@ -1,7 +1,33 @@
 """1-migratsiya: SQLite'dan 1:1 ko'chirilgan boshlang'ich sxema.
 
 BAJARILGAN MIGRATSIYA — o'zgartirilmaydi. Keyingi o'zgarishlar yangi
-raqamli faylda (0002_schema_v2.py va h.k.).
+raqamli faylda (0002_schema_v2.py va h.k.). Bu jadvallarning ko'pi
+2-migratsiyada qayta nomlangan/bo'lingan; joriy sxema uchun 0002 va
+0003 ga qarang. database/scripts/migrate_sqlite_to_postgres.py eski
+SQLite ma'lumotini aynan shu versiya jadvallariga yozadi.
+
+Asosiy qarorlar (izohlar SQL ichida):
+  * 0/1 bayroqlar SMALLINT + CHECK (0, 1) — xato qiymat bazaning o'zida
+    to'xtaydi (2-migratsiyada BOOLEAN bo'ldi).
+  * BITTA IP+PORT+RTSP YO'L — BITTA KAMERA: cheklov aynan bazada, chunki
+    tekshiruv bilan yozuv orasida RTSP probe'lari soniyalab ketadi va
+    ikkinchi so'rov ham o'tib ketardi (prodda 195 kameradan 30 tasi
+    shunday ikkilangan).
+  * always_on standart 0 — 5000 kamerada standart 1 ming-minglab ortiqcha
+    doimiy ulanish degani edi.
+  * Kamera paroli Fernet bilan shifrlangan; kalit DATA_DIR/secret.key da,
+    bazada EMAS.
+
+Tarkibi:
+    VERSION = 1
+    V1_ASOS                     SQL buyruqlari ro'yxati (tartib bilan)
+    apply(db)                   V1_ASOS ni bajaradi
+    _bayroq(nom, standart)      0/1 bayroq ustuni ta'rifi
+    _port(nom, standart)        1-65535 port ustuni ta'rifi
+
+Jadvallar: nodes, cameras, admins, sessions, user_regions, events,
+stats_region, stats_event, walls (+ walls_seq)
+Kim ishlatadi: database/migrations/__init__.py (load) -> database/schema.py.
 """
 
 VERSION = 1
@@ -58,7 +84,7 @@ V1_ASOS = [
         -- oqimdan ochadi. Kamera tahrirlanganda 0 ga qaytadi.
         {_bayroq("sub_bad")},
         -- Kamera RTSP'ni TCP orqali bermaydi — UDP kerak (kamera bo'yicha
-        -- aniqlanadi, camera/transport.py yozadi).
+        -- aniqlanadi, camera/media/transport.py yozadi).
         {_bayroq("rtsp_udp")},
         vendor       TEXT,
         {_bayroq("enabled", 1)},
@@ -145,7 +171,7 @@ V1_ASOS = [
     "CREATE INDEX idx_events_ts ON events(ts)",
     "CREATE INDEX idx_events_slug_ts ON events(slug, ts)",
 
-    # 5 daqiqalik hudud suratlari — dashboard grafiklari (core/stats.py).
+    # 5 daqiqalik hudud suratlari — dashboard grafiklari (stats/recorder.py).
     """
     CREATE TABLE stats_region (
         ts     TIMESTAMPTZ NOT NULL,

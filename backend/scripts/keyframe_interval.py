@@ -9,7 +9,12 @@ tuzatiladi.
     python scripts/keyframe_interval.py 26 27 30
     python scripts/keyframe_interval.py --hammasi --sekund 20
 
-Natijada: birinchi keyframe'gacha kutish va o'rtacha oraliq.
+backend/ papkasidan ishga tushiriladi (kamera va parol bazadan).
+Natijada: birinchi keyframe'gacha kutish va o'rtacha oraliq; baho —
+2 s gacha yaxshi, 4 s dan uzuni sozlash kerak.
+
+Ishlatadi: camera.media.sync.ffmpeg_path (ffprobe), camera.probe.rtsp_probe,
+    core.security, database.
 """
 import argparse
 import subprocess
@@ -17,10 +22,10 @@ import sys
 
 sys.path.insert(0, "/app" if __import__("os").path.isdir("/app/core") else ".")
 
-from camera.rtsp_probe import build_rtsp_url  # noqa: E402
-from camera.sync import ffmpeg_path  # noqa: E402
+from camera.media.sync import ffmpeg_path  # noqa: E402
+from camera.probe.rtsp_probe import build_rtsp_url  # noqa: E402
 from core import security  # noqa: E402
-from database import get_db  # noqa: E402
+from database import cameras, get_db  # noqa: E402
 
 
 def olcha(url: str, sekund: int) -> tuple[float, float, int]:
@@ -62,14 +67,12 @@ def main() -> None:
     a = ap.parse_args()
 
     with get_db() as db:
+        # Kamera ma'lumoti (ip, port, parol) camera_details ko'rinishida —
+        # v2 sxemada manzil `devices` jadvalida, `cameras` da emas.
         if a.hammasi:
-            rows = db.execute(
-                "SELECT * FROM cameras WHERE enabled = 1 AND ip != '' "
-                "ORDER BY id").fetchall()
+            rows = [r for r in cameras.list_rtsp(db, enabled_only=True) if r["ip"]]
         else:
-            rows = db.execute(
-                "SELECT * FROM cameras WHERE id = ANY(%s)",
-                (list(a.camera_ids),)).fetchall()
+            rows = cameras.list_by_ids(db, list(a.camera_ids))
         rows = [dict(r) for r in rows]
         for r in rows:
             r["_parol"] = security.decrypt(r["password_enc"])

@@ -1,11 +1,20 @@
-"""Mavjud mediamtx.yml dagi kameralarni bazaga ko'chirish.
+"""Mavjud mediamtx.yml dagi kameralarni bazaga ko'chirish (bir martalik).
 
-Qo'lda yozilgan `paths` yozuvlarini o'qiydi, RTSP manzilni bo'laklarga
-ajratadi (IP, port, login, parol, yo'l) va bazaga yozadi. Parol shifrlanadi.
+Qo'lda yozilgan `paths` yozuvlarini o'qiydi (`DATA_DIR/mediamtx.yml`),
+RTSP manzilni bo'laklarga ajratadi (IP, port, login, parol, yo'l) va
+bazaga yozadi. Parol shifrlanadi. Nomi mos kamera bazada bo'lsa
+yangilanadi, aks holda hudud markazi koordinatasi bilan yangisi qo'shiladi
+(joyini keyin xaritadan aniqlash kerak).
 
-Ishlatish:
-    python import_mediamtx.py            # nima bo'lishini ko'rsatadi
-    python import_mediamtx.py --yoz      # bazaga haqiqatan yozadi
+Ishlatish (backend/ dan):
+    python scripts/import_mediamtx.py            # nima bo'lishini ko'rsatadi
+    python scripts/import_mediamtx.py --yoz      # bazaga haqiqatan yozadi
+
+DIQQAT: servis mediamtx.yml ni har ishga tushishda o'zi qayta yozadi
+(app/bootstrap.py), shuning uchun skript faqat eski, qo'lda yozilgan fayl
+turgan paytda ma'noli.
+
+Ishlatadi: core.security (encrypt), core.paths (DATA_DIR), database.
 """
 import sys
 import urllib.parse
@@ -93,6 +102,13 @@ def region_from(path_name: str) -> tuple[str, float, float]:
 
 def main() -> None:
     apply = "--yoz" in sys.argv
+    if apply:
+        # v2 sxemada (2026-10-05) manzil va parol `devices` jadvalida — quyidagi
+        # to'g'ridan-to'g'ri `UPDATE/INSERT cameras ... ip=` yiqiladi yoki
+        # yozuvni chala qoldiradi. Kamera qo'shish: POST /api/v1/admin/cameras
+        # yoki /admin/nvr/import (ular qurilma, holat va slug'ni to'g'ri yozadi).
+        sys.exit("Bu skript eskirgan (v1 sxema uchun) — --yoz o'chirilgan. "
+                 "Kameralarni /api/v1/admin/cameras yoki /admin/nvr/import orqali qo'shing.")
 
     if not CONFIG_PATH.exists():
         sys.exit("mediamtx.yml topilmadi")

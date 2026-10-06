@@ -6,7 +6,8 @@ ishlatiladi. Kalit conftest'da: X-API-Key: test-kalit.
 import pytest
 from fastapi.testclient import TestClient
 
-from api import create_app, deps
+from app import deps
+from app.factory import create_app
 from database import get_db
 from tests.factories import add_camera, count_at, delete_at
 
@@ -139,7 +140,7 @@ def test_takror_poyga_paytida_ham_nusxa_yaratilmaydi(client, monkeypatch):
     Poyga shunday takrorlanadi: probe chaqirilgan payt "boshqa so'rov"
     o'sha kamerani bazaga yozib qo'yadi.
     """
-    from api import helpers
+    from camera.probe import detect as helpers
 
     haqiqiy = helpers.detect_codec
 
@@ -147,12 +148,12 @@ def test_takror_poyga_paytida_ham_nusxa_yaratilmaydi(client, monkeypatch):
         with get_db() as db:
             add_camera(db, "poyga_test", name="Poyga g'olibi", ip="10.255.255.10",
                        rtsp_path="/stream1")
-        monkeypatch.setattr("api.admin.detect_codec", haqiqiy)
+        monkeypatch.setattr("camera.api.admin.detect_codec", haqiqiy)
         return "H264", False, "", 0.0
 
-    monkeypatch.setattr("api.admin.detect_codec",
+    monkeypatch.setattr("camera.api.admin.detect_codec",
                         _probe_paytida_boshqasi_qoshadi)
-    monkeypatch.setattr("api.admin.detect_sub_path", lambda cam, pw: ("", ""))
+    monkeypatch.setattr("camera.api.admin.detect_sub_path", lambda cam, pw: ("", ""))
 
     try:
         r = client.post("/api/v1/admin/cameras", headers=KEY, json={
@@ -212,10 +213,10 @@ def test_yol_korsatilmagan_takror_ip_nusxa_yaratmaydi(client, monkeypatch):
         assert r3.headers.get("X-Nigoh-Existing") == "1"
 
         # Aniq boshqa kanal esa boshqa kamera — u qo'shiladi.
-        monkeypatch.setattr("api.admin.detect_codec",
+        monkeypatch.setattr("camera.api.admin.detect_codec",
                             lambda cam, pw: ("H264", False, "", 0.0))
-        monkeypatch.setattr("api.admin.detect_sub_path", lambda cam, pw: ("", ""))
-        monkeypatch.setattr("api.admin._enrich_new_camera",
+        monkeypatch.setattr("camera.api.admin.detect_sub_path", lambda cam, pw: ("", ""))
+        monkeypatch.setattr("camera.api.admin._enrich_new_camera",
                             lambda *a, **k: None)
         r4 = client.post("/api/v1/admin/cameras", headers=KEY, json={
             "name": "2-kanal", "region": "YolTest", "source_type": "rtsp",
@@ -322,7 +323,7 @@ def test_sarlavhalar_401_javobda_ham_boladi():
     """Xato javobda ham qo'yilsin — middleware hamma yo'lni qamraydi."""
     from fastapi.testclient import TestClient
 
-    from api import create_app
+    from app.factory import create_app
     with TestClient(create_app()) as c:
         r = c.get("/api/v1/cameras")
         assert r.status_code == 401

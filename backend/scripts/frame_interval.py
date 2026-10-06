@@ -13,14 +13,21 @@ Ya'ni natija "MediaMTX aybdormi yoki kamerami" degan savolni yopadi.
     python scripts/frame_interval.py --hammasi --sekund 60
     python scripts/frame_interval.py 26 --sub        # ikkinchi oqim
 
-Baho ustuni: eng katta oraliq pleyer buferidan (JITTER_MS, 1 s) uzun
-bo'lsa tomoshabin qotish ko'radi. Buni kodda emas, kameraning o'zida
-tuzatiladi — bitreyt rejimi (VBR -> CBR), I-kadr oralig'i, "smoothing".
+backend/ papkasidan ishga tushiriladi: kamera manzili va paroli bazadan
+olinadi (DATABASE_URL), parol ekranga chiqmaydi.
+
+Baho ustuni: eng katta oraliq pleyer buferidan (frontend PLAYOUT_DELAY,
+1 s) uzun bo'lsa tomoshabin qotish ko'radi. Buni kodda emas, kameraning
+o'zida tuzatiladi — bitreyt rejimi (VBR -> CBR), I-kadr oralig'i,
+"smoothing".
 
 DIQQAT: RTSP transporti TCP. UDP'ga o'tkazish vasvasasi bo'ladi ("TCP
 portlashni keltirib chiqaryapti-ku"), lekin shu o'rnatmada o'lchandi va
 UDP'da ffmpeg tinmay `RTP: missed N packets` berdi — ya'ni qotish
 o'rniga tasvir buzilishi. TCP to'g'ri tanlov.
+
+Ishlatadi: camera.media.sync.ffmpeg_path (ffprobe), camera.probe.rtsp_probe,
+    core.security (parolni ochish), database.
 """
 import argparse
 import subprocess
@@ -30,10 +37,10 @@ import time
 
 sys.path.insert(0, "/app" if __import__("os").path.isdir("/app/core") else ".")
 
-from camera.rtsp_probe import build_rtsp_url  # noqa: E402
-from camera.sync import ffmpeg_path  # noqa: E402
+from camera.media.sync import ffmpeg_path  # noqa: E402
+from camera.probe.rtsp_probe import build_rtsp_url  # noqa: E402
 from core import security  # noqa: E402
-from database import get_db  # noqa: E402
+from database import cameras, get_db  # noqa: E402
 
 ISITISH = 3.0          # birinchi soniyalarda bufer to'kiladi — hisobga olinmaydi
 PLEYER_BUFERI = 1.0    # debug-ui/app.js dagi JITTER_MS (soniyada)
@@ -91,14 +98,12 @@ def main() -> None:
     a = ap.parse_args()
 
     with get_db() as db:
+        # Kamera ma'lumoti (ip, port, parol) camera_details ko'rinishida —
+        # v2 sxemada manzil `devices` jadvalida, `cameras` da emas.
         if a.hammasi:
-            rows = db.execute(
-                "SELECT * FROM cameras WHERE enabled = 1 AND ip != '' "
-                "ORDER BY id").fetchall()
+            rows = [r for r in cameras.list_rtsp(db, enabled_only=True) if r["ip"]]
         else:
-            rows = db.execute(
-                "SELECT * FROM cameras WHERE id = ANY(%s)",
-                (list(a.camera_ids),)).fetchall()
+            rows = cameras.list_by_ids(db, list(a.camera_ids))
         rows = [dict(r) for r in rows]
         for r in rows:
             r["_parol"] = security.decrypt(r["password_enc"])

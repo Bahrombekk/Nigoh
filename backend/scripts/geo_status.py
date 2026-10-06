@@ -1,6 +1,9 @@
 """Servisdagi kameralarning nechtasida koordinata bor — qisqa hisobot.
 
     python scripts/geo_status.py
+
+NIGOH_URL va NIGOH_KEY repo ildizidagi `.env` dan olinadi; joyi yo'q
+kameralar ro'yxati chiqariladi. Ishlatadi: scripts/geo_import.py (Service).
 """
 import os
 import pathlib

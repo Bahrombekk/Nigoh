@@ -9,7 +9,7 @@ slug'ni bilgan har kim kamerani ko'ra olardi.
 import pytest
 from fastapi.testclient import TestClient
 
-from api import create_app
+from app.factory import create_app
 from core import security
 
 
@@ -94,7 +94,7 @@ def test_cdn_kaliti_ozgarmaydi():
 def test_mediamtx_konfiguratsiyasida_kalit_bor():
     import yaml
 
-    from camera import sync
+    from camera.media import sync
     conf = yaml.safe_load(sync.build_config([]))
     assert conf["hlsCDNSecret"] == security.hls_cdn_secret()
 
@@ -108,7 +108,7 @@ def test_sessiyali_rejim_jurnalga_tushadi(client, monkeypatch):
     """Manzilda `session=` bo'lsa — nginx Bearer qo'ymayapti. Bu jimgina
     o'tib ketmasligi kerak: aynan shu nosozlik ishlab chiqarishda
     haftalab sezilmay turgandi."""
-    from api import auth as auth_modul
+    from users import api as auth_modul
     yozuvlar = []
     monkeypatch.setattr(auth_modul, "log",
                         lambda *a, **k: yozuvlar.append((a, k)))

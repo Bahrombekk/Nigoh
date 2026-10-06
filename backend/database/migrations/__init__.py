@@ -1,8 +1,21 @@
-"""Raqamlangan migratsiyalar: har biri `NNNN_nom.py` fayli.
+"""Raqamlangan sxema migratsiyalari: har biri `NNNN_nom.py` fayli.
 
 Har bir modulda `VERSION` (fayl raqami bilan bir xil) va `apply(db)` bor.
 Bajarilgan migratsiya HECH QACHON tahrirlanmaydi — yangi o'zgarish yangi
-raqamli fayl bilan qo'shiladi.
+raqamli fayl bilan qo'shiladi. Raqamlar 1 dan uzluksiz bo'lishi shart,
+`VERSION` fayl nomidagi raqamga mos kelmasa yoki raqam tushib qolsa —
+`load()` RuntimeError beradi (noto'g'ri tartibda migratsiya bajarilmasin).
+
+Mavjud migratsiyalar:
+    0001_initial.py             SQLite'dan 1:1 ko'chirilgan boshlang'ich sxema
+    0002_schema_v2.py           sxema v2: tashkilotlar, hududlar, qurilmalar, audit
+    0003_camera_probe.py        camera_status.probe_at / probe_error (pasport tekshiruvi)
+
+Tarkibi:
+    load()                      `NNNN_[a-z0-9_]+` modullarini import qiladi, tekshiradi
+                                va VERSION bo'yicha tartiblangan ro'yxat qaytaradi
+
+Kim ishlatadi: database/schema.py (init_db, latest_version).
 """
 import importlib
 import pkgutil

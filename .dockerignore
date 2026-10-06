@@ -20,6 +20,7 @@ data/
 # Loglar
 **/*.log
 nigoh.log.*
+logs/
 
 # Boshqalar
 .git/
@@ -35,3 +36,6 @@ backend/requirements-dev.txt
 backend/ruff.toml
 backend/pytest.ini
 backups/
+# Baza: ma'lumot katalogi va zaxiralar (ichida secret.key nusxasi) — imagega emas
+backend/database/pgdata/
+backend/database/backups/

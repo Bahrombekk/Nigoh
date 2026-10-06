@@ -1,10 +1,63 @@
-"""Nigoh — super-admin autentifikatsiyasi va kamera parollarini shifrlash.
+"""Nigoh — parollar, kamera parollari shifri, sessiyalar va oqim chiptalari.
 
-Kamera parollari MediaMTX uchun ochiq holda kerak bo'ladi, shuning uchun
-ular qaytariladigan shifr (Fernet) bilan saqlanadi. Kalit `secret.key`
-faylida turadi — bu fayl bazaning o'zi kabi maxfiy.
+Kamera parollari MediaMTX/FFmpeg uchun ochiq holda kerak bo'ladi, shuning
+uchun ular qaytariladigan shifr (Fernet) bilan saqlanadi. Kalit
+`DATA_DIR/secret.key` faylida turadi (yo'q bo'lsa yaratiladi, faqat egasi
+o'qiy oladi) — bu fayl bazaning o'zi kabi maxfiy; yo'qolsa parollar
+ochilmaydi. Oqim chiptasi, HLS CDN kaliti va ichki chipta kalitlari ham
+shu kalitdan hosil qilinadi — alohida fayl kerak emas.
 
-Admin paroli esa qaytarilmaydigan hash (scrypt) sifatida saqlanadi.
+Foydalanuvchi paroli qaytarilmaydigan hash (scrypt) sifatida saqlanadi.
+Sessiyada bazada tokenning o'zi emas, SHA-256 xeshi turadi: baza nusxasi
+qo'lga tushsa ham undan tayyor kirish tokeni olinmaydi.
+
+Oqim chiptalari (MediaMTX kirish nazorati): MediaMTX portlari ochiq
+bo'lgani uchun har o'qish so'rovi backend'dan so'raladi (authMethod:
+http), backend esa saytdan berilgan qisqa muddatli chiptani tekshiradi.
+HLS brauzer tokenni faqat birinchi so'rovga qo'shadi, shuning uchun to'g'ri
+token kelganda (ip, OQIM YO'LI) sessiyasi ochiladi va segmentlar shu orqali
+yuradi. Imzo ham, sessiya ham asosiy yo'lga normallashtiriladi
+("kamera_1/video1_seg9.mp4" -> "kamera_1"): aks holda tomosha o'rtasida
+401 boshlanardi (o'lchov: ~25-45 s dan keyin). "kamera_1" chiptasi
+"kamera_10" ga o'tmaydi — chegara "/".
+
+HLS CDN kaliti (`hlsCDNSecret`) endi avtomatik: ilgari u .env da qo'lda
+ikki joyga (.env + nginx) yozilishi kerak edi, HTTPS bloki eski namunadan
+ko'chirilib tomoshabin doimiy 401 oldi. Sozlanadigan yagona joy nginx —
+`python scripts/nginx_conf.py` tayyor holda chiqaradi; HLS_CDN_SECRET
+berilsa ustun turadi (bir necha server bitta kalitni bo'lishsa).
+
+Ichki chipta: launcher FFmpeg'i va snapshot zaxirasi MediaMTX'ga
+127.0.0.1 dan ulanadi, lekin IP'ga ishonib bo'lmaydi (nginx ortida hamma
+127.0.0.1) — shuning uchun muddatsiz, kalitdan hosil qilingan chipta.
+
+Tarkibi:
+    encrypt(plain) / decrypt(token)     kamera paroli shifri (buzuq/kalit
+                                        almashgan bo'lsa decrypt "" qaytaradi)
+    stream_token(path)                  yo'l uchun imzolangan chipta (?token=)
+    stream_access_ok(ip, path, token)   MediaMTX/nginx so'rovini tekshiradi
+    hls_cdn_secret()                    hlsCDNSecret va nginx Bearer qiymati
+    internal_token() / internal_token_ok(t)   ichki jarayonlar chiptasi
+    hash_password(p, salt) / verify_password(p, h, salt)   scrypt
+    create_session(db, user_id, ip, ua) yangi sessiya tokeni (12 soat)
+    session_user(db, token)             yaroqli sessiya egasi yoki None
+    delete_session(db, token)           chiqish
+    purge_expired_sessions(db)          muddati o'tganlarni o'chiradi
+    ensure_admin(db)                    birinchi ishga tushishda super-admin
+                                        (ADMIN_LOGIN / ADMIN_PAROL; parol
+                                        berilmasa tasodifiy, qaytariladi)
+    set_password(db, username, p)       parol o'rnatadi (yo'q bo'lsa admin
+                                        yaratadi); sessiyalar bekor bo'ladi
+    KEY_PATH, SESSION_COOKIE ("nigoh_session"), SESSION_HOURS (12),
+    STREAM_TOKEN_TTL (3600 s), STREAM_SESSION_TTL (600 s)
+
+Ishlatadi: core.paths (DATA_DIR), database.users.
+Kim ishlatadi: users/{api,access,admin_api}.py, app/bootstrap.py,
+    camera/streaming.py, walls/api.py, camera/api/{admin,devices}.py,
+    camera/media/{sync,launcher,fast_start,mapping,reconciler,transport}.py,
+    camera/monitoring/{passport,snapshots}.py, scripts (nginx_conf,
+    import_mediamtx, frame_interval, keyframe_interval, stream_soak_test),
+    database/scripts/fix_camera_data.py.
 """
 import base64
 import hashlib
@@ -17,9 +70,8 @@ from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from core.paths import DATA_DIR
 from database import users
-
-from .paths import DATA_DIR
 
 # Kalit fayli ma'lumotlar katalogida — baza bilan yonma-yon turadi.
 KEY_PATH = DATA_DIR / "secret.key"

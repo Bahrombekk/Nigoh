@@ -7,11 +7,16 @@ uchta manbadan biri bo'lishi mumkin va ular bir-birini ko'rmaydi:
   * MediaMTX — oqim tayyormi va baytlar kelyaptimi (har 5 s);
   * events  — bazaga yozilgan o'tishlar.
 
-Bu skript uchalasini bitta jadvalda, har 5 soniyada chiqaradi. Kamerani
+Bu skript uchalasini bitta jadvalda, har 5 soniyada chiqaradi (yana
+skriptning o'z TCP o'lchovi — 1,5 s va 5 s muddat bilan). Kamerani
 ochib qo'ying va qaysi ustun birinchi bo'lib o'zgarishini kuzating:
 
     python scripts/watch_camera.py 8
     python scripts/watch_camera.py 8 --base http://SERVER:8010 --key KALIT
+
+Kalit: `--key` yoki NIGOH_API_KEY; manzil: `--base` yoki NIGOH_BASE.
+Ishlatadigan API: /admin/cameras, /cameras/status, /admin/runtime,
+/admin/events.
 """
 import argparse
 import json

@@ -15,7 +15,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from api import auth, create_app
+from app.factory import create_app
+from users import api as auth
 
 
 @pytest.fixture(autouse=True)

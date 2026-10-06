@@ -25,21 +25,32 @@ Ikki qatlamli himoya qo'yildi:
 
   2. Shu modul — oxirgi chegara. Har CHECK_INTERVAL da xizmatga O'Z
      porti orqali ulanib ko'radi; ketma-ket FAILS_BEFORE_EXIT marta
-     ulanib bo'lmasa, jarayon o'zini tugatadi (konteyner qayta
+     ulanib bo'lmasa, jarayon o'zini tugatadi (`os._exit` — graceful
+     yo'llarning o'zi qotgan bo'lishi mumkin; konteyner qayta
      ko'tariladi). Bu 1-qatlam yopmaydigan har qanday "port o'lgan,
      jarayon tirik" holatini ham qamrab oladi.
 
-Faqat konteynerda ishlaydi: qayta ko'tarishni Docker qiladi. Lokal
-ishlab chiqishda jarayonni o'ldirish faqat zarar (qaytaradigan hech kim
-yo'q) — shuning uchun u yerda jim turadi. `WATCHDOG=0` — butunlay
+Faqat konteynerda ishlaydi (/.dockerenv): qayta ko'tarishni Docker
+qiladi. Lokal ishlab chiqishda jarayonni o'ldirish faqat zarar (qaytaradigan
+hech kim yo'q) — shuning uchun u yerda jim turadi. `WATCHDOG=0` — butunlay
 o'chirish, `WATCHDOG=1` — konteyner tashqarisida ham majburan yoqish.
+
+Tarkibi:
+    start(port)          kuzatuvchini fonda ishga tushiradi; yoqildimi — bool
+    CHECK_INTERVAL       tekshiruv oralig'i (WATCHDOG_INTERVAL, standart 30 s)
+    STARTUP_GRACE        ishga tushish muhlati (WATCHDOG_GRACE, 90 s) —
+                         bootstrap tugaguncha port hali yopiq bo'lishi mumkin
+    CONNECT_TIMEOUT      bitta ulanish urinishi (5 s)
+    FAILS_BEFORE_EXIT    3 ketma-ket xato (~90 s) — bu endi tasodif emas
+
+Kim ishlatadi: main.py (RELOAD rejimidan tashqari), tests/test_watchdog.py.
 """
 import os
 import socket
 import threading
 import time
 
-from .log import log
+from core.log import log
 
 CHECK_INTERVAL = float(os.environ.get("WATCHDOG_INTERVAL", "30"))
 # Ishga tushish uchun muhlat: bootstrap (baza, mediamtx.yml, MediaMTX

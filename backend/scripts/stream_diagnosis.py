@@ -10,6 +10,9 @@ ularning yechimi ham har xil:
     sub yo'q  — past sifatli oqim yo'q, devor asosiy oqimni tortadi
 
     python scripts/stream_diagnosis.py
+
+NIGOH_URL va NIGOH_KEY repo ildizidagi `.env` dan olinadi.
+Ishlatadi: scripts/geo_import.py (Service).
 """
 import os
 import pathlib

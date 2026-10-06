@@ -1,12 +1,22 @@
 """Nigoh — Telegram ogohlantirishlari (ixtiyoriy).
 
 TELEGRAM_BOT_TOKEN va TELEGRAM_CHAT_ID muhit o'zgaruvchilari berilsa,
-muhim hodisalar (kamera uzildi/qaytdi, oqim muzladi, MediaMTX qayta
-ishga tushdi) botga yuboriladi. Berilmasa modul jim turadi — hech qanday
-sozlash talab qilinmaydi.
+muhim hodisalar botga yuboriladi. Berilmasa modul jim turadi — hech
+qanday sozlash talab qilinmaydi. Yuborish fonda (daemon thread); xato
+bo'lsa jim o'tadi — ogohlantirish yetmasa ham tizim ishlayveradi. Matn
+4000 belgida kesiladi.
 
-Spamdan saqlanish chaqiruvchi tomonda: health va reconciler bitta
-tekshiruvdagi barcha o'zgarishlarni bitta xabarga jamlab yuboradi.
+Spamdan saqlanish chaqiruvchi tomonda: bitta tekshiruvdagi barcha
+o'zgarishlar bitta xabarga jamlab yuboriladi.
+
+Tarkibi:
+    enabled()           token va chat_id berilganmi
+    send_async(text)    xabarni fonda yuboradi; sozlanmagan bo'lsa hech narsa qilmaydi
+    TOKEN, CHAT_ID      muhitdan; TIMEOUT — HTTP so'rov muddati (10 s)
+
+Kim ishlatadi: stats/recorder.py — kamera uzildi/qaytdi (har daqiqalik
+    kuzatuvdagi o'zgarishlar bitta xabarda). Oqim muzlashi va MediaMTX
+    qayta ishga tushishi uchun (health/reconciler'dan) chaqiruv hozir yo'q.
 """
 import json
 import os

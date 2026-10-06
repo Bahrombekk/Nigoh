@@ -8,7 +8,7 @@ sinalgan 8 tasining 4 tasida sub oqim ishlab turgan edi.
 Taxmin qat'iy emas — chaqiruvchi har nomzoddan haqiqatda kadr o'qib
 ko'radi (`media.sync.kadr_keladimi`) va faqat bergani saqlanadi.
 """
-from camera.rtsp_probe import sub_yol_nomzodlari as nomzod
+from camera.probe.rtsp_probe import sub_yol_nomzodlari as nomzod
 
 
 def test_dahua():
@@ -46,7 +46,7 @@ def test_raqam_chalkashmaydi():
 
 # ---- sub oqim o'girilishi kodekka qarab hal qilinadi ----
 
-from api.helpers import _hevc  # noqa: E402
+from camera.streaming import _hevc  # noqa: E402
 
 
 class _Qator(dict):

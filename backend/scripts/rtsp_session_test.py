@@ -6,16 +6,18 @@ xosti). Maqsad: bir xil kamerani turli mashinalardan sinab, uzilish
 mijozga bog'liqmi yoki tarmoqdagi o'ringa bog'liqmi degan savolga javob
 berish.
 
-    python rtsp-sessiya-sinovi.py "rtsp://login:parol@10.30.11.65:554/cam/realmonitor?channel=1&subtype=0" [sekund]
+    python scripts/rtsp_session_test.py "rtsp://login:parol@10.30.11.65:554/cam/realmonitor?channel=1&subtype=0" [sekund]
 
 Nima qiladi: OPTIONS -> DESCRIBE -> SETUP -> PLAY qiladi (Digest yoki
 Basic auth), keyin oqimni o'qib turadi va KEEPALIVE YUBORMAYDI. Shunda
 kamera sessiyani o'z muddati bo'yicha yopadi va biz aynan shu muddatni
-o'lchaymiz.
+o'lchaymiz (standart chegara 300 s).
 
 Chiqishda:
     Session ... timeout=N   — kamera qancha muddat e'lon qilgani
     uzildi: N s             — amalda qancha ushlab turgani
+
+Manzil berilmasa shu matn chiqariladi.
 """
 import base64
 import hashlib

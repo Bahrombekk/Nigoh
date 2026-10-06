@@ -3,12 +3,23 @@
 Nima uchun alohida modul: bir xil mexanizm ikki joyda kerak —
 konsolga kirish (parol taxmin qilish) va API kaliti. Ikkalasida ham
 qoida bir xil: bir necha bepul urinish, keyin ikki barobarlanadigan
-kutish, uzoq tinchlikdan keyin hisob unutiladi.
+kutish, uzoq tinchlikdan keyin hisob unutiladi. Chaqiruvchi kutish
+muddatini mijozga aytadi (429 + Retry-After) — so'rov ichida uxlamaydi.
 
 Hisob XOTIRADA turadi. Jarayon qayta ishga tushsa nolga qaytadi —
 bu ataylab: qulf bazaga yozilsa, shu bilan o'zi DoS quroliga
 aylanardi (begona ip nomidan urinib, haqiqiy foydalanuvchini
-qulflab qo'yish mumkin bo'lardi).
+qulflab qo'yish mumkin bo'lardi). Xotira cheksiz o'smasligi uchun
+`limit` dan oshganda eskirgan yozuvlar tozalanadi.
+
+Tarkibi:
+    Throttle(free, max_delay, ttl, limit)   ip bo'yicha eksponensial kutish
+        .retry_after(ip)    yana urinish uchun necha soniya qolgani (0 — mumkin)
+        .note_fail(ip)      xato urinishni hisobga oladi
+        .clear(ip)          muvaffaqiyatdan keyin hisobni o'chiradi
+
+Kim ishlatadi: users/api.py (login: free=5, ttl=1 soat),
+    app/deps.py (API kaliti: free=3, ttl=10 daqiqa); ikkalasida max_delay=30 s.
 """
 import threading
 import time

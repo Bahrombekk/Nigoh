@@ -9,7 +9,7 @@ jimlik muzlash emas.
 """
 import pytest
 
-from camera import reconciler
+from camera.media import reconciler
 
 NODE = {"id": 1, "name": "Asosiy", "api_base": "http://127.0.0.1:9997"}
 
@@ -36,11 +36,11 @@ def soat(monkeypatch):
 
 @pytest.fixture()
 def clean():
-    reconciler._prev_bytes.clear()
-    reconciler._stalled.clear()
+    reconciler.service._prev_bytes.clear()
+    reconciler.service._stalled.clear()
     yield
-    reconciler._prev_bytes.clear()
-    reconciler._stalled.clear()
+    reconciler.service._prev_bytes.clear()
+    reconciler.service._stalled.clear()
 
 
 def _feed(monkeypatch, paths):
@@ -50,23 +50,23 @@ def _feed(monkeypatch, paths):
 def test_bayt_qimirlamasa_muzlagan(monkeypatch, clean, soat):
     # 1-o'lchov: taqqoslash uchun avvalgi qiymat yo'q — hali muzlash emas.
     _feed(monkeypatch, {"kam_1": {"ready": True, "bytesReceived": 1000}})
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == set()
 
     # Navbatdagi tsikl (5 s): bayt o'zgarmadi, lekin muddat hali to'lmagan.
     soat.surish(reconciler.STALL_INTERVAL)
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == set()
 
     # STALL_AFTER to'ldi — endi oqim aniq qotgan.
     soat.surish(reconciler.STALL_AFTER)
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == {"kam_1"}
     assert reconciler.stalled_count(1) == 1
 
     # Bayt yana oqdi — tiklandi.
     _feed(monkeypatch, {"kam_1": {"ready": True, "bytesReceived": 5000}})
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == set()
 
 
@@ -82,7 +82,7 @@ def test_portlash_bilan_keladigan_kamera_muzlagan_hisoblanmaydi(
     bayt = 1000
     for _ in range(20):                      # ~100 soniya, har 5 soniyada tsikl
         _feed(monkeypatch, {"kam_1": {"ready": True, "bytesReceived": bayt}})
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
         assert reconciler.stalled_paths() == set()
         soat.surish(reconciler.STALL_INTERVAL)
         # Har ikkinchi tsiklda (10 s) yangi portlash keladi.
@@ -92,9 +92,9 @@ def test_portlash_bilan_keladigan_kamera_muzlagan_hisoblanmaydi(
 def test_hali_ulanmagan_yol_muzlagan_hisoblanmaydi(monkeypatch, clean, soat):
     """ready=False — kamera hali ulanmoqda, bu muzlash emas."""
     _feed(monkeypatch, {"kam_1": {"ready": False, "bytesReceived": 0}})
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     soat.surish(2 * reconciler.STALL_AFTER)
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == set()
 
 
@@ -108,25 +108,25 @@ def test_sekin_ochilgan_yol_darhol_muzlagan_bolmaydi(monkeypatch, clean, soat):
     """
     _feed(monkeypatch, {"kam_1": {"ready": False, "bytesReceived": 0}})
     for _ in range(8):                       # 40 soniya "ulanmoqda"
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
         soat.surish(reconciler.STALL_INTERVAL)
 
     _feed(monkeypatch, {"kam_1": {"ready": True, "bytesReceived": 0}})
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == set()
 
     # Tayyor bo'lgandan keyin ham bayt kelmasa — endi haqiqiy muzlash.
     soat.surish(reconciler.STALL_AFTER)
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == {"kam_1"}
 
 
 def _muzlat(monkeypatch, soat, bayt=10):
     """Yo'lni muzlagan holatga keltiradi."""
     _feed(monkeypatch, {"kam_1": {"ready": True, "bytesReceived": bayt}})
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     soat.surish(reconciler.STALL_AFTER)
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
 
 
 def test_yopilgan_oqim_royxatdan_chiqadi(monkeypatch, clean, soat):
@@ -134,7 +134,7 @@ def test_yopilgan_oqim_royxatdan_chiqadi(monkeypatch, clean, soat):
     assert reconciler.stalled_paths() == {"kam_1"}
 
     _feed(monkeypatch, {})              # tomoshabin ketdi, yo'l yopildi
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == set()
 
 
@@ -143,23 +143,23 @@ def test_api_javob_bermasa_holat_ozgarmaydi(monkeypatch, clean, soat):
     assert reconciler.stalled_paths() == {"kam_1"}
 
     _feed(monkeypatch, None)            # MediaMTX javob bermadi
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert reconciler.stalled_paths() == {"kam_1"}   # eski holat saqlanadi
 
 
 def test_olik_tugun_tez_tsiklda_otkazib_yuboriladi(monkeypatch, clean):
     """Javob bermayotgan tugunning 4 soniyalik timeout'i har 5 soniyalik
     tsiklni cho'zib yuborishi mumkin edi."""
-    monkeypatch.setattr(reconciler, "_nodes", lambda: [NODE, {**NODE, "id": 2}])
+    monkeypatch.setattr(reconciler.service, "_nodes", lambda: [NODE, {**NODE, "id": 2}])
     called = []
-    monkeypatch.setattr(reconciler, "_check_stalls",
+    monkeypatch.setattr(reconciler.service, "_check_stalls",
                         lambda node: called.append(node["id"]))
-    reconciler._reachable.clear()
-    reconciler._reachable.add(2)                 # faqat 2-tugun tirik
+    reconciler.service._reachable.clear()
+    reconciler.service._reachable.add(2)                 # faqat 2-tugun tirik
     try:
-        reconciler._watch_active()
+        reconciler.service._watch_active()
     finally:
-        reconciler._reachable.clear()
+        reconciler.service._reachable.clear()
     assert called == [2]
 
 
@@ -176,20 +176,20 @@ def sinovlar(monkeypatch):
     buyurtma = []
     monkeypatch.setattr(reconciler.transport, "request",
                         lambda slug: buyurtma.append(slug) or True)
-    reconciler._not_ready.clear()
+    reconciler.service._not_ready.clear()
     yield buyurtma
-    reconciler._not_ready.clear()
+    reconciler.service._not_ready.clear()
 
 
 def test_tayyor_bolmagan_yol_sinovga_buyuriladi(monkeypatch, clean, soat, sinovlar):
     yol = {"kam_1": {"ready": False, "bytesReceived": 0}}
     _feed(monkeypatch, yol)
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     assert sinovlar == []                       # hali erta — ulanayotgan bo'lishi mumkin
 
     for _ in range(int(reconciler.NOT_READY_AFTER / reconciler.STALL_INTERVAL) + 1):
         soat.surish(reconciler.STALL_INTERVAL)
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
     # Takror buyurtma zarar qilmaydi (transport.request o'zi tormozlaydi),
     # muhimi — aynan shu kamera va faqat muddat to'lgandan keyin.
     assert set(sinovlar) == {"kam_1"}
@@ -204,21 +204,21 @@ def test_yol_yoqolib_tursa_ham_hisob_saqlanadi(monkeypatch, clean, soat, sinovla
     bor = {"kam_1": {"ready": False, "bytesReceived": 0}}
     for _ in range(int(reconciler.NOT_READY_AFTER / reconciler.STALL_INTERVAL) + 2):
         _feed(monkeypatch, bor)
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
         soat.surish(reconciler.STALL_INTERVAL)
         _feed(monkeypatch, {})                  # yo'l yo'qoldi
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
         soat.surish(reconciler.STALL_INTERVAL)
     assert set(sinovlar) == {"kam_1"}
 
 
 def test_tayyor_bolgan_yol_sinovga_tushmaydi(monkeypatch, clean, soat, sinovlar):
     _feed(monkeypatch, {"kam_1": {"ready": False, "bytesReceived": 0}})
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     for _ in range(20):
         soat.surish(reconciler.STALL_INTERVAL)
         _feed(monkeypatch, {"kam_1": {"ready": True, "bytesReceived": 5000}})
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
     assert sinovlar == []
 
 
@@ -227,7 +227,7 @@ def test_devor_yoli_sinovga_tushmaydi(monkeypatch, clean, soat, sinovlar):
     _feed(monkeypatch, {"wall_abc": {"ready": False, "bytesReceived": 0}})
     for _ in range(int(reconciler.NOT_READY_AFTER / reconciler.STALL_INTERVAL) + 2):
         soat.surish(reconciler.STALL_INTERVAL)
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
     assert sinovlar == []
 
 
@@ -237,7 +237,7 @@ def test_ogirilgan_yol_kamera_slugi_bilan_sinaladi(monkeypatch, clean, soat, sin
     _feed(monkeypatch, {"kam_1_sub_h264": {"ready": False, "bytesReceived": 0}})
     for _ in range(int(reconciler.NOT_READY_AFTER / reconciler.STALL_INTERVAL) + 2):
         soat.surish(reconciler.STALL_INTERVAL)
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
     assert set(sinovlar) == {"kam_1"}
 
 
@@ -258,13 +258,13 @@ def test_buzuq_kadrlar_ham_sinovga_olib_boradi(monkeypatch, clean, soat, sinovla
                           "inboundFramesInError": xato["v"]}}
 
     _feed(monkeypatch, yol())
-    reconciler._check_stalls(NODE)
+    reconciler.service._check_stalls(NODE)
     for _ in range(int(reconciler.NOT_READY_AFTER / reconciler.STALL_INTERVAL) + 2):
         soat.surish(reconciler.STALL_INTERVAL)
         xato["v"] += 50          # buzuq kadrlar o'sib boryapti
         bayt["v"] += 100000      # oqim esa "kelyapti"
         _feed(monkeypatch, yol())
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
     assert set(sinovlar) == {"kam_1"}
     assert reconciler.stalled_paths() == set()   # bu muzlash EMAS
 
@@ -276,7 +276,7 @@ def test_sogom_oqim_sinovga_tushmaydi(monkeypatch, clean, soat, sinovlar):
     for _ in range(int(reconciler.NOT_READY_AFTER / reconciler.STALL_INTERVAL) + 4):
         _feed(monkeypatch, {"kam_1": {"ready": True, "bytesReceived": bayt["v"],
                                       "inboundFramesInError": 7}})
-        reconciler._check_stalls(NODE)
+        reconciler.service._check_stalls(NODE)
         soat.surish(reconciler.STALL_INTERVAL)
         bayt["v"] += 100000
     assert sinovlar == []

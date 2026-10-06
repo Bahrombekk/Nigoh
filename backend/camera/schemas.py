@@ -1,0 +1,168 @@
+"""Kamera endpointlari uchun so'rov modellari (Pydantic).
+
+Tekshiruv iloji boricha shu yerda: xato foydalanuvchiga tushunarli
+matn bilan 422/400 bo'lib qaytsin, bazadagi CHECK cheklovlarigacha
+yetib bormasin (IP/host qoidasi baza bilan bir xil).
+
+Tarkibi:
+    CameraIn        kamerani qo'shish/tahrirlash (rtsp yoki manual);
+                    joylashuv (hudud, koordinata, km/piket), tashqi id,
+                    RTSP manzil, sub yo'l (None — avtomatik aniqlansin),
+                    always_on (standart o'chiq: kamera faqat ko'rilganda
+                    ulanadi, aks holda tarmoq ham, GPU ham tugaydi)
+        .validate_complete()    rtsp'da IP, manual'da oqim manzili bo'lishi shart
+    EnabledIn       yoqish/o'chirish — to'liq PUT talab qilinmasin
+    NvrIn           registrator kanallarini birdaniga import (1000 kamerani
+                    qo'lda kiritib bo'lmaydi: odatda 30-40 NVR x 16-64 kanal)
+    NodeIn          MediaMTX tuguni: API manzili, public host, portlar
+    ProbeIn         bitta RTSP yo'lni tekshirish
+    ScanIn          qurilmani avtomatik aniqlash: IP + login yetadi
+
+`camera_id` maydonlari (NvrIn, ProbeIn, ScanIn) — parol berilmasa shu
+kameraning saqlangan paroli ishlatiladi (tahrirlash oynasi uchun).
+
+Kim ishlatadi: camera/api (admin, devices, nodes), camera/probe/detect.py
+"""
+import re
+
+from fastapi import HTTPException
+from pydantic import BaseModel, Field, field_validator
+
+
+class CameraIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    # Viloyat nomi (GET /admin/regions ro'yxatidan). Bo'sh yoki ro'yxatda
+    # yo'q bo'lsa hudud koordinatadan aniqlanadi; erkin matn saqlanmaydi.
+    region: str = Field(default="", max_length=120)
+    # Koordinata ixtiyoriy: tashqi backend xarita/joylashuvni o'z bazasida
+    # yuritsa, bermasligi mumkin (0,0 — "joyi ko'rsatilmagan" degani).
+    lat: float | None = Field(default=0.0, ge=-90, le=90)
+    lng: float | None = Field(default=0.0, ge=-180, le=180)
+    # Temir yo'l bo'yicha joy. Berilmasa nomdan olinadi ("3428/1 km").
+    rail_line_id: int | None = Field(default=None, ge=1)
+    km: int | None = Field(default=None, ge=0, le=100000)
+    picket: int | None = Field(default=None, ge=1, le=10)
+    source_type: str = "rtsp"          # "rtsp" | "manual"
+    node_id: int = Field(default=1, ge=1)   # qaysi MediaMTX tuguni tortadi
+    enabled: bool = True
+    # Standart holda o'chiq: kamera faqat kimdir ko'rganda ulanadi. Aks holda
+    # kameralar soni ortishi bilan tarmoq ham, GPU ham tugaydi.
+    always_on: bool = False
+    note: str = Field(default="", max_length=500)
+    # Tashqi tizim identifikatori — keyin `ext:<qiymat>` bilan murojaat
+    # qilinadi. Bo'sh = berilmagan. Takrorlanmas bo'lishi shart.
+    external_id: str = Field(default="", max_length=120)
+
+    # RTSP kamera uchun
+    ip: str = Field(default="", max_length=100)
+    port: int = Field(default=554, ge=1, le=65535)
+    username: str = Field(default="", max_length=100)
+    password: str | None = None        # None = o'zgartirilmasin
+    rtsp_path: str = Field(default="/stream1", max_length=300)
+    # Past sifatli 2-oqim (video devor uchun). None — avtomatik: ishlab
+    # chiqaruvchi shablonidan hosil qilinadi va tekshiriladi.
+    sub_path: str | None = Field(default=None, max_length=300)
+    vendor: str = Field(default="boshqa", max_length=40)
+
+    # Tayyor oqim manzili uchun
+    stream_url: str = Field(default="", max_length=500)
+
+    @field_validator("source_type")
+    @classmethod
+    def _check_source(cls, v: str) -> str:
+        if v not in ("rtsp", "manual"):
+            raise ValueError("source_type faqat 'rtsp' yoki 'manual' bo'lishi mumkin")
+        return v
+
+    @field_validator("external_id")
+    @classmethod
+    def _check_external(cls, v: str) -> str:
+        v = v.strip()
+        # URL yo'lida ishlatiladi — faqat xavfsiz belgilar.
+        if v and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", v):
+            raise ValueError("external_id faqat harf, raqam, nuqta, chiziqcha "
+                             "va pastki chiziqdan iborat bo'lishi mumkin")
+        return v
+
+    @field_validator("ip")
+    @classmethod
+    def _check_ip(cls, v: str) -> str:
+        v = v.strip()
+        # IP yoki DNS nomi (DDNS orqali ulanadigan registratorlar). Bazadagi
+        # CHECK bilan bir xil qoida — xato bu yerda tushunarli matn bilan chiqsin.
+        if v and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.:-]*", v):
+            raise ValueError("IP manzil yoki host nomi noto'g'ri")
+        return v
+
+    def validate_complete(self) -> None:
+        if self.source_type == "rtsp" and not self.ip.strip():
+            raise HTTPException(400, "IP manzil kiritilmagan")
+        if self.source_type == "manual" and not self.stream_url.strip():
+            raise HTTPException(400, "Oqim manzili kiritilmagan")
+
+
+class EnabledIn(BaseModel):
+    """Kamerani yoqish/o'chirib qo'yish — to'liq PUT talab qilinmasin."""
+    enabled: bool
+
+
+class NvrIn(BaseModel):
+    """Bitta NVR/registratordagi kanallarni birdaniga qo'shish.
+
+    1000 ta kamerani qo'lda kiritib bo'lmaydi — odatda ular 30-40 ta
+    registratorga ulangan bo'ladi, har birida 16-64 kanal.
+    """
+    ip: str = Field(min_length=1, max_length=100, pattern=r"^\s*[A-Za-z0-9][A-Za-z0-9.:-]*\s*$")
+    port: int = Field(default=554, ge=1, le=65535)
+    username: str = Field(default="", max_length=100)
+    password: str = Field(default="", max_length=200)
+    vendor: str = Field(default="hikvision", max_length=40)
+    channels: str = Field(default="1-16", max_length=200)   # "1-16" yoki "1,3,5-8"
+    region: str = Field(min_length=1, max_length=120)
+    name_prefix: str = Field(default="", max_length=100)
+    lat: float = Field(default=0.0, ge=-90, le=90)      # ixtiyoriy — 0,0 = joy yo'q
+    lng: float = Field(default=0.0, ge=-180, le=180)
+    spread_m: int = Field(default=120, ge=0, le=5000)  # nuqtalar bir-birini bosmasin
+    stream: str = Field(default="main")                # "main" | "sub"
+    node_id: int = Field(default=1, ge=1)              # qaysi MediaMTX tuguni
+    enabled: bool = True
+    probe: bool = True                                 # kodekni tekshirib olsinmi
+    dry_run: bool = False                              # avval ko'rsatib bersin
+    # Parol berilmasa shu kameraning saqlangan paroli ishlatiladi —
+    # ProbeIn va ScanIn dagi bilan bir xil qulaylik. Bitta registratorga
+    # yana kanal qo'shayotganda parolni qayta terish shart emas.
+    camera_id: int | None = None
+
+
+class NodeIn(BaseModel):
+    """MediaMTX tuguni — kameralar ko'p manzilda bo'lsa, har joyga bittadan.
+
+    Kamera trafigi lokal tarmoqda qoladi; magistralga faqat ayni damda
+    ko'rilayotgan oqim chiqadi.
+    """
+    name: str = Field(min_length=1, max_length=80)
+    api_base: str = Field(min_length=1, max_length=200)    # http://host:9997
+    public_host: str = Field(default="", max_length=100)   # brauzer ulanadigan host
+    rtsp_port: int = Field(default=8554, ge=1, le=65535)
+    hls_port: int = Field(default=8888, ge=1, le=65535)
+    webrtc_port: int = Field(default=8889, ge=1, le=65535)
+    enabled: bool = True
+
+
+class ProbeIn(BaseModel):
+    ip: str = Field(min_length=1, max_length=100, pattern=r"^\s*[A-Za-z0-9][A-Za-z0-9.:-]*\s*$")
+    port: int = Field(default=554, ge=1, le=65535)
+    username: str = Field(default="", max_length=100)
+    password: str | None = None
+    rtsp_path: str = Field(default="/stream1", max_length=300)
+    camera_id: int | None = None       # saqlangan parolni ishlatish uchun
+
+
+class ScanIn(BaseModel):
+    """Qurilmani avtomatik aniqlash: IP+login yetadi, qolganini skaner topadi."""
+    ip: str = Field(min_length=1, max_length=100, pattern=r"^\s*[A-Za-z0-9][A-Za-z0-9.:-]*\s*$")
+    port: int = Field(default=554, ge=1, le=65535)
+    username: str = Field(default="", max_length=100)
+    password: str = Field(default="", max_length=200)
+    max_channels: int = Field(default=64, ge=1, le=256)
+    camera_id: int | None = None       # tahrirlashda saqlangan parolni ishlatish

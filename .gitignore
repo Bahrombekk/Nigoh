@@ -31,6 +31,8 @@ __pycache__/
 
 # Ish vaqti loglari
 mediamtx.log
+# Loglar — hammasi logs/ da (core/logs/)
+logs/
 backend.log
 backend.err.log
 nigoh.log
@@ -55,5 +57,8 @@ image*.png
 .vscode/
 .idea/
 
-# PostgreSQL zaxiralari (deploy/db-backup.sh)
+# PostgreSQL zaxiralari (backend/database/scripts/backup.sh)
 backups/
+backend/database/backups/
+# PostgreSQL ma'lumot katalogi (servis shu yerdan ishlaydi)
+backend/database/pgdata/

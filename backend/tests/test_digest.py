@@ -1,7 +1,7 @@
 import hashlib
 import re
 
-from camera.rtsp_probe import _digest_header
+from camera.probe.rtsp_probe import _digest_header
 
 
 def _md5(s: str) -> str:

@@ -1,4 +1,4 @@
-from camera.sync import (
+from camera.media.sync import (
     SUB_SUFFIX,
     TRANSCODE_SUFFIX,
     _managed,
@@ -101,7 +101,7 @@ def test_korilayotgan_yol_qayta_sozlanmaydi(monkeypatch):
     Ko'rilayotgan yo'lga tegilmasligi kerak: o'zgarish yo'qolmaydi,
     yo'l bo'shashi bilan keyingi tsiklda qo'llanadi.
     """
-    from camera import sync
+    from camera.media import sync
 
     cam = _cam(always_on=True)               # doimiy yo'l — wanted ichida
     calls = []
@@ -130,7 +130,7 @@ def test_korilayotgan_yol_qayta_sozlanmaydi(monkeypatch):
 def test_bosh_yol_qayta_sozlanaveradi(monkeypatch):
     """Himoya faqat tomoshabini bor yo'lga — aks holda konfiguratsiya
     hech qachon yangilanmay qolardi."""
-    from camera import sync
+    from camera.media import sync
 
     cam = _cam(always_on=True)
     calls = []
@@ -159,7 +159,7 @@ def test_hls_tomoshabini_baytlar_bilan_aniqlanadi(monkeypatch):
     aniqlanadi. Aks holda tomosha o'rtasida yo'l qayta sozilib, video
     uzilardi.
     """
-    from camera import sync
+    from camera.media import sync
     sync._sent.clear()
     cam = _cam(always_on=True)
     sent = {"v": 1000}
@@ -200,7 +200,7 @@ def test_korilayotgan_sub_yol_issiq_bolib_qoladi(monkeypatch):
     """Issiqlik 10 daqiqada so'nadi. Tomosha davom etayotgan bo'lsa u
     yangilanishi kerak, aks holda sourceOnDemand qayta yoqilib manba
     qayta ochiladi."""
-    from camera import sync
+    from camera.media import sync
     sync._sent.clear()
     sync._warm.clear()
     cam = _cam(sub_path="/s2", always_on=True)
@@ -228,8 +228,8 @@ def test_korilayotgan_sub_yol_issiq_bolib_qoladi(monkeypatch):
 def test_issiq_muddat_qisqartirilmaydi():
     """Sub yo'l 10 daqiqaga issiq bo'lsa, asosiy yo'lning qisqa muddati
     uni qisqartirib yubormasligi kerak."""
-    from camera.sync import WARM_MAIN_TTL
-    from camera.sync import _warm as W
+    from camera.media.sync import WARM_MAIN_TTL
+    from camera.media.sync import _warm as W
     try:
         mark_warm("k1")                      # uzun muddat (sub)
         uzun = W["k1"]
@@ -293,7 +293,7 @@ def test_ochirilgan_kamera_yoli_band_bolsa_ham_ketadi(monkeypatch):
     o'chirilmasdi. Natijada o'chirilgan kamera registratordan oqim
     tortishda davom etardi va boshqa kameralarga joy qolmasdi.
     """
-    from camera import sync
+    from camera.media import sync
     sync._sent.clear()
     cam = _cam(enabled=False)                 # kamera o'chirilgan
     calls = []
@@ -321,7 +321,7 @@ def test_ochirilgan_kamera_yoli_band_bolsa_ham_ketadi(monkeypatch):
 def test_yoqilgan_kameraning_korilayotgan_yoli_saqlanadi(monkeypatch):
     """Himoya o'z vazifasini bajarishda davom etsin: kamera yoqilgan va
     ko'rilayotgan bo'lsa, vaqtinchalik holat tugasa ham o'chirilmaydi."""
-    from camera import sync
+    from camera.media import sync
     sync._sent.clear()
     cam = _cam(enabled=True)                  # yoqilgan, lekin issiq emas
     calls = []
@@ -347,7 +347,7 @@ def test_yoqilgan_kameraning_korilayotgan_yoli_saqlanadi(monkeypatch):
 
 def test_parolsiz_login_mediamtx_ga_yuborilmaydi():
     """MediaMTX `user@host` ni 400 bilan rad etadi — yo'l yaratilmasdi."""
-    from camera.sync import source_path
+    from camera.media.sync import source_path
     cam = {"slug": "p", "ip": "10.0.0.9", "port": 554, "rtsp_path": "/s",
            "username": "admin", "password": "", "enabled": True}
     assert source_path(cam)["source"] == "rtsp://10.0.0.9:554/s"

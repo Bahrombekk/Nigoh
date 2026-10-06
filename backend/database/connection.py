@@ -1,13 +1,44 @@
 """PostgreSQL ulanishi: hovuz (pool), qator turi va `get_db()`.
 
 Manzil `DATABASE_URL` dan olinadi (masalan
-`postgresql://nigoh:<parol>@127.0.0.1:5432/nigoh`). Ilova superuser bilan
+`postgresql://nigoh:<parol>@127.0.0.1:5432/nigoh`; .env core.env orqali
+shu modul import qilinishidan oldin yuklanadi). Ilova superuser bilan
 emas, faqat o'z bazasiga egalik qiladigan `nigoh` roli bilan ulanadi —
-`deploy/postgres/setup-roles.sql` ga qarang.
+`backend/database/sql/setup-roles.sql` ga qarang.
 
 `get_db()` bitta tranzaksiya beradi: blok xatosiz tugasa COMMIT, xato
 bilan chiqsa ROLLBACK. Ulanish hovuzdan olinadi va qaytariladi —
-har so'rovda yangi TCP/TLS ulanish ochilmaydi.
+har so'rovda yangi TCP/TLS ulanish ochilmaydi. Hovuz birinchi chaqiruvda
+ochiladi (NIGOH_DB_POOL_MIN/MAX, standart 1/20), server qayta ishga
+tushsa o'lik ulanish berilmasligi uchun har berishda tekshiriladi.
+
+Har ulanishda sessiya zonasi NIGOH_TZ (standart Asia/Tashkent) qilib
+qo'yiladi: `ts::date`, `extract(hour ...)` va qaytgan vaqtlar shu zonada
+(SQLite davridagi 'localtime' o'rnida); saqlash baribir UTC — TIMESTAMPTZ.
+
+Tarkibi:
+    get_db()                    hovuzdan ulanish, `Baza` qobig'ida bitta tranzaksiya
+    single_connection()         hovuzsiz bitta ulanish — qisqa umrli jarayonlar (launcher)
+    pool()                      hovuzni (kerak bo'lsa ochib) qaytaradi
+    close_pool()                hovuzni yopadi (testlar, jarayon tugashi)
+    database_size(db)           baza hajmi baytda
+    Baza                        ulanish ustidagi yupqa qobiq
+        .execute(sql, params)   so'rov, kursor qaytaradi
+        .executemany(sql, seq)  ko'p qator (psycopg'da kursorda — bu yerda ulanishdagidek)
+        .commit() / .rollback()
+        .savepoint()            ichki tranzaksiya: undagi xato butun tranzaksiyani
+                                buzmasin (PostgreSQL xatodan keyin tranzaksiyani
+                                to'xtatadi, SQLite esa davom ettirardi)
+    IntegrityError              psycopg.IntegrityError — chaqiruvchi psycopg'ni bilmasin
+    UniqueViolation             psycopg.errors.UniqueViolation
+    VAQT_ZONASI                 sessiya zonasi (NIGOH_TZ)
+    _QatorAsos / _qator_turi    `sqlite3.Row` kabi qator: row[0], row["nom"], dict(row),
+                                row.keys(), row.get(); ustun nomlari so'rovga bir marta
+
+Ishlatadi: psycopg, psycopg_pool, core.env
+Kim ishlatadi: database/__init__.py (get_db, single_connection, xatolar),
+database/schema.py, database/api.py va app/system_api.py (database_size),
+stats/reporting/period.py (VAQT_ZONASI), repositories/cameras.py (get_db).
 """
 from __future__ import annotations
 
@@ -109,7 +140,7 @@ def _manzil() -> str:
         raise RuntimeError(
             "DATABASE_URL berilmagan. .env ga qo'shing, masalan:\n"
             "  DATABASE_URL=postgresql://nigoh:<parol>@127.0.0.1:5432/nigoh\n"
-            "O'rnatish va rollar: docs/DEPLOY.md, deploy/postgres/setup-roles.sql")
+            "O'rnatish va rollar: docs/DEPLOY.md, backend/database/sql/setup-roles.sql")
     return url
 
 

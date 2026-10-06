@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from api import create_app
+from app.factory import create_app
 from database import get_db
 from tests.factories import add_camera, add_event
 

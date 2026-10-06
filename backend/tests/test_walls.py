@@ -4,10 +4,10 @@
 darhol o'zini ko'rsatdi: yangi `~^wall_...$` shabloni `desired_paths`
 testini jimgina buzdi. Bu yerda registrning o'zi qulflanadi.
 """
-from camera import walls
-from camera.mosaic import grid_for
 from database import get_db
 from database import walls as walls_db
+from walls import registry as walls
+from walls.mosaic import grid_for
 
 
 def _tozala():

@@ -18,7 +18,7 @@ qo'riqlaydi.
 import pytest
 import yaml
 
-from camera import sync, transport
+from camera.media import sync, transport
 
 KAM = {"slug": "kam_1", "ip": "10.0.0.1", "port": 554, "rtsp_path": "/s1",
        "username": "u", "password": "p", "always_on": False}
@@ -345,3 +345,40 @@ def test_sog_lom_jurnalda_buzuqlik_topilmaydi():
     jurnal = ("frame=   25 fps=0.0 q=-0.0 size=N/A time=00:00:00.96\n"
               "frame=  200 fps= 25 q=-0.0 size=N/A time=00:00:08.00\n")
     assert transport._buzuq_soni(jurnal) == 0
+
+
+def test_olik_tcp_dan_qisman_buzuq_udp_ga_otiladi(monkeypatch, qolda):
+    """Regressiya (2026-10-06, 3393_km_3393_1_km, Dahua H.264): TCP 30 s da
+    birorta kadr bermadi, UDP 372 kadr (129 buzuq). "Buzuqlik man qiladi"
+    sharti 0 kadrli TCP'ni "toza" deb sanab, kamerani o'lik transportda
+    qoldirardi — devorda umuman ochilmasdi. Bo'sh ekrandan qisman buzuq
+    tasvir yaxshi."""
+    monkeypatch.setattr(transport, "_camera", lambda slug: _Baza().row)
+    _kadrlar(monkeypatch, tcp=0, udp=372, tcp_buzuq=0, udp_buzuq=129)
+    assert transport.check("kam_1") == "udp"
+    assert qolda["udp"] is True
+
+
+def test_olik_tcp_bo_lsa_ham_axlat_udp_ga_otilmaydi(monkeypatch, qolda):
+    """Lekin ikkinchisi faqat axlat bersa (xato kadrdan ko'p) — o'tilmaydi.
+    O'lchov: 3394_km 11:50 da UDP 9 kadr, 857 buzuq; keyin TCP o'zi tiklandi."""
+    monkeypatch.setattr(transport, "_camera", lambda slug: _Baza().row)
+    _kadrlar(monkeypatch, tcp=0, udp=9, tcp_buzuq=0, udp_buzuq=857)
+    assert transport.check("kam_1") is None
+    assert qolda == {}
+
+
+def test_och_tcp_dan_kop_va_asosan_toza_udp_ga_otiladi(monkeypatch, qolda):
+    """Regressiya (3393_km, 12:03 o'lchovi): TCP tirik, lekin och — 54 kadr/8 s
+    (~7 kadr/s, keyframe'lar yo'qoladi), UDP 407 kadr, 119 buzuq (29 %)."""
+    monkeypatch.setattr(transport, "_camera", lambda slug: _Baza().row)
+    monkeypatch.setattr(transport, "PROBE_SECONDS", 8.0)
+    _kadrlar(monkeypatch, tcp=54, udp=407, tcp_buzuq=0, udp_buzuq=119)
+    assert transport.check("kam_1") == "udp"
+
+
+def test_och_tcp_bo_lsa_ham_juda_buzuq_udp_ga_otilmaydi(monkeypatch, qolda):
+    monkeypatch.setattr(transport, "_camera", lambda slug: _Baza().row)
+    monkeypatch.setattr(transport, "PROBE_SECONDS", 8.0)
+    _kadrlar(monkeypatch, tcp=54, udp=407, tcp_buzuq=0, udp_buzuq=200)   # 49 % buzuq
+    assert transport.check("kam_1") is None

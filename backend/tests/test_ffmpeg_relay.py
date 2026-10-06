@@ -12,7 +12,7 @@ qo'riqlaydi — chunki xato tomonga og'sa butun flot bir zumda o'zgaradi.
 """
 import pytest
 
-from camera import sync
+from camera.media import sync
 
 KAM = {"slug": "kam_1", "ip": "10.0.0.1", "port": 554, "rtsp_path": "/s1",
        "username": "u", "password": "p", "always_on": False}
@@ -72,7 +72,7 @@ def test_ffmpeg_only_tanlab_yoqiladi(monkeypatch):
     """
     import importlib
 
-    from camera import sync
+    from camera.media import sync
 
     monkeypatch.setenv("FFMPEG_ONLY", "kam_a, kam_b")
     monkeypatch.delenv("RTSP_VIA_FFMPEG", raising=False)
@@ -95,7 +95,7 @@ def test_ffmpeg_only_global_bayroqdan_ustun(monkeypatch):
     """
     import importlib
 
-    from camera import sync
+    from camera.media import sync
 
     monkeypatch.setenv("FFMPEG_ONLY", "kam_a")
     monkeypatch.setenv("FFMPEG_EXCLUDE", "kam_a")
@@ -156,3 +156,15 @@ def test_ogirish_kadr_takrorlamaydi():
     assert args[args.index("-fps_mode") + 1] == "passthrough"
     # Chiqish sozlamasi: `-i` dan KEYIN turishi shart.
     assert args.index("-fps_mode") > args.index("-i")
+
+
+def test_asosiy_oqim_sifatliroq_ogiriladi():
+    """Asosiy oqim sub bilan bir xil siqilmasin (2026-10-06: 1440p da SSIM 0,973)."""
+    sub = sync.transcode_args("SRC", "DST", gpu=True, maxrate="2M")
+    main = sync.transcode_args("SRC", "DST", gpu=True, maxrate="12M", main=True)
+    assert sub[sub.index("-preset") + 1] == "p1" and sub[sub.index("-cq") + 1] == "28"
+    assert main[main.index("-preset") + 1] == sync.TRANSCODE_PRESET_MAIN
+    assert main[main.index("-cq") + 1] == sync.TRANSCODE_CQ_MAIN
+    assert main[main.index("-tune") + 1] == "ll"
+    cpu = sync.transcode_args("SRC", "DST", gpu=False, main=True)
+    assert cpu[cpu.index("-crf") + 1] == sync.TRANSCODE_CQ_MAIN

@@ -1,26 +1,69 @@
-/* Kirish nuqtasi: ilovani ishga tushiradi (kim kirgan, ma'lumot yuklash, splash)
-   va global klaviatura qisqartmalari. */
-import { $, state, toast } from "./state.js";
-import { api } from "./api.js";
-import { setTheme } from "./theme.js";
-import { loadCameras } from "./data.js";
-import { MOBILE, setListOpen } from "./camera-list.js";
-import { closeSel, fmtLastSeen, setSelOpen } from "./selection.js";
-import { addEvent } from "./dashboard.js";
-import { AUTH_TABS, drawHeadMaps, showTab, startClock } from "./tabs.js";
-import { closeModal, openModal } from "./modals.js";
-import { applyMe, kirishniKut, openLogin } from "./auth.js";
-import { loadVendors, stopPicking, xaritaTanlashniUlash } from "./camera-form.js";
-import "./icons.js";
-import "./map.js";
-import "./player.js";
-import "./video-wall.js";
-import "./charts.js";
-import "./admin.js";
-import "./nvr.js";
+/* ==========================================================================
+   main.js — kirish nuqtasi
+   --------------------------------------------------------------------------
+   Vazifasi:
+     Ilovani ishga tushiradi (kim kirgan, ma'lumot yuklash, splash) va
+     global klaviatura qisqartmalari (Escape). index.html faqat shu faylni
+     ulaydi: <script type="module" src="/js/main.js"> — shuning uchun u
+     js/ ildizida qoladi.
+
+   Eksport: yo'q (faqat ishga tushirish).
+
+   Ishga tushirish tartibi:
+     1. Importlar baholanadi: har modul o'z klassining yagona nusxasini
+        yaratadi va DOM tugmalarini ulaydi (konstruktorlarda).
+     2. Hamma modul yuklangach (aylanma importlar tufayli faqat shu yerda
+        xavfsiz): xaritaTanlashniUlash() — xaritaga "click"; initOverview() —
+        hisobot tugmalari va ResizeObserver.
+     3. start(): mavzu, soat, kontur -> /api/auth/me (server ko'tarilguncha
+        qayta so'raladi) -> kerak bo'lsa kirishni kutish -> /api/cameras ->
+        #hash bo'limi -> splash yopiladi -> ishlab chiqaruvchi shablonlari.
+
+   Bog'liqliklar:
+     import: core/state.js, core/api.js, core/theme.js, core/data.js,
+             map/camera-list.js, map/selection.js, layout/notifications.js,
+             layout/tabs.js, core/modals.js, auth/auth.js, admin/camera-form.js,
+             dashboard/overview.js; yon ta'sir uchun: core/icons.js, map/map.js,
+             player/player.js, wall/video-wall.js, dashboard/charts.js,
+             admin/admin.js, admin/nvr.js
+     global: L, Hls (index.html da CDN dan, main.js dan OLDIN yuklanadi)
+
+   DOM: html.booting, #splash, #sp-status, .login-screen, .backdrop, #sel-body
+   Backend: GET /api/auth/me, GET /api/cameras (data.js orqali)
+
+   Qoidalar / tuzoqlar:
+     - "Faqat yon ta'sir uchun" importlarni olib tashlamang: ular tugmalarni
+       ulaydi (masalan nvr.js ni hech kim import qilmaydi).
+     - Kutilmagan xatoda ham sahifa splashda qolib ketmasin: 8 s xavfsizlik
+       taymeri bor; kirish kutilayotganda u to'xtatiladi.
+     - Har bir faylni `node --input-type=module --check < fayl` bilan
+       tekshiring: oddiy `node --check` takroriy e'lonni ko'rmaydi (ilgari
+       aynan shu xato sahifani yuklanish ekranida qoldirgan).
+   ========================================================================== */
+import { $, state, toast } from "./core/state.js";
+import { api } from "./core/api.js";
+import { setTheme } from "./core/theme.js";
+import { loadCameras } from "./core/data.js";
+import { MOBILE, setListOpen } from "./map/camera-list.js";
+import { closeSel, fmtLastSeen, setSelOpen } from "./map/selection.js";
+import { addEvent } from "./layout/notifications.js";
+import { AUTH_TABS, drawHeadMaps, showTab, startClock } from "./layout/tabs.js";
+import { closeModal, openModal } from "./core/modals.js";
+import { applyMe, kirishniKut, openLogin } from "./auth/auth.js";
+import { loadVendors, stopPicking, xaritaTanlashniUlash } from "./admin/camera-form.js";
+import { initOverview } from "./dashboard/overview.js";
+import "./core/icons.js";
+import "./map/map.js";
+import "./player/player.js";
+import "./wall/video-wall.js";
+import "./dashboard/charts.js";
+import "./admin/admin.js";
+import "./admin/nvr.js";
 
 // Hamma modul yuklangan — endi xaritaga hodisa ulash xavfsiz.
 xaritaTanlashniUlash();
+// Hisobot (dashboard) tugmalari va o'lcham kuzatuvchisi — xuddi shu sababdan shu yerda.
+initOverview();
 
 
 

@@ -2,8 +2,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from api import create_app
-from core import metrics
+from app.factory import create_app
+from camera.monitoring import open_times as metrics
 
 KEY = {"X-API-Key": "test-kalit"}
 

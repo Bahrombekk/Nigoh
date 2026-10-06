@@ -1,8 +1,9 @@
 """Excel'dagi geolokatsiyani ishlayotgan Nigoh servisiga yozadi.
 
 Kameralar servisga allaqachon ulangan, ammo ko'pchiligining koordinatasi
-yo'q (0,0 — "joyi ko'rsatilmagan"). Excel faylida har bir kameraning IP
-manzili va joylashuvi bor; moslashtirish IP bo'yicha ketadi.
+yo'q (0,0 — "joyi ko'rsatilmagan"). Excel faylida ("cameras" varag'i:
+A — km, B — IP, E — kenglik, F — uzunlik) har bir kameraning IP manzili
+va joylashuvi bor; moslashtirish IP bo'yicha ketadi.
 
 Ishlatish (avval quruq yurish — hech narsa yozilmaydi):
     python scripts/geo_import.py "nigoh geolakatsiya.xlsx"
@@ -10,7 +11,9 @@ Haqiqatan yozish:
     python scripts/geo_import.py "nigoh geolakatsiya.xlsx" --apply
 
 Manzil va kalit muhitdan (NIGOH_URL, NIGOH_KEY) yoki `--env-file` bilan
-ko'rsatilgan fayldan olinadi.
+ko'rsatilgan fayldan olinadi. Koordinatasi bor kameralarga tegilmaydi
+(`--overwrite` — qayta yozish). Yozishdan oldin eski koordinatalar
+`geo-zaxira.json` ga saqlanadi.
 
 Koordinata formati Excel'da bir xil emas — qo'lda kiritilgan:
     41.16.00.294      daraja.daqiqa.soniya.kasr
@@ -19,6 +22,15 @@ Koordinata formati Excel'da bir xil emas — qo'lda kiritilgan:
     68.4921.708       nuqta tushib qolgan (68°49'21.708")
     40.188572         allaqachon o'nlik daraja
 Hammasi o'nlik darajaga keltiriladi va O'zbekiston chegarasiga tekshiriladi.
+
+Tarkibi (boshqa skriptlar ham import qiladi):
+    Service(base, key)     Nigoh REST API mijozi (X-API-Key): .cameras(), .save()
+    load_env_file(path)    .env ko'rinishidagi fayldan muhitga qiymat oladi
+    to_degrees(value)      katakdagi qiymat -> o'nlik daraja
+    read_excel(path)       {ip: (lat, lng)} va muammoli qatorlar
+
+Kim ishlatadi: scripts/{geo_status,open_time_benchmark,stream_diagnosis,
+    webrtc_benchmark}.py (Service, load_env_file).
 """
 import argparse
 import json

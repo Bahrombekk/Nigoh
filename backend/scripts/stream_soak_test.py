@@ -3,17 +3,21 @@
 MediaMTX jurnalida `[RTSP source] stopped: an error occurred` chiqsa,
 savol bitta: ulanishni KAMERA uzdimi yoki MediaMTX'da muammo bormi?
 Bu skript MediaMTX'ni chetlab o'tib, kameradan to'g'ridan-to'g'ri
-tortadi. Natija ikki xil bo'ladi va ikkalasi ham aniq javob:
+tortadi (ffmpeg, TCP). Natija ikki xil bo'ladi va ikkalasi ham aniq javob:
 
   * belgilangan vaqt to'liq o'tdi  -> kamera aybdor emas, muammo bizda;
   * vaqtidan oldin uzildi          -> kamera/registrator uzyapti,
                                       sozlamani o'sha yerda tuzatish kerak.
 
 Parolni terish shart emas — u bazadan olinadi (shifrlangan holda yotadi
-va ekranga chiqarilmaydi).
+va ekranga chiqarilmaydi; ffmpeg chiqishida ham yashiriladi). backend/
+papkasidan ishga tushiriladi.
 
     python scripts/stream_soak_test.py 13
     python scripts/stream_soak_test.py 13 --sekund 120 --sub
+    python scripts/stream_soak_test.py 13 --yol /LiveMedia/ch1/Media2
+
+Ishlatadi: camera.probe.rtsp_probe.build_rtsp_url, core.security, database.
 """
 import argparse
 import re
@@ -24,9 +28,9 @@ import time
 
 sys.path.insert(0, "/app" if __import__("os").path.isdir("/app/core") else ".")
 
-from camera.rtsp_probe import build_rtsp_url  # noqa: E402
+from camera.probe.rtsp_probe import build_rtsp_url  # noqa: E402
 from core import security  # noqa: E402
-from database import get_db  # noqa: E402
+from database import cameras, get_db  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("camera_id", type=int)
@@ -37,9 +41,7 @@ ap.add_argument("--yol", default="", help="bazadagisi emas, shu RTSP yo'lni sina
 a = ap.parse_args()
 
 with get_db() as db:
-    row = db.execute(
-        "SELECT name, ip, port, username, password_enc, rtsp_path, sub_path "
-        "FROM cameras WHERE id = %s", (a.camera_id,)).fetchone()
+    row = cameras.get(db, a.camera_id)   # camera_details: ip/port devices'dan
 if row is None:
     sys.exit(f"Kamera {a.camera_id} topilmadi")
 

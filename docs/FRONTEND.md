@@ -6,8 +6,23 @@ bilishingiz shart emas — servis hammasini oddiy HTTP API ga aylantirib
 beradi. Sizning ishingiz: ro'yxatni chizish, video elementga ulash.
 
 Interaktiv API hujjati serverning o'zida: **`http://SERVER:8010/docs`**.
-Ishlayotgan namuna ham bor: `static/app.js` — xarita, player, video devor
-shu API bilan qurilgan, undan nusxa ko'chirish mumkin.
+Ishlayotgan namuna ham bor: Nigoh'ning o'z interfeysi `frontend/` — xarita,
+player, video devor, dashboard shu API bilan qurilgan, undan nusxa
+ko'chirish mumkin. Kirish nuqtasi `frontend/js/main.js`, modullar mavzu
+bo'yicha papkalarda:
+
+| Nima kerak | Qayerdan qarash |
+|---|---|
+| API so'rovlari, 401 da kirish oynasi | `frontend/js/core/api.js` |
+| Kameralar ro'yxatini yuklash va yangilash | `frontend/js/core/data.js` |
+| Login, rol, mehmon rejimi | `frontend/js/auth/auth.js` |
+| Xarita, markerlar, klasterlar | `frontend/js/map/map.js` |
+| Video pleyer (WebRTC -> HLS) | `frontend/js/player/player.js` |
+| Video devor | `frontend/js/wall/video-wall.js` |
+| Dashboard va grafiklar | `frontend/js/dashboard/` |
+| Boshqaruv paneli, kamera shakli, NVR | `frontend/js/admin/` |
+
+Har modul va klassning to'liq xaritasi: [frontend/README.md](../frontend/README.md).
 
 ## Lug'at (2 daqiqa)
 
@@ -182,7 +197,11 @@ Rollar UI uchun nimani anglatadi:
 GET /api/v1/stats/dashboard
 ```
 24 soatlik onlayn grafigi, hudud kesimlari, so'nggi uzilishlar — bitta
-so'rovda. 15 soniyada bir yangilash yetarli.
+so'rovda. 15 soniyada bir yangilash yetarli. Statistika bo'limi faqat
+kirgan foydalanuvchiga (yoki API kalitga) ochiq. Har ko'rsatkich alohida
+endpoint sifatida ham bor (`/stats/summary`, `/stats/availability`,
+`/stats/outages` ...) — to'liq qo'llanma: [STATS_API.md](STATS_API.md).
+Namuna: `frontend/js/dashboard/dashboard.js`.
 
 ## Ko'p uchraydigan xatolar
 

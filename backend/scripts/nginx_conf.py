@@ -4,11 +4,11 @@
 Nima uchun skript, qo'lda ko'chiriladigan namuna emas:
 
 HLS "CDN kaliti" ikkita joyda AYNAN bir xil bo'lishi shart — MediaMTX
-tomonda (`hlsCDNSecret`, uni endi servis avtomatik qo'yadi) va nginx
+tomonda (`hlsCDNSecret`, uni servis avtomatik qo'yadi) va nginx
 tomonda (`proxy_set_header Authorization "Bearer ..."`). Bundan tashqari
 nginx tomoshabin chiptasini o'zi tekshirishi kerak
-(`auth_request /_hlsauth`), aks holda slug'ni bilgan har kim kamerani
-ko'ra oladi.
+(`auth_request /_hlsauth` -> /api/auth/hls), aks holda slug'ni bilgan har
+kim kamerani ko'ra oladi.
 
 Qo'lda ko'chirilgan namunada aynan shu buzildi: 80-portdagi blok to'g'ri
 edi, HTTPS (443) bloki esa docs/DEPLOY.md dagi eski qisqa namunadan
@@ -21,7 +21,9 @@ manba har uzilganda tomoshabin DOIMIY 401 oldi:
 Lokalda muammo ko'rinmasdi, chunki MEDIA_BASE bo'sh bo'lganda brauzer
 videoni to'g'ridan MediaMTX portidan oladi — nginx umuman qatnashmaydi.
 Ana o'sha "lokalda ishlaydi, serverda ishlamaydi" farqi shu skript bilan
-yopiladi: 80 ham, 443 ham bitta manbadan yaratiladi.
+yopiladi: 80 ham, 443 ham bitta manbadan yaratiladi. Konfiguratsiyada
+yana: jurnalga chipta yozilmaydi, HLS keshi o'chiriladi, SSE uchun
+buferlash o'chiq (sabablari chiqadigan faylning izohlarida).
 
 Ishlatish (serverda, loyiha ildizidan):
 
@@ -30,7 +32,18 @@ Ishlatish (serverda, loyiha ildizidan):
 
 Domen `.env` dagi MEDIA_BASE dan olinadi; boshqasi kerak bo'lsa
 `--domain`. Sertifikat hali yo'q bo'lsa (certbot ishlamagan) `--no-ssl`
-bilan faqat 80-portli variant chiqadi.
+bilan faqat 80-portli variant chiqadi. Portlar (PORT, HLS_PORT,
+WEBRTC_PORT) va kalit servis bilan bir xil bo'lishi uchun `.env`
+(`--env`) core.security import qilinishidan OLDIN yuklanadi.
+
+Tarkibi:
+    build(...)              to'liq konfiguratsiya matni (80 yoki 80+443)
+    media_locations(...)    /media/hls, /_hlsauth, /media/whep bloklari
+    api_locations(...)      SSE va qolgan API/konsol bloklari
+    load_env(path)          .env ni muhitga o'qiydi (mavjud qiymat ustun)
+    HEADER                  "avtomatik yaratilgan" sarlavha va o'rnatish yo'riqnomasi
+
+Ishlatadi: core.security.hls_cdn_secret.
 """
 import argparse
 import os

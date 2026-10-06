@@ -17,6 +17,40 @@ Asosiy o'zgarishlar:
   * 0/1 bayroqlar BOOLEAN, "yo'q" faqat NULL (bo'sh satr va 0,0 emas).
   * audit_log — o'zgarmas jurnal.
   * camera_details — o'qish uchun tekis ko'rinish (view).
+
+BAJARILGAN MIGRATSIYA — o'zgartirilmaydi (camera_details keyin 0003 da
+qayta yaratilgan).
+
+Qoidalar va sabablar (izohlar SQL ichida):
+  * "Yo'q" — faqat NULL: 0,0 koordinata Gvineya ko'rfazidagi haqiqiy
+    nuqta, bo'sh satrlar CHECK bilan rad etiladi.
+  * Hudud avval koordinatadan (viloyat chegarasi, data/uz_regions.geojson),
+    bo'lmasa eski matn viloyat nomiga aynan mos kelsa; "Toshkent" kabi
+    noaniq matn taxmin qilinmaydi — NULL ("Belgilanmagan") qoladi.
+  * Har IP:port — bitta qurilma; login/parol, model, firmware eng kichik
+    id'li kameradan olinadi (bir qurilmaning kanallarida bir xil).
+  * Hozirgi kameralar bitta yo'nalishda (3372-3718 km) — 'main' yo'nalishi.
+  * Oxirida sonlar solishtiriladi (`_verify`): mos kelmasa yoki qurilmasiz
+    RTSP kamera qolsa — butun tranzaksiya bekor.
+
+Tarkibi:
+    VERSION = 2
+    apply(db)                   barcha qadamlarni tartib bilan bajaradi
+    point_in_geometry(lng, lat, geom)  GeoJSON Polygon/MultiPolygon ichidami
+                                (migratsiya o'zi yetarli bo'lsin deb nusxa;
+                                ishlaydigan kod repositories/geo.py dagisini ishlatadi)
+    DEFAULT_ORGANIZATION_ID     asosiy tashkilot (1)
+    REGIONS_GEOJSON             viloyat chegaralari fayli
+  qadamlar (ichki): _functions, _organizations, _admin_areas, _rail,
+    _media_nodes, _users, _devices, _cameras, _history, _walls, _audit,
+    _view, _comments, _verify; yordamchilar: _drop_checks, _to_bool, _updated_at
+
+Jadvallar: organizations, admin_areas, rail_lines, rail_units, media_nodes,
+users, sessions, user_admin_areas, user_rail_units, devices, cameras,
+camera_status, camera_events, status_changes, availability_snapshots,
+video_walls, audit_log; view camera_details; triggerlar set_updated_at,
+forbid_change.
+Kim ishlatadi: database/migrations/__init__.py (load) -> database/schema.py.
 """
 import json
 import re
@@ -478,7 +512,7 @@ def _view(db) -> None:
     """Kamera haqidagi hamma narsa bitta tekis qatorda — o'qish uchun.
 
     Yozish har doim asl jadvallarga (cameras, devices, camera_status)
-    database/cameras.py orqali. Ustun nomlari API javoblari bilan bir xil.
+    database/repositories/cameras.py orqali. Ustun nomlari API javoblari bilan bir xil.
     """
     db.execute("""
         CREATE VIEW camera_details AS

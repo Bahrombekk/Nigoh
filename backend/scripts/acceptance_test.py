@@ -1,13 +1,27 @@
-"""Nigoh qabul testi — YANGI (bo'sh) test konteyneriga qarshi.
+r"""Nigoh qabul testi — YANGI (bo'sh) test konteyneriga qarshi, uchidan-uchiga.
 
-Ishga tushirish:
-    docker run -d --name nigoh-sinov -p 8021:8010 \n      -e ADMIN_PAROL=sinov-admin-987 -e NIGOH_API_KEY=test-kalit-abc123 \n      -e PUBLIC_VIEW=0 nigoh:latest
+Ishga tushirish (backend/ dan):
+    docker run -d --name nigoh-sinov -p 8021:8010 \
+      -e ADMIN_PAROL=sinov-admin-987 -e NIGOH_API_KEY=test-kalit-abc123 \
+      -e PUBLIC_VIEW=0 nigoh:latest
     python scripts/acceptance_test.py
 
 Muhit orqali moslash: NIGOH_BASE, NIGOH_KEY, NIGOH_ADMIN_PAROL.
 DIQQAT: faqat sinov konteyneriga qarshi yuriting — test kamera va
 foydalanuvchi yaratib o'chiradi. Baza bo'sh bo'lishi shart emas — boshidagi
 kameralar soni eslab qolinadi va oxirida shunga qaytgani tekshiriladi.
+
+Bosqichlar (har tekshiruv PASS/FAIL, oxirida jami; FAIL bo'lsa chiqish
+kodi 1): 1) /docs, OpenAPI faqat v1 + /health, test UI; 2) anonim
+cheklovlar (PUBLIC_VIEW=0); 3) API kalit, MediaMTX va tugun holati,
+vendors; 4) kamera CRUD (javobda parol yo'q); 5) oqim chiptasi va
+/auth/stream (soxta chipta va tashqi publish rad); 6) probe; 7) NVR
+import dry_run; 8) admin cookie kirishi; 9) operator roli va hudud
+cheklovi; 10) MediaMTX sync, hodisalar, tugun runtime; 11) eski /api
+manzili; 12) tozalash.
+
+Skript import paytidayoq ishlaydi va jonli serverga ulanadi — shuning
+uchun pytest uni yig'maydi (pytest.ini: testpaths = tests).
 """
 import http.cookiejar
 import json

@@ -11,7 +11,7 @@ video ko'radi. Sabab hech qayerda ko'rinmaydi.
 Egalik `authHTTPAddress` bo'yicha aniqlanadi: MediaMTX ruxsatni AYNAN
 o'z backend'idan so'raydi, ya'ni kimga bo'ysunishini o'zi aytib turadi.
 """
-from camera import reconciler, sync
+from camera.media import reconciler, sync
 
 # Qo'shni o'rnatmaning backend'i. Port ataylab shu o'rnatmanikidan
 # boshqa — aks holda test hech narsani tekshirmasdi.
@@ -71,24 +71,24 @@ def test_reconciler_begona_tugunda_mediamtx_kotarmaydi(monkeypatch):
     tsiklda qayta urintirib turardik.
     """
     node = {"id": 1, "name": "Asosiy", "api_base": "http://127.0.0.1:9997"}
-    monkeypatch.setattr(reconciler, "_nodes", lambda: [node])
+    monkeypatch.setattr(reconciler.service, "_nodes", lambda: [node])
     monkeypatch.setattr(reconciler.sync, "api_status", lambda api: sync.FOREIGN)
     monkeypatch.setattr(reconciler.sync, "_foreign_message", lambda api: "begona")
 
     spawned = []
-    monkeypatch.setattr(reconciler, "_spawn", lambda: spawned.append(1) or True)
+    monkeypatch.setattr(reconciler.service, "_spawn", lambda: spawned.append(1) or True)
     pushed = []
     monkeypatch.setattr(reconciler.sync, "push_to_api",
                         lambda cams, api_base=None: pushed.append(1) or {})
 
-    reconciler._foreign.clear()
-    reconciler._foreign_warned.clear()
+    reconciler.service._foreign.clear()
+    reconciler.service._foreign_warned.clear()
     try:
-        assert reconciler._tick(lambda: [], False) is False
+        assert reconciler.service._tick(lambda: [], False) is False
         assert not spawned, "begona instansiyada MediaMTX ko'tarildi"
         assert not pushed, "begona instansiyaga yo'llar yuborildi"
         assert reconciler.foreign_nodes() == 1
     finally:
-        reconciler._foreign.clear()
-        reconciler._foreign_warned.clear()
-        reconciler._reachable.clear()
+        reconciler.service._foreign.clear()
+        reconciler.service._foreign_warned.clear()
+        reconciler.service._reachable.clear()

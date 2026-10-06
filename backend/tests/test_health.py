@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from api import create_app
-from api import health as health_api
+from app import health as health_api
+from app.factory import create_app
 
 
 def test_health_kalitsiz_va_shakli():

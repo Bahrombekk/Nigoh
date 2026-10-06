@@ -1,9 +1,9 @@
 import pytest
 from fastapi import HTTPException
 
-from api.admin import parse_channels, spread_point
-from api.helpers import channel_path
-from camera.fast_start import channel_from_path, channel_marked
+from camera.api.admin import parse_channels, spread_point
+from camera.media.fast_start import channel_from_path, channel_marked
+from camera.probe.detect import channel_path
 
 
 def test_parse_channels():
@@ -53,7 +53,7 @@ def test_channel_marked_koreatilgan_kanalni_ajratadi():
     Takror kamerani aniqlash shu farqqa tayanadi: `/stream1` da kanal
     yo'q (None), `/cam/realmonitor?channel=1&subtype=0` da bor (1).
     Ikkisi bir xil bo'lib qolsa `/stream1` va `/stream2` bitta kamera
-    deb tanilardi (`api/admin.py:_rtsp_twin`).
+    deb tanilardi (`camera/api/admin.py:_rtsp_twin`).
     """
     assert channel_marked("/Streaming/Channels/101") == 1
     assert channel_marked("/cam/realmonitor?channel=1&subtype=0") == 1

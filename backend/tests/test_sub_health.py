@@ -9,7 +9,7 @@ og'irlashtiradi (o'lchovda asosiy oqim 7,88 Mbit/s, sub 1,20 Mbit/s).
 """
 import pytest
 
-from camera import reconciler
+from camera.media import reconciler
 
 NODE = {"id": 1, "name": "Asosiy", "api_base": "http://127.0.0.1:9997"}
 
@@ -35,12 +35,12 @@ def soat(monkeypatch):
 @pytest.fixture()
 def toza():
     def tozala():
-        for t in (reconciler._sub_ok, reconciler._sub_zero,
-                  reconciler._sub_tekshiruvda, reconciler._sub_olik):
+        for t in (reconciler.service._sub_ok, reconciler.service._sub_zero,
+                  reconciler.service._sub_tekshiruvda, reconciler.service._sub_olik):
             t.clear()
         # Bazadan yuklash sinovda o'tkazib yuboriladi — testlar
         # bayroqlarni o'zlari beradi.
-        reconciler._sub_olik_yuklandi = True
+        reconciler.service._sub_olik_yuklandi = True
     tozala()
     yield
     tozala()
@@ -86,23 +86,23 @@ def test_soralgan_sub_kelmasa_tekshiruvga_yuboriladi(
     yollar = {"kam_sub": {"ready": False, "bytesReceived": 0}}
 
     # Birinchi ko'rish — soat endi boshlandi.
-    reconciler._check_sub_health(NODE, yollar)
+    reconciler.service._check_sub_health(NODE, yollar)
     assert shubha == []
 
     # Muddat to'lmagan.
     soat.surish(reconciler.SUB_DEAD_AFTER - 1)
-    reconciler._check_sub_health(NODE, yollar)
+    reconciler.service._check_sub_health(NODE, yollar)
     assert shubha == []
 
     # SUB_DEAD_AFTER to'ldi — shubha bor, lekin bayroq HALI qo'yilmaydi.
     soat.surish(2)
-    reconciler._check_sub_health(NODE, yollar)
+    reconciler.service._check_sub_health(NODE, yollar)
     assert shubha == ["kam_sub"]
     assert yozuvlar == []
 
     # Takror yuborilmaydi (tekshiruv tugamaguncha).
     soat.surish(reconciler.SUB_DEAD_AFTER * 2)
-    reconciler._check_sub_health(NODE, yollar)
+    reconciler.service._check_sub_health(NODE, yollar)
     assert shubha == ["kam_sub"]
 
 
@@ -116,7 +116,7 @@ def test_soralmagan_yol_belgilanmaydi(monkeypatch, toza, soat, yozuvlar, shubha)
     yollar = {"kam_sub": {"ready": False, "bytesReceived": 0}}
     for _ in range(5):
         soat.surish(reconciler.SUB_DEAD_AFTER)
-        reconciler._check_sub_health(NODE, yollar)
+        reconciler.service._check_sub_health(NODE, yollar)
     assert yozuvlar == []
     assert shubha == []
 
@@ -129,7 +129,7 @@ def test_bir_marta_ishlagan_sub_keyin_yopilsa_belgilanmaydi(
     nosozlikka o'xshab ko'rinadi, lekin sub aslida sog'lom.
     """
     _issiq(monkeypatch, {"kam_sub"})
-    reconciler._check_sub_health(
+    reconciler.service._check_sub_health(
         NODE, {"kam_sub": {"ready": True, "bytesReceived": 9000}})
     assert yozuvlar == [(["kam"], False)]      # ishlayapti -> bayroq olinadi
     yozuvlar.clear()
@@ -138,14 +138,14 @@ def test_bir_marta_ishlagan_sub_keyin_yopilsa_belgilanmaydi(
     yopiq = {"kam_sub": {"ready": False, "bytesReceived": 0}}
     for _ in range(5):
         soat.surish(reconciler.SUB_DEAD_AFTER)
-        reconciler._check_sub_health(NODE, yopiq)
+        reconciler.service._check_sub_health(NODE, yopiq)
     assert yozuvlar == []
 
 
 def test_ishlayotgan_sub_bayrogi_olinadi(monkeypatch, toza, soat, yozuvlar):
     """Operator registratorda sub'ni yoqsa — tizim o'zi bekor qiladi."""
     _issiq(monkeypatch, {"kam_sub"})
-    reconciler._check_sub_health(
+    reconciler.service._check_sub_health(
         NODE, {"kam_sub": {"ready": True, "bytesReceived": 1}})
     assert yozuvlar == [(["kam"], False)]
 
@@ -156,7 +156,7 @@ def test_ogirish_chiqishi_hisobga_olinmaydi(monkeypatch, toza, soat, yozuvlar, s
     yollar = {"kam_sub_h264": {"ready": False, "bytesReceived": 0}}
     for _ in range(5):
         soat.surish(reconciler.SUB_DEAD_AFTER)
-        reconciler._check_sub_health(NODE, yollar)
+        reconciler.service._check_sub_health(NODE, yollar)
     assert yozuvlar == []
 
 
@@ -165,7 +165,7 @@ def test_asosiy_yol_hisobga_olinmaydi(monkeypatch, toza, soat, yozuvlar, shubha)
     yollar = {"kam": {"ready": False, "bytesReceived": 0}}
     for _ in range(5):
         soat.surish(reconciler.SUB_DEAD_AFTER)
-        reconciler._check_sub_health(NODE, yollar)
+        reconciler.service._check_sub_health(NODE, yollar)
     assert yozuvlar == []
 
 
@@ -179,22 +179,22 @@ def test_kadr_beradigan_kamera_belgilanmaydi(monkeypatch, toza, yozuvlar):
     monkeypatch.setattr(reconciler, "cameras_by_slug", lambda slugs: [
         {"id": 1, "slug": "kam", "ip": "10.0.0.1", "port": 554,
          "username": "a", "password_enc": b"", "sub_path": "/sub"}])
-    monkeypatch.setattr(reconciler, "_sub_kadr_beradimi", lambda cam: True)
+    monkeypatch.setattr(reconciler.service, "_sub_kadr_beradimi", lambda cam: True)
 
-    reconciler._sub_tasdiqla(["kam_sub"])
+    reconciler.service._sub_tasdiqla(["kam_sub"])
     assert yozuvlar == []
-    assert reconciler._sub_tekshiruvda == set()
+    assert reconciler.service._sub_tekshiruvda == set()
 
 
 def test_kadr_bermasa_belgilanadi(monkeypatch, toza, yozuvlar):
     monkeypatch.setattr(reconciler, "cameras_by_slug", lambda slugs: [
         {"id": 1, "slug": "kam", "ip": "10.0.0.1", "port": 554,
          "username": "a", "password_enc": b"", "sub_path": "/sub"}])
-    monkeypatch.setattr(reconciler, "_sub_kadr_beradimi", lambda cam: False)
+    monkeypatch.setattr(reconciler.service, "_sub_kadr_beradimi", lambda cam: False)
 
-    reconciler._sub_tasdiqla(["kam_sub"])
+    reconciler.service._sub_tasdiqla(["kam_sub"])
     assert yozuvlar == [(["kam"], True)]
-    assert reconciler._sub_tekshiruvda == set()
+    assert reconciler.service._sub_tekshiruvda == set()
 
 
 def test_describe_javob_bersa_ham_kadr_shart(monkeypatch, toza):
@@ -211,7 +211,7 @@ def test_describe_javob_bersa_ham_kadr_shart(monkeypatch, toza):
     monkeypatch.setattr(reconciler.security, "decrypt", lambda v: "p")
     cam = {"ip": "10.0.0.1", "port": 554, "username": "a",
            "password_enc": b"", "sub_path": "/sub"}
-    assert reconciler._sub_kadr_beradimi(cam) is False
+    assert reconciler.service._sub_kadr_beradimi(cam) is False
     assert chaqirildi and "/sub" in chaqirildi[0]
 
 
@@ -231,12 +231,12 @@ def test_udp_kamera_tcp_bilan_ayblanmaydi(monkeypatch, toza):
     monkeypatch.setattr(reconciler.security, "decrypt", lambda v: "p")
     cam = {"ip": "10.0.0.1", "port": 554, "username": "a", "password_enc": b"",
            "sub_path": "/sub", "rtsp_udp": 1}
-    reconciler._sub_kadr_beradimi(cam)
+    reconciler.service._sub_kadr_beradimi(cam)
     assert chaqiruv.get("udp") is True
 
     chaqiruv.clear()
     cam["rtsp_udp"] = 0
-    reconciler._sub_kadr_beradimi(cam)
+    reconciler.service._sub_kadr_beradimi(cam)
     assert chaqiruv.get("udp") is False
 
 
@@ -252,14 +252,14 @@ def test_transport_sinovi_ketayotganda_hukm_kutadi(
     yollar = {"kam_sub": {"ready": False, "bytesReceived": 0}}
     for _ in range(5):
         soat.surish(reconciler.SUB_DEAD_AFTER)
-        reconciler._check_sub_health(NODE, yollar)
+        reconciler.service._check_sub_health(NODE, yollar)
     assert shubha == []
 
     # Sinov tugadi — endi odatdagi tartibda shubhaga tushadi.
     monkeypatch.setattr(reconciler.transport, "busy", lambda slug: False)
-    reconciler._check_sub_health(NODE, yollar)
+    reconciler.service._check_sub_health(NODE, yollar)
     soat.surish(reconciler.SUB_DEAD_AFTER + 1)
-    reconciler._check_sub_health(NODE, yollar)
+    reconciler.service._check_sub_health(NODE, yollar)
     assert shubha == ["kam_sub"]
 
 
@@ -276,18 +276,18 @@ def test_yaroqsiz_deb_bilingan_sub_qayta_tekshirilmaydi(
     """
     _issiq(monkeypatch, {"kam_sub"})
     yollar = {"kam_sub": {"ready": False, "bytesReceived": 0}}
-    reconciler._sub_olik.add("kam_sub")
+    reconciler.service._sub_olik.add("kam_sub")
     for _ in range(5):
         soat.surish(reconciler.SUB_DEAD_AFTER)
-        reconciler._check_sub_health(NODE, yollar)
+        reconciler.service._check_sub_health(NODE, yollar)
     assert shubha == []
 
 
 def test_sub_yana_ishlasa_royxatdan_chiqadi(monkeypatch, toza, soat, yozuvlar):
     """Kadr kelsa — bayroq ham, ichki ro'yxat ham tozalanadi."""
     _issiq(monkeypatch, {"kam_sub"})
-    reconciler._sub_olik.add("kam_sub")
-    reconciler._check_sub_health(
+    reconciler.service._sub_olik.add("kam_sub")
+    reconciler.service._check_sub_health(
         NODE, {"kam_sub": {"ready": True, "bytesReceived": 4096}})
-    assert "kam_sub" not in reconciler._sub_olik
+    assert "kam_sub" not in reconciler.service._sub_olik
     assert yozuvlar == [(["kam"], False)]

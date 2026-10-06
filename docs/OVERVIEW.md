@@ -3,7 +3,9 @@
 Bu hujjat loyiha egasi uchun: hech qanday tayyorgarliksiz o'qib, tizim
 nima, qanday ishlaydi va nega aynan shunday qurilganini to'liq tushunish
 uchun. Boshqa hujjatlar rol bo'yicha: [DEPLOY.md](DEPLOY.md) (serverga
-qo'yish), [BACKEND.md](BACKEND.md), [FRONTEND.md](FRONTEND.md).
+qo'yish), [BACKEND.md](BACKEND.md), [FRONTEND.md](FRONTEND.md),
+[STATS_API.md](STATS_API.md) (statistika API). Kod xaritasi:
+[backend/README.md](../backend/README.md), [frontend/README.md](../frontend/README.md).
 
 ---
 
@@ -127,80 +129,109 @@ har biri himoyalangan jarayon.
 
 ## 5. Papkalar: nima qayerda va nega
 
+Loyiha ikki qismga bo'lingan: **backend** (server) va **frontend**
+(interfeys). Ikkalasi bir-biri bilan faqat HTTP (`/api/...`) orqali
+gaplashadi. Backend ichida kod **mavzu bo'yicha** bo'lingan: har papkada
+o'sha mavzuning hamma narsasi — endpointlari, xizmatlari, bazaga murojaati.
+
 ```
-nigoh-servis/
-├── main.py              kirish nuqtasi: bootstrap + uvicorn (54 qator xolos)
+kamera-xarita/
+├── backend/                 SERVER (backend/README.md)
+│   ├── main.py              kirish nuqtasi: bootstrap + uvicorn
+│   ├── stream_launcher.py   MediaMTX chaqiradigan yupqa qobiq
+│   ├── app/                 ilovani yig'ish: create_app (factory.py), bootstrap,
+│   │                        sozlamalar, kirish darajalari, /health
+│   ├── database/            BAZA — PostgreSQL bilan bog'liq hamma narsa:
+│   │                        ulanish, migratsiyalar, repozitoriylar, skriptlar, zaxiralar
+│   ├── camera/              KAMERA: endpointlar (camera/api/), MediaMTX (camera/media/),
+│   │                        fon kuzatuvi (camera/monitoring/), tekshiruv (camera/probe/)
+│   ├── stats/               STATISTIKA: /stats/*, dashboard, uptime hisobi
+│   ├── users/               FOYDALANUVCHILAR: /auth/*, rollar, operator hududlari
+│   ├── walls/               VIDEO DEVOR: server tomonidagi mozaika
+│   ├── core/                umumiy: env, paths, log, bus, security, alerts, watchdog ...
+│   ├── tests/               pytest
+│   └── scripts/             yordamchi skriptlar (geo import, benchmarklar ...)
 │
-├── app/                 BOSHQARUV QATLAMI (web)
-│   ├── config.py        sozlamalar — hammasi muhit o'zgaruvchisidan
-│   ├── models.py        so'rov shakllari (Pydantic tekshiradi)
-│   ├── helpers.py       "tarjima": baza qatori → brauzer/MediaMTX ko'rinishi
-│   ├── bootstrap.py     birinchi ishga tushirish: baza, admin, fon xizmatlar
-│   ├── routes_auth.py   /auth — kirish/chiqish + MediaMTX chipta tekshiruvi
-│   ├── routes_public.py /cameras — xarita, oqim, surat (ochiq)
-│   ├── routes_stats.py  /stats — dashboard tarixi
-│   └── routes_admin.py  /admin — CRUD, NVR, skaner, foydalanuvchi, tugunlar
+├── frontend/                INTERFEYS (frontend/README.md) — build qadamisiz ES modullar
+│   ├── index.html  css/  assets/
+│   └── js/                  main.js + core/ auth/ layout/ map/ player/ wall/ dashboard/ admin/
 │
-├── media/               MEDIA QATLAMI (MediaMTX bilan aloqa)
-│   ├── sync.py          mediamtx.yml yaratish + jonli API (yo'l qo'shish/o'chirish)
-│   ├── reconciler.py    har 30 s: holatni kelishtirish, yiqilsa qayta ko'tarish
-│   └── launcher.py      H.265→H.264 o'girish jarayoni (FFmpeg)
-│
-├── core/                UMUMIY INFRATUZILMA (ikkala qatlam ishlatadi)
-│   ├── db.py            SQLite sxema + migratsiya (ustun yetishmasa o'zi qo'shadi)
-│   ├── security.py      parollar, sessiyalar, oqim chiptalari
-│   ├── health.py        har 60 s: kameralar tirikmi (arzon TCP tekshiruv)
-│   ├── rtsp_probe.py    kamerani chuqur tekshirish (tarmoq→parol→kodek→o'lcham)
-│   ├── fast_start.py    surat (poster) + keyframe so'rash
-│   ├── stats.py         dashboard tarixi (30 kun saqlanadi)
-│   ├── events.py        hodisalar jurnali (muzladi/tiklandi/restart)
-│   ├── alerts.py        Telegram ogohlantirishlari (ixtiyoriy)
-│   └── log.py           strukturali JSON log (nigoh.log)
-│
-├── static/              test UI — xarita, video devor, boshqaruv (namuna)
-├── scripts/             yordamchi skriptlar
-├── stream_launcher.py   MediaMTX chaqiradigan yupqa qobiq (ildizda turishi shart)
-│
-├── Dockerfile           backend + MediaMTX + FFmpeg — bitta image
-├── docker-compose.yml   ishga tushirish retsepti
-├── .env.example         barcha sozlamalar izohlari bilan
-├── docs/                hujjatlar (shu fayl ham)
-└── data/                O'ZGARUVCHAN MA'LUMOT (volume) — pastda batafsil
+├── mediamtx/                MediaMTX dasturining o'zi (git'da yo'q, yuklab olinadi)
+├── deploy/                  update.sh, nginx izohi (deploy/README.md)
+├── docs/                    hujjatlar (shu fayl ham)
+├── Dockerfile               backend + MediaMTX + FFmpeg — bitta image
+├── docker-compose.yml       ishga tushirish retsepti
+├── .env.example             barcha sozlamalar izohlari bilan
+└── start.bat                Windows'da bir bosishda ishga tushirish
 ```
 
-Qatlamlar ataylab ajratilgan: `app/` MediaMTX bilan faqat
-`from media import sync` orqali gaplashadi. Ertaga MediaMTX o'rniga boshqa
-dvijok qo'yilsa, faqat `media/` o'zgaradi.
+Har papkaning batafsil xaritasi o'z README'sida:
+[backend/app](../backend/app/README.md),
+[backend/database](../backend/database/README.md),
+[backend/camera](../backend/camera/README.md),
+[backend/stats](../backend/stats/README.md),
+[backend/users](../backend/users/README.md),
+[backend/walls](../backend/walls/README.md),
+[frontend](../frontend/README.md).
 
-### data/ — eng qimmat papka
+Bog'lanish yo'nalishi ataylab bir tomonlama: `core/` hech kimga bog'liq
+emas; `database/` faqat `core/` ga; mavzu papkalari (`camera/`, `stats/`,
+`users/`, `walls/`) `database/` va `core/` ga; `app/` hammasini yig'adi.
+Bazaga faqat `database/` orqali murojaat qilinadi
+(`from database import cameras, get_db`) — SQL boshqa joyda yozilmaydi.
+MediaMTX bilan aloqa faqat `camera/media/` da: ertaga MediaMTX o'rniga
+boshqa dvijok qo'yilsa, asosan shu papka o'zgaradi.
 
-| Fayl | Nima | Yo'qolsa nima bo'ladi |
+### Ma'lumot qayerda — eng qimmat narsalar
+
+Ma'lumot ikki joyda yotadi: **PostgreSQL bazasi** (kameralar,
+foydalanuvchilar, hodisalar, statistika) va **ma'lumot papkasi** `DATA_DIR`
+(standart — repo ildizi, Docker'da `/data` volume, `NIGOH_DATA` bilan
+o'zgartiriladi).
+
+| Nima | Qayerda | Yo'qolsa nima bo'ladi |
 |---|---|---|
-| `cameras.db` | SQLite: kameralar, foydalanuvchilar, hodisalar, statistika | hamma sozlama ketadi |
-| `secret.key` | kamera parollarini ochadigan kalit | **parollar tiklanmaydi** — kameralarni qayta kiritish kerak |
-| `mediamtx.yml` | avto-yaratiladi, tegilmaydi | o'zi qayta yoziladi (zarari yo'q) |
-| `nigoh.log` | JSON hodisalar jurnali | tarix ketadi (zarari kam) |
-| `mediamtx.log` | video dvijok logi | tarix ketadi (zarari kam) |
+| baza `nigoh` | PostgreSQL 17 servisi (Docker'da emas; manzil `.env` dagi `DATABASE_URL`) | hamma sozlama ketadi |
+| `secret.key` | `DATA_DIR` — kamera parollarini ochadigan kalit | **parollar tiklanmaydi** — kameralarni qayta kiritish kerak |
+| `mediamtx.yml` | `DATA_DIR`, avto-yaratiladi, tegilmaydi | o'zi qayta yoziladi (zarari yo'q) |
+| `snapshots/` | `DATA_DIR`, kamera suratlari | qayta olinadi (zarari yo'q) |
+| `logs/` | `DATA_DIR`, toifalarga ajratilgan loglar va MediaMTX logi (docs/LOGGING.md) | tarix ketadi (zarari kam) |
 
-**Zaxira = shu papkani arxivlash.** Boshqa hech narsa kerak emas.
+**Zaxira = baza dump'i + `secret.key`.** Ikkalasini birga
+`backend/database/scripts/backup.sh` oladi (`pg_dump` + kalit nusxasi,
+standart holda `backend/database/backups/` ga). Ishlab turgan baza
+papkasidan olingan fayl nusxasi zaxira EMAS.
 
 ---
 
 ## 6. Baza: jadvallar
 
+Baza — PostgreSQL 17 (2026-10-05 da SQLite'dan ko'chirildi). Asosiy
+jadvallar (sxema v2):
+
 | Jadval | Nima saqlaydi |
 |---|---|
-| `cameras` | kameralar: nom, hudud, koordinata, IP, shifrlangan parol, kodek, o'lcham, qaysi tugun |
-| `admins` | foydalanuvchilar: login, parol hash'i, rol (`admin`/`operator`) |
-| `user_regions` | operator qaysi hududlarni ko'radi |
+| `cameras` | kamera sozlamasi: nom, hudud, koordinata, ulanish, shifrlangan parol, qaysi tugun |
+| `camera_status` | tez-tez yangilanadigan jonli holat: kodek, o'lcham, fps, `last_seen`, pasport tekshiruvi |
+| `devices` | qurilmalar (kamera/NVR): IP, ishlab chiqaruvchi, model, pasport |
+| `camera_details` | ko'rinish (view): kamera + qurilma + holat bitta qatorda — kamera o'qish shundan |
+| `organizations` | har asosiy yozuvning egasi (hozircha bitta) |
+| `admin_areas` | hududlar (viloyat/tuman) va chegaralari |
+| `rail_lines`, `rail_units` | temir yo'l liniyalari va bo'linmalari (km/piket) |
+| `users` | foydalanuvchilar: login, parol hash'i, rol (`admin`/`operator`) |
+| `user_admin_areas`, `user_rail_units` | operator qaysi hududlarni ko'radi |
 | `sessions` | kirish sessiyalari (12 soat) |
-| `nodes` | MediaMTX tugunlari (bir nechta server bo'lsa) |
-| `events` | media hodisalari: oqim muzladi/tiklandi, restart (30 kun) |
-| `stats_region`, `stats_event` | dashboard tarixi: onlayn grafigi, uzilishlar (30 kun) |
+| `media_nodes` | MediaMTX tugunlari (bir nechta server bo'lsa) |
+| `camera_events` | hodisalar: oqim muzladi/tiklandi, onlayn/oflayn (uptime manbai) |
+| `status_changes`, `availability_snapshots` | dashboard tarixi: holat o'zgarishlari, 5 daqiqalik suratlar (30 kun) |
+| `video_walls` | server tomonidagi video devor tanlovlari |
+| `audit_log` | o'zgarmas o'zgarishlar jurnali |
 
-Sxema o'zi migratsiya bo'ladi: yangi versiya eski bazani ochsa,
-yetishmagan ustunlarni o'zi qo'shadi. "Bazani qo'lda yangilash" degan
-tushuncha yo'q.
+Sxema migratsiyalar bilan yangilanadi: `backend/database/migrations/`
+dagi `NNNN_*.py` fayllar backend ishga tushganda tartib bilan, bir marta
+bajariladi. "Bazani qo'lda yangilash" degan tushuncha yo'q — yangi
+o'zgarish yangi migratsiya fayli bilan kiritiladi. Batafsil:
+[backend/database/README.md](../backend/database/README.md).
 
 ---
 
@@ -229,24 +260,32 @@ metrics (9998) faqat 127.0.0.1 da — tashqaridan umuman ko'rinmaydi.
 
 ## 8. O'z-o'zini boshqaradigan fon xizmatlari
 
-Serverda uch "qorovul" doim aylanib turadi — shuning uchun qo'lda deyarli
-hech narsa qilinmaydi:
+Serverda uch asosiy "qorovul" doim aylanib turadi — shuning uchun qo'lda
+deyarli hech narsa qilinmaydi (hammasini `backend/app/bootstrap.py` ishga
+tushiradi):
 
-**health (har 60 s).** Har kamera IP:portiga arzon TCP tekshiruv
+**health (har 60 s, `camera/monitoring/health.py`).** Har kamera IP:portiga arzon TCP tekshiruv
 (millisekundlar, trafik nol). Natija: xaritada yashil/qizil nuqta,
 `last_seen`, Telegram xabari. Takror manzillar birlashtiriladi: 2000
 kamera 40 NVR'da bo'lsa — 40 ta tekshiruv xolos.
 
-**reconciler (har 30 s).** Uch ish: (1) bazadagi kerakli holatni
+**reconciler (har 30 s, `camera/media/reconciler.py`).** Uch ish: (1) bazadagi kerakli holatni
 MediaMTX'dagi haqiqiy holat bilan solishtirib farqni tuzatadi — kamera
 qo'shdingiz, 30 soniyada ishlaydi, restart yo'q; (2) lokal MediaMTX
 yiqilgan bo'lsa qayta ishga tushiradi; (3) faol oqimlarning bayt hisobini
-kuzatadi — 30 soniyada bitta bayt kelmagan oqim "muzlagan" (`stalled`)
+kuzatadi — 20 soniya bayt hisobi qo'zg'almagan oqim "muzlagan" (`stalled`)
 deb belgilanadi. TCP tekshiruv buni ko'rmaydi: registrator portga javob
 beraveradi, lekin kanal tasvir bermay qolgan bo'ladi.
 
-**stats (har 5 daqiqa).** Hudud kesimida nechta kamera onlayn edi —
-dashboard grafigi shu yozuvlardan chiziladi. 30 kundan eskisi o'chadi.
+**stats (`stats/recorder.py`, har 5 daqiqa).** Har kameraning holati
+yozib boriladi (holat o'zgarishlari va 5 daqiqalik suratlar) — dashboard
+grafiklari va uptime hisobi shu yozuvlardan chiziladi. 30 kundan eskisi
+o'chadi.
+
+Ularga yordamchi ikki xizmat qo'shiladi: **snapshots**
+(`camera/monitoring/snapshots.py`) kamera suratlarini diskda yangilab
+turadi, **passport** (`camera/monitoring/passport.py`) bo'sh qolgan
+kodek/model maydonlarini fonda to'ldiradi.
 
 Uchchalasining natijasi bitta maydonga jamlanadi — har kameradagi
 **`state`**: `online / offline / stalled / unknown / disabled`.
@@ -294,7 +333,7 @@ Foydalanuvchi ─▶ Ularning frontend ─▶ Ularning backend (o'z rollari)
 - Kamera nomi/kategoriyasi/joyi kabi metadata'ni ular o'z bazasida
   yuritishi mumkin (`nigoh_camera_id` bog'lash bilan); Nigoh uchun
   majburiysi — ulanish ma'lumotlari (IP, parol, yo'l).
-- Nigoh'ning ichki `operator` roli va test UI bu rejimda ishlatilmaydi —
+- Nigoh'ning ichki `operator` roli va o'z interfeysi (`frontend/`) bu rejimda ishlatilmaydi —
   ular Nigoh'ni mustaqil ishlatish va birinchi kunlarda kamera kiritish
   uchun turibdi.
 
@@ -303,7 +342,7 @@ Batafsil, kod namunasi bilan: [BACKEND.md](BACKEND.md).
 ## 10. Ko'p tugun: kameralar har xil joyda bo'lsa
 
 Kameralar bir necha bino/shaharda bo'lsa, har joyga bitta MediaMTX
-qo'yiladi (`nodes` jadvali):
+qo'yiladi (`media_nodes` jadvali):
 
 ```
       MARKAZ (Nigoh backend + asosiy MediaMTX)
@@ -336,7 +375,8 @@ shu ikkala mexanizm buziladi. Tashqaridan baribir bitta mikroservis.
 yuradi va o'z IP'sini e'lon qiladi — port map qilinsa chalkashadi. Host
 rejimida hammasi to'g'ridan ishlaydi.
 
-**Nega `/data` volume?** Kod (image) va ma'lumot (volume) ajratilgan:
+**Nega `/data` volume?** Kod (image) va fayllar (volume) ajratilgan, baza esa
+hostdagi PostgreSQL'da:
 `docker compose up -d --build` bilan istalgan payt yangilaysiz — kameralar,
 parollar, tarix joyida qoladi.
 
@@ -354,11 +394,12 @@ kod o'zgardi → git commit → serverda: git pull (yoki papkani ko'chirish)
 | Nima kerak | Buyruq / manzil |
 |---|---|
 | Ishga tushirish | `docker compose up -d --build` |
-| Loglarni ko'rish | `docker logs nigoh` yoki `data/nigoh.log` (JSON) |
+| Loglarni ko'rish | `GET /api/v1/admin/logs` yoki `logs/<toifa>/` (JSON); konsol: `docker logs nigoh` |
+| Baza holati | `GET /api/v1/admin/db` (sxema versiyasi, hajm) |
 | Salomatlik | `GET /api/v1/admin/status` yoki brauzerda `/#dash` |
 | Admin parolini almashtirish | `docker exec nigoh python main.py --admin-parol Yangi123` |
 | Operator ochish | `POST /api/v1/admin/users` (`role: operator`, `regions: [...]`) |
-| Zaxira | `tar czf zaxira.tar.gz data/` |
+| Zaxira | `backend/database/scripts/backup.sh` (baza + `secret.key`) |
 | API hujjati | `http://SERVER:8010/docs` |
 | Yangilash | `docker compose up -d --build` |
 
@@ -373,6 +414,7 @@ kod o'zgardi → git commit → serverda: git pull (yoki papkani ko'chirish)
   **tomoshabinlar soniga** bog'liq.
 - Xavfsizlik: shifrlangan parollar → rollar → oqim chiptalari →
   yopiq ichki portlar.
-- Hamma qimmat narsa `data/` papkasida — zaxira shu.
+- Hamma qimmat narsa — PostgreSQL bazasi va `secret.key`; zaxirani ikkalasini
+  birga `backend/database/scripts/backup.sh` oladi.
 - Dasturchilarga bitta eshik: `/api/v1` + `/docs`. MediaMTX — ichki ish,
   unga hech kim tegmaydi.

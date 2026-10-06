@@ -1,13 +1,29 @@
 """Nigoh — jarayon ichidagi oddiy pub/sub (SSE abonentlari uchun).
 
-Fon thread'lari (health sweep, reconciler) holat o'zgarishlarini shu
-yerga e'lon qiladi; `/events` SSE endpointi obuna bo'lib brauzerga yoki
+Fon thread'lari (health sweep, reconciler, suratlar) holat o'zgarishlarini
+shu yerga e'lon qiladi; `/events` SSE endpointi obuna bo'lib brauzerga yoki
 asosiy tizimga uzatadi. Redis va shunga o'xshashlar kerak emas — hammasi
 bitta jarayonda.
 
 Thread'lar bilan asyncio orasidagi ko'prik: publisher'lar istalgan
 thread'dan `publish()` chaqiradi, hodisa event loop'ga
-`call_soon_threadsafe` orqali o'tadi.
+`call_soon_threadsafe` orqali o'tadi. E'lon qilish hech qachon
+publisher'ni to'xtatmaydi: abonent yo'q yoki loop hali o'rnatilmagan
+bo'lsa jim o'tadi; sekin abonentning navbati to'lsa hodisa tashlanadi.
+
+Tarkibi:
+    MAX_SUBSCRIBERS        SSE ulanish chegarasi (50) — undan ortig'i 503 oladi
+    QUEUE_SIZE             abonent navbati (200) — orqada qolsa hodisa tashlanadi
+    set_loop(loop)         ilova ishga tushganda event loop'ni beradi
+    subscribe()            yangi abonent navbati; chegara to'lgan bo'lsa None
+    unsubscribe(q)         abonentni olib tashlaydi
+    subscriber_count()     hozirgi abonentlar soni
+    publish(event, data)   hodisa e'lon qilish — istalgan thread'dan xavfsiz
+
+Kim ishlatadi: app/factory.py (set_loop — lifespan), camera/api/events.py
+    (subscribe — SSE), camera/monitoring/health.py va
+    camera/media/reconciler.py ("state"), camera/monitoring/snapshots.py
+    ("snapshot"), app/health.py (subscriber_count).
 """
 import asyncio
 import threading

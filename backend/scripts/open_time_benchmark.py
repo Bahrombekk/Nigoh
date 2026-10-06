@@ -9,8 +9,14 @@ alohida o'lchanadi, chunki ularning sababi ham, yechimi ham har xil:
     playlist_ms birinchi m3u8 — MediaMTX muxer tayyor bo'lishini kutish.
     segment_ms  birinchi videobo'lak — kameradan keyframe kutish.
 
-    python scripts/open_time_benchmark.py            # aralash namuna
+Har kamera ikki marta ochiladi: sovuq va issiq — farqi muammoning
+qayerdaligini ko'rsatadi.
+
+    python scripts/open_time_benchmark.py            # aralash namuna (4 H264 + 4 H265)
     python scripts/open_time_benchmark.py 28 31      # aniq kameralar
+
+NIGOH_URL va NIGOH_KEY repo ildizidagi `.env` dan olinadi.
+Ishlatadi: scripts/geo_import.py (Service).
 """
 import os
 import pathlib

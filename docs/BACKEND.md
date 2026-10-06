@@ -6,6 +6,8 @@ servis sifatida ulaysiz, kamera protokollari (RTSP, kodeklar, oqimlar)
 uning ichida qoladi.
 
 Interaktiv API hujjati: **`http://SERVER:8010/docs`** (Swagger) va `/redoc`.
+Kod xaritasi (qaysi fayl nima qiladi): [backend/README.md](../backend/README.md);
+statistika endpointlari: [STATS_API.md](STATS_API.md).
 
 ## Servis nima qiladi (1 daqiqada)
 
@@ -31,16 +33,20 @@ Sizning tizimingiz ──REST──▶ Nigoh (8010)
 
 Hammasi `/api/v1` ostida, resource-based:
 
-| Prefiks | Kirish | Nima bor |
-|---|---|---|
-| `/api/v1/cameras` | ochiq* | ro'yxat (bbox filtri), oqim manzili, surat |
-| `/api/v1/stats` | ochiq* | dashboard tarixi |
-| `/api/v1/auth` | — | login/logout/me; `/auth/stream` ni MediaMTX chaqiradi |
-| `/api/v1/admin` | faqat `admin` roli | kameralar CRUD, NVR import, skaner, foydalanuvchilar, tugunlar, holat, hodisalar |
+| Prefiks | Kirish | Nima bor | Kod |
+|---|---|---|---|
+| `/api/v1/cameras`, `/streams`, `/events`, `/metrics` | ochiq* | ro'yxat (bbox filtri), oqim manzili, surat, holat SSE | `backend/camera/api/` |
+| `/api/v1/walls` | ochiq* | video devor — bitta mozaika oqimi | `backend/walls/` |
+| `/api/v1/stats` | kirgan / kalit | dashboard va statistika ([STATS_API.md](STATS_API.md)) | `backend/stats/` |
+| `/api/v1/auth` | — | login/logout/me; `/auth/stream` ni MediaMTX chaqiradi | `backend/users/api.py` |
+| `/api/v1/admin` | faqat `admin` roli | kameralar CRUD, NVR import, skaner, foydalanuvchilar, tugunlar, holat, hodisalar, baza holati | `camera/api/`, `users/admin_api.py`, `stats/admin_api.py`, `app/system_api.py`, `database/api.py` |
 
 \* `PUBLIC_VIEW=0` bo'lsa ochiq bo'lim ham sessiya talab qiladi.
 
-Eski `/api/...` manzillari ham ishlaydi (ichki test UI uchun), lekin yangi
+Routerlarni `backend/app/factory.py` dagi `create_app()` ulaydi va har
+biriga kirish darajasini beradi (`backend/app/deps.py`).
+
+Eski `/api/...` manzillari ham ishlaydi (Nigoh'ning o'z interfeysi va MediaMTX uchun), lekin yangi
 integratsiyada faqat `/api/v1` ni ishlating.
 
 ## Asosiy integratsiya modeli: o'z tizimingiz + Nigoh
@@ -170,25 +176,29 @@ Webhook hozircha yo'q — hodisalarni `/admin/events` dan so'rab turing
 (polling) yoki Telegram ogohlantirishlarini yoqing (`.env` da
 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`).
 
-Loglar: `/data/nigoh.log` — JSON satrlar
+Loglar: `logs/` papkasi (DATA_DIR ichida) — toifalarga ajratilgan JSON satrlar, batafsil: `docs/LOGGING.md`
 (`{"ts", "level", "service", "event", ...}`), Loki/OpenSearch'ga
 to'g'ridan yuborsa bo'ladi. Prometheus metrics: konteyner ichida
 `127.0.0.1:9998/metrics` (MediaMTX'niki).
 
 ## Ma'lumotlar qayerda
 
-Hammasi `/data` volume'ida (compose'da `./data`):
+Baza — hostdagi PostgreSQL 17 (Docker'da emas, manzil `.env` dagi
+`DATABASE_URL`); fayllar — `/data` volume'ida (compose'da `./data`):
 
-| Fayl | Nima | Ehtiyot |
+| Joy | Nima | Ehtiyot |
 |---|---|---|
-| PostgreSQL (`nigoh-pg` volume) | kameralar, foydalanuvchilar, hodisalar, statistika | `deploy/db-backup.sh` bilan har kuni zaxiralang |
+| PostgreSQL, `nigoh` bazasi | kameralar, foydalanuvchilar, hodisalar, statistika | `backend/database/scripts/backup.sh` bilan har kuni zaxiralang |
 | `secret.key` | kamera parollarini ochadigan kalit | **yo'qolsa parollar tiklanmaydi**; zaxiralang, hech kimga bermang |
 | `mediamtx.yml` | avto-yaratiladi | qo'lda tahrirlamang — qayta yoziladi |
-| `nigoh.log`, `mediamtx.log` | loglar (aylanma) | — |
+| `logs/` | loglar: toifalar bo'yicha kunlik fayllar, MediaMTX logi (docs/LOGGING.md) | — |
 
 Bazaga to'g'ridan-to'g'ri SQL bilan yozmang — API orqali ishlang, aks
-holda MediaMTX bilan sinxronlik buziladi (o'qish mumkin, lekin sxema
-o'zgarishi mumkinligini hisobga oling).
+holda MediaMTX bilan sinxronlik buziladi (o'qish mumkin — buning uchun
+faqat `SELECT` huquqli `nigoh_readonly` roli bor; sxema o'zgarishi
+mumkinligini hisobga oling). Nigoh kodining o'zida ham SQL faqat
+`backend/database/repositories/` da yoziladi. Baza holati:
+`GET /api/v1/admin/db`.
 
 ## O'zingizning servisingizga ulash namunasi
 
@@ -218,5 +228,5 @@ To'liq ro'yxat izohlari bilan: **`.env.example`**. Eng muhimlari:
 ## Nimalarga tegmaslik kerak
 
 - MediaMTX API (9997) va uning konfiguratsiyasi — Nigoh o'zi boshqaradi.
-- `secret.key` va baza sxemasi (o'zgarish faqat `database/schema.py` dagi yangi migratsiya bilan).
+- `secret.key` va baza sxemasi (o'zgarish faqat `backend/database/migrations/` dagi yangi migratsiya fayli bilan).
 - Oqim chiptalari formati — ichki mexanizm, o'zingiz yasamang.

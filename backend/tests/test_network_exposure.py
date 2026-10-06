@@ -8,7 +8,7 @@ import importlib
 
 import yaml
 
-from camera import sync
+from camera.media import sync
 
 
 def _konf(monkeypatch, **muhit):

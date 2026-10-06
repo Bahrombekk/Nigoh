@@ -4,16 +4,21 @@
 
 Parol so'raladi (yoki NIGOH_PAROL muhit o'zgaruvchisidan olinadi) —
 buyruq satriga yozmaslik yaxshi, aks holda u shell tarixida qoladi.
+Loginsiz faqat PUBLIC_VIEW=1 bo'lgan serverda ishlaydi.
 
-DIQQAT — surat arxivi yo'q. Server rasmlarni diskda saqlamaydi:
-`/api/cameras/<id>/snapshot` har so'rovda kameradan AYNI DAMDAGI JPEG'ni
-oladi. Ya'ni bu skript "o'tgan hafta"ni tushirib bermaydi, faqat hozirni.
-Tarix kerak bo'lsa skriptni davriy ishlatish kerak:
+DIQQAT — surat arxivi yo'q. Server har kameraning faqat OXIRGI suratini
+diskda ushlaydi (`DATA_DIR/snapshots/<slug>.jpg`, pog'onali yangilanadi —
+camera/monitoring/snapshots.py), `/api/cameras/<id>/snapshot` esa shu
+oxirgisini (yoki kameradan yangisini) beradi. Ya'ni bu skript "o'tgan
+hafta"ni tushirib bermaydi, faqat hozirni. Tarix kerak bo'lsa skriptni
+davriy ishlatish kerak:
 
     --marta 0 --interval 300     # har 5 daqiqada, to'xtatilguncha
 
 Har bir aylanish o'z papkasiga tushadi (`rasmlar/2026-08-27_14-30-00/`),
-shuning uchun keyinchalik vaqt bo'yicha ajratish oson.
+shuning uchun keyinchalik vaqt bo'yicha ajratish oson. Standart holatda
+faqat online kameralar so'raladi (`--hammasi` — hammasi), `--hudud` bilan
+hudud bo'yicha filtr; parallel 8 ta, har kameraga 20 s.
 
 Faqat standart kutubxona ishlatiladi — loyihada `requests` yo'q.
 """

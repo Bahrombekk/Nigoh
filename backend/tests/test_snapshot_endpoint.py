@@ -5,8 +5,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from api import create_app
-from camera import health, snapshots
+from app.factory import create_app
+from camera.monitoring import health, snapshots
 from database import cameras, get_db
 from tests.factories import add_camera
 
@@ -29,14 +29,14 @@ def cam(client):
     p.write_bytes(b"\xff\xd8sinov-jpeg")
     yield cam_id
     p.unlink(missing_ok=True)
-    health._statuses.pop((IP, PORT), None)
-    snapshots._done.pop(cam_id, None)
+    health.service._statuses.pop((IP, PORT), None)
+    snapshots.service._done.pop(cam_id, None)
     with get_db() as db:
         cameras.delete(db, cam_id)
 
 
 def test_online_kamera_sarlavhalar_bilan(client, cam):
-    health._statuses[(IP, PORT)] = True
+    health.service._statuses[(IP, PORT)] = True
     r = client.get(f"/api/v1/cameras/{cam}/snapshot", headers=KEY)
     assert r.status_code == 200
     assert r.headers["x-snapshot-at"].startswith("20")
@@ -49,10 +49,10 @@ def test_online_kamera_sarlavhalar_bilan(client, cam):
 
 
 def test_offline_404_hatto_kesh_bilan(client, cam):
-    health._statuses[(IP, PORT)] = True
+    health.service._statuses[(IP, PORT)] = True
     etag = client.get(f"/api/v1/cameras/{cam}/snapshot",
                       headers=KEY).headers["etag"]
-    health._statuses[(IP, PORT)] = False       # kamera o'chdi
+    health.service._statuses[(IP, PORT)] = False       # kamera o'chdi
     # oddiy so'rov ham, keshli (If-None-Match) so'rov ham 404 —
     # holat tekshiruvi 304 shoxidan OLDIN turganining isboti
     assert client.get(f"/api/v1/cameras/{cam}/snapshot",
@@ -63,13 +63,13 @@ def test_offline_404_hatto_kesh_bilan(client, cam):
 
 
 def test_stale_eshigi_ochiq(client, cam):
-    health._statuses[(IP, PORT)] = False
+    health.service._statuses[(IP, PORT)] = False
     r = client.get(f"/api/v1/cameras/{cam}/snapshot?stale=1", headers=KEY)
     assert r.status_code == 200 and "x-snapshot-age" in r.headers
 
 
 def test_eski_fayl_404_stale_bilan_ochiladi(client, cam):
-    health._statuses[(IP, PORT)] = True        # holat "online" deb yolg'on
+    health.service._statuses[(IP, PORT)] = True        # holat "online" deb yolg'on
     p = snapshots.path_for("snap_ep_sinov")
     old = time.time() - snapshots.max_age() - 60
     os.utime(p, (old, old))

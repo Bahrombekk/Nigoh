@@ -9,9 +9,13 @@ Shuning uchun "sekin ochilyapti" ning ikki xil manzarasi bor:
                               bo'ladi — kamera umuman ochilmaydi.
 
 Skript aynan shuni ajratadi: har kamera uchun WHEP handshake, birinchi
-kadr vaqti va (kerak bo'lsa) HLS zaxirasi o'lchanadi.
+kadr vaqti va javobdagi ICE nomzodlari (ichki manzil e'lon qilinyaptimi)
+ko'rsatiladi.
 
     python scripts/webrtc_benchmark.py 102 103 28 33
+
+Talab: playwright va Microsoft Edge (channel="msedge"); NIGOH_URL va
+NIGOH_KEY repo ildizidagi `.env` dan. Ishlatadi: scripts/geo_import.py (Service).
 """
 import json
 import os

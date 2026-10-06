@@ -13,8 +13,10 @@ sessiya, mehmon. Bu testlar o'sha chegaralarni qulflaydi:
 import pytest
 from fastapi.testclient import TestClient
 
-from api import config, create_app, deps, helpers
+from app import config, deps
+from app.factory import create_app
 from database import get_db, init_db, users
+from users import access as helpers
 
 KEY = {"X-API-Key": "test-kalit"}
 PAROL = "sinov-parol-123"
@@ -148,7 +150,7 @@ def test_mehmon_public_view(client, hududlar, monkeypatch):
 
 def test_me_public_view_bayrogi(client, monkeypatch):
     assert client.get("/api/v1/auth/me").json()["public_view"] is False
-    from api import auth
+    from users import api as auth
     monkeypatch.setattr(auth, "PUBLIC_VIEW", True)
     assert client.get("/api/v1/auth/me").json()["public_view"] is True
     assert config.PUBLIC_VIEW is False      # conftest: PUBLIC_VIEW=0

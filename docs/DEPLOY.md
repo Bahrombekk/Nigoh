@@ -17,7 +17,7 @@ cd nigoh
 # 2. Baza (bir marta) — PostgreSQL 17, faqat 127.0.0.1 da tinglaydi
 sudo apt install -y postgresql-17          # yo'q bo'lsa: apt.postgresql.org repozitoriysi
 NIGOH_DB_PAROL=$(openssl rand -base64 24 | tr -d '/+=')
-sudo -u postgres psql -v parol="$NIGOH_DB_PAROL" -f deploy/postgres/setup-roles.sql
+sudo -u postgres psql -v parol="$NIGOH_DB_PAROL" -f backend/database/sql/setup-roles.sql
 
 # 3. Sozlamalar
 cp .env.example .env
@@ -43,7 +43,7 @@ oching:
 
 | Port | Protokol | Kimga | Nima |
 |---|---|---|---|
-| 8010 | tcp | foydalanuvchilar | API + test UI |
+| 8010 | tcp | foydalanuvchilar | API + interfeys (`frontend/`) |
 | 8888 | tcp | foydalanuvchilar | HLS video |
 | 8889 | tcp | foydalanuvchilar | WebRTC signal (WHEP) |
 | 8189 | udp | foydalanuvchilar | WebRTC media |
@@ -64,16 +64,20 @@ izchil bo'lmaydi). Zaxira — `pg_dump`; skript `secret.key` ni ham yoniga
 oladi:
 
 ```bash
-deploy/db-backup.sh                          # backups/nigoh-<vaqt>.dump
+backend/database/scripts/backup.sh                          # backend/database/backups/nigoh-<vaqt>.dump
+BACKUP_DIR=/mnt/zaxira KEEP_DAYS=30 backend/database/scripts/backup.sh   # boshqa joyga
 # har kuni 03:15 (crontab -e):
-15 3 * * * cd /opt/nigoh && deploy/db-backup.sh >> backups/backup.log 2>&1
+15 3 * * * cd /opt/nigoh && backend/database/scripts/backup.sh >> backend/database/backups/backup.log 2>&1
 ```
+
+Zaxira papkasi (`backend/database/backups/`) git'ga tushmaydi; `KEEP_DAYS`
+(standart 14) dan eski zaxiralar o'chiriladi.
 
 Tiklashni oldindan bir marta sinab ko'ring — tekshirilmagan zaxira
 zaxira emas:
 
 ```bash
-pg_restore -d "$DATABASE_URL" --clean --if-exists --no-owner backups/nigoh-....dump
+pg_restore -d "$DATABASE_URL" --clean --if-exists --no-owner backend/database/backups/nigoh-....dump
 ```
 
 `secret.key` yo'qolsa kameralarning saqlangan parollari **tiklanmaydi** —
@@ -81,7 +85,14 @@ zaxirani alohida xavfsiz joyda ham saqlang.
 
 Bazani qo'lda ko'rish uchun faqat o'qiy oladigan `nigoh_readonly` roli bor
 (parolini bering: `sudo -u postgres psql -c "ALTER ROLE nigoh_readonly
-PASSWORD '...'"`). Ilovaning `nigoh` rolini qo'lda ishlatmang.
+PASSWORD '...'"`). Ilovaning `nigoh` rolini qo'lda ishlatmang. Rollar
+nimaga ruxsat berishi: `backend/database/sql/setup-roles.sql` va
+[backend/database/README.md](../backend/database/README.md).
+
+Sxema migratsiyalari (`backend/database/migrations/`) backend ishga
+tushganda o'zi bajariladi — qo'lda hech narsa qilinmaydi. Joriy versiya:
+`GET /api/v1/admin/db`. Eski `cameras.db` (SQLite) dan bir martalik
+ko'chirish: `python backend/database/scripts/migrate_sqlite_to_postgres.py --apply`.
 
 Yangilash (ma'lumotlar joyida qoladi):
 
@@ -137,11 +148,13 @@ tugun kameralarini H.264 rejimida tuting.
 
 ## Docker'siz (muqobil)
 
+Baza bu holatda ham yuqoridagidek (2-qadam) hostdagi PostgreSQL 17.
+
 ```bash
 apt install python3.12-venv ffmpeg
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
-# MediaMTX binarini mediamtx/ papkasiga yuklab qo'ying (linux_amd64)
-NIGOH_DATA=/var/lib/nigoh PORT=8010 venv/bin/python main.py
+python3 -m venv venv && venv/bin/pip install -r backend/requirements.txt
+# MediaMTX binarini repo ildizidagi mediamtx/ papkasiga yuklab qo'ying (linux_amd64)
+NIGOH_DATA=/var/lib/nigoh PORT=8010 venv/bin/python backend/main.py
 ```
 
 systemd unit namunasi:
@@ -154,7 +167,7 @@ After=network-online.target
 [Service]
 WorkingDirectory=/opt/nigoh
 Environment=NIGOH_DATA=/var/lib/nigoh
-ExecStart=/opt/nigoh/venv/bin/python main.py
+ExecStart=/opt/nigoh/venv/bin/python backend/main.py
 Restart=always
 User=nigoh
 
@@ -162,12 +175,33 @@ User=nigoh
 WantedBy=multi-user.target
 ```
 
+## Windows (joriy o'rnatma)
+
+Hozirgi ishchi server Windows'da, Docker'siz:
+
+- PostgreSQL 17 — oddiy Windows servisi (`postgresql-x64-17`), **5434**-port
+  (`.env` dagi `DATABASE_URL` shu portni ko'rsatadi). Rollar xuddi Linux'dagidek
+  `backend/database/sql/setup-roles.sql` bilan yaratiladi.
+- Backend: `start.bat` yoki `venv\Scripts\python.exe backend\main.py`;
+  MediaMTX `mediamtx\mediamtx.exe` da, backend uni o'zi ko'taradi.
+- Zaxira: `backend/database/scripts/backup.sh` (Git Bash; `pg_dump` PATH'da
+  bo'lishi kerak: `C:\Program Files\PostgreSQL\17\bin`).
+- Baza ma'lumot katalogini loyiha ichiga (`backend/database/pgdata/`, git'da
+  yo'q) ko'chirish — administrator PowerShell'da, avval rejani ko'ring:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File backend\database\scripts\move_pgdata.ps1          # reja
+  powershell -ExecutionPolicy Bypass -File backend\database\scripts\move_pgdata.ps1 -Apply   # ko'chirish
+  ```
+  Skript avval `pg_dump` zaxira oladi, eski katalogni o'chirmaydi
+  (`-Rollback` bilan qaytsa bo'ladi). Ishlab turgan `pgdata` dan fayl
+  nusxasi zaxira EMAS — faqat `backup.sh` / `pg_dump`.
+
 ## Muammolarni aniqlash
 
 | Belgi | Qarash joyi |
 |---|---|
 | Sayt ochilmayapti | `docker logs nigoh` |
-| Video ochilmayapti | `GET /api/v1/admin/status` — `mediamtx: true` bo'lishi kerak; `data/mediamtx.log` |
+| Video ochilmayapti | `GET /api/v1/admin/status` — `mediamtx: true` bo'lishi kerak; `GET /api/v1/admin/logs?category=mediamtx&level=ERROR` |
 | Kamera qizil (offline) | serverdan kameraga tarmoq bormi: `POST /api/v1/admin/probe` sabab-bosqichini aytadi (tarmoq/parol/yo'l) |
 | Oqim "stalled" | kamera portga javob beradi, lekin tasvir bermayapti — registratorda kanalni tekshiring |
-| Hodisalar tarixi | `GET /api/v1/admin/events`, JSON log: `data/nigoh.log` |
+| Hodisalar tarixi | `GET /api/v1/admin/events`, loglar: `GET /api/v1/admin/logs?category=errors&hours=24` yoki `logs/` papkasi |
