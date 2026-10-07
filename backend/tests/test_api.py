@@ -66,13 +66,17 @@ def test_interfeys_va_login_ochiq(client):
 
 def test_xarita_geojson_fayllari(client):
     """Chegara va temir yo'l qatlamlari beriladi; ro'yxatdan tashqari nom — 404."""
-    for name in ("uz", "railways"):
+    for name in ("uz", "railways", "railways-v2"):
         r = client.get(f"/assets/{name}.geojson")
         assert r.status_code == 200, name
         assert r.json()["type"] == "FeatureCollection"
     rails = client.get("/assets/railways.geojson").json()["features"]
     assert {f["properties"]["branch"] for f in rails} >= {"toshkent", "buxoro", "qoqon"}
     assert all(f["geometry"]["type"] == "MultiLineString" for f in rails)
+    v2 = client.get("/assets/railways-v2.geojson").json()["features"]
+    assert {f["properties"]["lod"] for f in v2} == {"detail", "overview"}
+    assert {"main", "branch", "industrial", "yard"} <= {f["properties"]["kind"] for f in v2}
+    assert any(f["properties"]["hs"] for f in v2)                       # tezyurar liniyalar bor
     assert client.get("/assets/maxfiy.geojson").status_code == 404
 
 

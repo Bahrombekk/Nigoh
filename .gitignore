@@ -62,3 +62,6 @@ backups/
 backend/database/backups/
 # PostgreSQL ma'lumot katalogi (servis shu yerdan ishlaydi)
 backend/database/pgdata/
+
+# OpenStreetMap xom yuklamasi (backend/scripts/fetch_osm_railways.py)
+osm_rail.json

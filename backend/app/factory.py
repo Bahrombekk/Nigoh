@@ -270,8 +270,8 @@ def create_app() -> FastAPI:
         @app.get("/assets/{name}.geojson", include_in_schema=False)
         def geojson(name: str):
             """O'zbekiston chegarasi (uz), viloyatlar (uz_regions) va temir yo'l
-            tarmog'i (railways — backend/scripts/build_railways.py yasaydi)."""
-            if name not in ("uz", "uz_regions", "railways"):
+            tarmog'i (railways — build_railways.py; railways-v2 — OSM, build_railways_v2.py)."""
+            if name not in ("uz", "uz_regions", "railways", "railways-v2"):
                 raise HTTPException(404)
             return FileResponse(FRONTEND_DIR / "assets" / f"{name}.geojson",
                                 media_type="application/geo+json",
