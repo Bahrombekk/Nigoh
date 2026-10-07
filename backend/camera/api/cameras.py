@@ -25,6 +25,9 @@ Endpointlar (require_viewer; hudud cheklovi endpoint ichida):
                                         (<=3 MB JPEG) — server RTSP grab qilmaydi
     POST /api/v1/cameras/{ref}/sub-bad  sub oqim brauzerda ochilmadi — saqlanadi,
                                         devor keyingi safar asosiydan ochadi
+    GET  /api/v1/cameras/{ref}/details  kamera paneli: texnik pasport, davr
+                                        ishonchliligi (?days=7) va hodisalar
+                                        tarixi (?history=30); IP/parol yo'q
 
 Snapshot'da holat va yosh tekshiruvi ETag/304 dan OLDIN turadi — aks
 holda keshi bor mijoz offline kamerada ham 304 olib eski kadrni
@@ -34,10 +37,11 @@ Ishlatadi: camera.media (sync, fast_start, mapping), camera.monitoring
 (health, snapshots), camera.state, camera.streaming, users.access
 Kim ishlatadi: app/factory.py (router); frontend xarita, pleyer, devor
 """
+import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from camera.media import fast_start
 from camera.media import sync as mediamtx_sync
@@ -45,8 +49,17 @@ from camera.media.mapping import camera_for_mediamtx
 from camera.monitoring import health, snapshots
 from camera.state import camera_state, resolve_ref
 from camera.streaming import node_info, stream_urls
-from database import cameras, get_db
-from users.access import allowed_areas, area_allowed, check_area
+from database import cameras, events, get_db
+from database import rail as rail_db
+from stats.reporting import engine
+from stats.reporting.period import last_days
+from users.access import (
+    allowed_areas,
+    api_key_ok,
+    area_allowed,
+    check_area,
+    current_user,
+)
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(prefix="/cameras", tags=["cameras"])
@@ -291,3 +304,89 @@ def mark_sub_bad(ref: str, request: Request):
         check_area(row, allowed_areas(request))
         cameras.set_sub_bad_by_id(db, row["id"])
     return Response(status_code=204)
+
+
+# Pasport xatosidagi manzil ("10.30.11.75:554 javob bermadi") — IP faqat
+# admin ko'radi, boshqa hech qayerda tashqariga chiqmaydi.
+_IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b")
+
+
+def _iso(value):
+    return value.isoformat() if isinstance(value, datetime) else (value or None)
+
+
+@router.get("/{ref}/details")
+def camera_details(ref: str, request: Request,
+                   days: int = Query(default=7, ge=1, le=30),
+                   history: int = Query(default=30, ge=1, le=200)):
+    """Kamera paneli uchun to'liq ma'lumot — tanlanganda bir marta so'raladi.
+
+    * passport    — qurilma va oqim: model, firmware, format, fps, sub oqim,
+                    transport, o'girish, oxirgi surat, pasport tekshiruvi,
+                    km/piket, izoh, qo'shilgan sana;
+    * reliability — oxirgi `days` kun: uptime, uzilishlar, sakrashlar,
+                    MTTR, eng uzuni (stats/reporting bilan bir xil qoidalar);
+                    kuzatilmaydigan (o'chirilgan / RTSP emas) kamerada null;
+    * history     — so'nggi `history` ta hodisa (30 kun ichida), yangisi birinchi.
+
+    IP, login, parol, RTSP yo'li qaytmaydi. Pasport xatosidagi manzil faqat
+    admin uchun ochiq; izoh mehmonga ko'rinmaydi.
+    """
+    with get_db() as db:
+        row = resolve_ref(db, ref)
+        if row is None:
+            raise HTTPException(404, "Kamera topilmadi")
+        check_area(row, allowed_areas(request))
+        line = rail_db.line_names(db).get(row["rail_line_id"]) if row["rail_line_id"] else None
+        now = datetime.now(timezone.utc)
+        rows = events.for_camera(db, row["id"], now - timedelta(days=30), now, history)
+
+    user = current_user(request)
+    admin = api_key_ok(request) or (user is not None and user["role"] == "admin")
+    error = row["probe_error"] or None
+    if error and not admin:
+        error = _IP_RE.sub("kamera", error)
+    passport = {
+        "vendor": row["vendor"] or "", "model": row["model"] or "",
+        "firmware": row["firmware"] or "", "device_kind": row["device_kind"] or "",
+        "codec": row["codec"] or "", "resolution": row["resolution"] or "",
+        "fps": float(row["fps"] or 0) or None,
+        "sub_codec": row["sub_codec"] or "", "has_sub": bool(row["sub_path"]),
+        "sub_bad": bool(row["sub_bad"]),
+        "transport": "udp" if row["rtsp_udp"] else "tcp",
+        "transcode": bool(row["transcode"]), "always_on": bool(row["always_on"]),
+        "rail_line": line, "km": row["km"], "picket": row["picket"],
+        "lat": row["lat"], "lng": row["lng"],
+        "last_seen": _iso(row["last_seen"]), "snapshot_at": _iso(row["snapshot_at"]),
+        "probe_at": _iso(row["probe_at"]), "probe_error": error,
+        "note": (row["note"] or "") if user is not None or admin else None,
+        "created_at": _iso(row["created_at"]),
+    }
+
+    reliability = None
+    snap = engine.snapshot(last_days(days), None)
+    cam = snap.camera(row["id"])
+    if cam is not None:
+        recovered = sorted(o.seconds for o in cam.real if not o.open)
+        last = max(cam.outages, key=lambda o: o.start, default=None)
+        reliability = {
+            "days": days,
+            "uptime_pct": cam.uptime_pct,
+            "outages": len(cam.real), "blips": len(cam.blips), "stalls": cam.stalls,
+            "offline_seconds": int(cam.offline_s),
+            "mttr_median_s": int(recovered[len(recovered) // 2]) if recovered else None,
+            "longest_s": int(max((o.seconds for o in cam.outages), default=0)),
+            "open_now": any(o.open for o in cam.real),
+            "last_outage": None if last is None else {
+                "start": last.start, "end": None if last.open else last.end,
+                "seconds": int(last.seconds), "open": last.open},
+        }
+
+    return {
+        "id": row["id"], "name": row["name"], "region": row["region"],
+        "state": camera_state(row),
+        "passport": passport,
+        "reliability": reliability,
+        "history": [{"ts": r["ts"], "kind": r["kind"], "detail": r["detail"] or ""}
+                    for r in rows],
+    }

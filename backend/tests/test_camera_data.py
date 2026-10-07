@@ -145,3 +145,35 @@ def test_format_oqimdan_yoziladi():
         db.execute("UPDATE camera_status SET resolution = NULL WHERE camera_id = %s", (cam,))
         ids = [r["id"] for r in cameras.passport_candidates(db, 0, 10000)]
     assert cam in ids
+
+
+def test_kamera_tafsilotlari(client):
+    """Panel uchun pasport, ishonchlilik va tarix — IP/parol chiqmaydi."""
+    from datetime import datetime, timedelta, timezone
+
+    from camera.api.cameras import _IP_RE
+    from stats.reporting import engine
+    from tests.factories import add_event
+    now = datetime.now(timezone.utc)
+    with get_db() as db:
+        cam = add_camera(db, "det_a", ip="10.66.1.1", codec="H264", sub_path="/sub")
+        cameras.set_passport(db, [cam], "DH-SD49425XB-HNR-S3", "2.812")
+        cameras.set_probe_result(db, cam, error="tarmoq: 10.66.1.1:554 javob bermadi")
+        add_event(db, "offline", "det_a", now - timedelta(hours=2))
+        add_event(db, "online", "det_a", now - timedelta(hours=1))
+    engine.clear_cache()
+    r = client.get(f"/api/v1/cameras/{cam}/details", headers=KEY)
+    assert r.status_code == 200
+    body = r.json()
+    p = body["passport"]
+    assert (p["model"], p["firmware"], p["has_sub"], p["transport"]) == (
+        "DH-SD49425XB-HNR-S3", "2.812", True, "tcp")
+    assert p["probe_error"].startswith("tarmoq: 10.66.1.1")        # API kalit — admin
+    text = r.text
+    assert "password" not in text and '"ip"' not in text and "rtsp_path" not in text
+    assert [h["kind"] for h in body["history"]] == ["online", "offline"]
+    rel = body["reliability"]
+    assert rel["outages"] == 1 and rel["last_outage"]["seconds"] >= 3500
+    assert client.get("/api/v1/cameras/999999/details", headers=KEY).status_code == 404
+    # Admin bo'lmaganga manzil yashiriladi.
+    assert _IP_RE.sub("kamera", "tarmoq: 10.66.1.1:554 javob bermadi") == "tarmoq: kamera javob bermadi"

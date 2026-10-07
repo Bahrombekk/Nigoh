@@ -112,7 +112,7 @@ Hamma yo'l `/api/v1/...` da; `/api/...` — o'sha yo'llarning eski nomi
 |---|---|---|
 | auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` | ochiq |
 | | `POST /auth/stream`, `GET /auth/hls` — MediaMTX/nginx chaqiradi | ochiq (chipta) |
-| ko'rish | `GET /cameras`, `GET /cameras/status`, `GET /cameras/{ref}/stream`, `GET /cameras/{ref}/snapshot`, `POST /streams`, `POST /walls`, `GET /events` (SSE), `POST /metrics/open`, `GET /vendors` | kirgan / kalit / mehmon |
+| ko'rish | `GET /cameras`, `GET /cameras/status`, `GET /cameras/{ref}/stream`, `GET /cameras/{ref}/snapshot`, `GET /cameras/{ref}/details` (pasport, 7 kunlik ishonchlilik, tarix), `POST /streams`, `POST /walls`, `GET /events` (SSE), `POST /metrics/open`, `GET /metrics/open` (kamera kesimida ochilish vaqti), `GET /vendors` | kirgan / kalit / mehmon |
 | dashboard | `GET /stats/dashboard`, `/stats/timeline`, `/stats/overview` | kirgan / kalit |
 | statistika | `GET /stats/summary`, `/availability`, `/coverage`, `/series`, `/sla`, `/outages`, `/outages/summary`, `/daily`, `/hourly`, `/heatmap`, `/regions`, `/ranking`, `/cameras/{id}`, `/rail`, `/quality`, `/feed` | kirgan / kalit |
 | boshqaruv | `/admin/cameras` (CRUD, enabled, uptime, keyframe, detect-sub), `/admin/users`, `/admin/nvr/import`, `/admin/scan`, `/admin/probe`, `/admin/nodes`, `/admin/status`, `/admin/events`, `/admin/mediamtx/*`, `/admin/uptime`, `/admin/outages/hourly`, `/devices/*` | admin / kalit |

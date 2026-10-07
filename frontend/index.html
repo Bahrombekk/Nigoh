@@ -539,12 +539,37 @@
               <div class="sp-name"><b id="sel-name"></b><i id="sel-sub"></i></div>
               <dl class="sp-facts">
                 <div><dt><svg viewBox="0 0 24 24"><path d="M12 21s7-5.7 7-11a7 7 0 1 0-14 0c0 5.3 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>Hudud</dt><dd id="sel-f-region">&mdash;</dd></div>
+                <div><dt><svg viewBox="0 0 24 24"><path d="M5 21 9 3"/><path d="m19 21-4-18"/><path d="M6.5 15h11"/><path d="M8 9h8"/></svg>Joy</dt><dd id="sel-f-place">&mdash;</dd></div>
                 <div><dt><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>Kodek</dt><dd id="sel-f-codec">&mdash;</dd></div>
                 <div><dt><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M7 10h4"/></svg>Format</dt><dd id="sel-f-res">&mdash;</dd></div>
                 <div><dt><svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg>Model</dt><dd id="sel-f-model">&mdash;</dd></div>
                 <div><dt><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Rejim</dt><dd id="sel-f-mode">&mdash;</dd></div>
                 <div><dt><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 18 0"/><path d="M12 12v6"/></svg>Oxirgi aloqa</dt><dd id="sel-f-seen">&mdash;</dd></div>
               </dl>
+
+              <!-- Ishonchlilik: oxirgi 7 kun (GET /cameras/{id}/details) -->
+              <section class="sp-sec" id="sel-rel">
+                <div class="sp-sec-h"><b>Ishonchlilik</b><span id="sel-rel-sub">so'nggi 7 kun</span></div>
+                <div class="sp-kpis">
+                  <div><span>Uptime</span><b id="sel-rel-up">&mdash;</b></div>
+                  <div><span>Uzilishlar</span><b id="sel-rel-out">&mdash;</b><i id="sel-rel-out-n"></i></div>
+                  <div><span>Tiklanish</span><b id="sel-rel-mttr">&mdash;</b><i>median</i></div>
+                  <div><span>Eng uzuni</span><b id="sel-rel-long">&mdash;</b><i id="sel-rel-off"></i></div>
+                </div>
+                <div class="sp-note" id="sel-rel-last"></div>
+              </section>
+
+              <!-- Texnik pasport -->
+              <details class="sp-sec" id="sel-pass">
+                <summary class="sp-sec-h"><b>Texnik pasport</b><span id="sel-pass-sub"></span><svg class="sp-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+                <dl class="sp-facts sp-mini" id="sel-pass-rows"></dl>
+              </details>
+
+              <!-- Hodisalar tarixi -->
+              <details class="sp-sec" id="sel-hist">
+                <summary class="sp-sec-h"><b>Tarix</b><span id="sel-hist-sub"></span><svg class="sp-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary>
+                <ol class="sp-hist" id="sel-hist-rows"></ol>
+              </details>
               <div class="sp-actions">
                 <button class="btn acc" id="sel-wall"><svg viewBox="0 0 24 24"><rect width="7.5" height="7.5" x="3" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="13.5" rx="1.6"/><rect width="7.5" height="7.5" x="3" y="13.5" rx="1.6"/></svg>Devorga qo'shish</button>
                 <button class="btn" id="sel-shot"><svg viewBox="0 0 24 24"><path d="M12 4v10"/><path d="m8 11 4 4 4-4"/><path d="M4 19h16"/></svg>Suratni saqlash</button>

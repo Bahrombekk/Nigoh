@@ -542,6 +542,41 @@ body.picking #pick-hint{display:block}
 .sp-actions .btn{height:auto;min-height:40px;min-width:0;padding:6px 10px;font-size:12px;line-height:1.25;white-space:normal;text-align:left}
 .sp-actions .btn svg{flex:none}
 
+/* Panel bo'limlari: Ishonchlilik (doim ochiq), Texnik pasport va Tarix (yig'iladi). */
+.sp-sec{margin:0 16px;padding:12px 0 10px;border-bottom:1px solid var(--line-2)}
+.sp-sec-h{display:flex;align-items:center;gap:8px;font-size:12.5px;list-style:none}
+.sp-sec-h b{font-weight:700}
+.sp-sec-h span{margin-left:auto;min-width:0;font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+summary.sp-sec-h{cursor:pointer;user-select:none}
+summary.sp-sec-h::-webkit-details-marker{display:none}
+summary.sp-sec-h:hover b{color:var(--accent)}
+.sp-chev{flex:0 0 14px;width:14px;height:14px;fill:none;stroke:var(--faint);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+details[open] > summary .sp-chev{transform:rotate(180deg)}
+details.sp-sec[open] > summary{margin-bottom:6px}
+.sp-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.sp-kpis>div{display:flex;flex-direction:column;gap:1px;padding:8px 10px;border-radius:var(--r-sm);background:var(--surface-2);min-width:0}
+.sp-kpis span{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.sp-kpis b{font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:-.02em;line-height:1.3}
+.sp-kpis b.ok{color:var(--ok)} .sp-kpis b.warn{color:var(--warn)} .sp-kpis b.bad{color:var(--danger)}
+.sp-kpis i{font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:14px}
+.sp-note{margin-top:8px;font-size:11.5px;line-height:1.45;color:var(--muted)}
+.sp-facts.sp-mini{padding:0}
+.sp-mini>div{padding:6px 0;align-items:flex-start}
+.sp-mini>div:last-child{border-bottom:none}
+.sp-mini dt{flex:0 0 112px;font-size:11px}
+.sp-mini dd{font-size:11.5px;font-weight:500;white-space:normal;overflow-wrap:anywhere;line-height:1.4}
+.sp-mini dd.bad{color:var(--danger)} .sp-mini dd.warn{color:var(--warn)}
+.sp-empty-row{list-style:none;padding:8px 0;font-size:11.5px;color:var(--muted)}
+.sp-hist{list-style:none;margin:0;padding:0;max-height:280px;overflow-y:auto}
+.sp-hist li{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--line-2)}
+.sp-hist li:last-child{border-bottom:none}
+.sp-hist li i{flex:0 0 7px;height:7px;border-radius:50%;background:var(--faint)}
+.sp-hist li.bad i{background:var(--danger)} .sp-hist li.ok i{background:var(--ok)}
+.sp-hist li.warn i{background:var(--warn)} .sp-hist li.info i{background:var(--accent)}
+.sp-hist .hk{flex:1;min-width:0;font-size:12px;font-weight:600;line-height:1.35}
+.sp-hist .hk em{display:block;font-style:normal;font-weight:400;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.sp-hist time{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+
 /* ---------------- Video devor ---------------- */
 .toolbar{flex:0 0 auto;display:flex;align-items:flex-end;gap:12px;padding:16px 24px 14px;flex-wrap:wrap}
 .tgroup{display:flex;flex-direction:column;gap:7px;padding:11px 14px;background:var(--surface);
