@@ -20,7 +20,8 @@
              ../map/camera-list.js (renderFootStats), ../player/player.js (createPlayer),
              ../map/selection.js (selectCamera)
 
-   DOM: #wall-view, #wall-grid, #wall-sizes, #wall-quality, #wall-region, #wall-fit,
+   DOM: #wall-view, #wall-grid, #wall-sizes, #wall-quality, #wall-region (hudud/guruh),
+        #wall-save-group, #wall-fit,
         #wall-auto, #wall-interval, #wall-fs, #wall-prev, #wall-next, #wall-page,
         #wall-label, #wall-live, #wall-conn, #wall-upd
    Backend: GET /api/cameras/{id}/snapshot (poster, surat),
@@ -41,6 +42,7 @@ import { refreshMarkerIcons } from "../map/map.js";
 import { renderFootStats } from "../map/camera-list.js";
 import { createPlayer } from "../player/player.js";
 import { selectCamera } from "../map/selection.js";
+import { allGroups, groupById, openGroupPicker } from "../map/groups.js";
 
 /* Jonli eksport — camera-list.js ochiq oqimlarni sanaydi. VideoWall.players
    bilan birga yoziladi. */
@@ -89,7 +91,8 @@ export class VideoWall {
     try {
       localStorage.setItem("nigoh-wall", JSON.stringify({
         size: state.wallSize, fit: state.wallFit, interval: state.wallInterval,
-        region: state.wallRegion, auto: state.wallAuto, quality: state.wallQuality
+        region: state.wallRegion, group: state.wallGroup, auto: state.wallAuto,
+        quality: state.wallQuality
       }));
     } catch (e) {}
   }
@@ -100,6 +103,7 @@ export class VideoWall {
       if ([2, 3, 4, 6, 8].includes(p.size)) state.wallSize = p.size;
       if (p.fit === "cover" || p.fit === "contain") state.wallFit = p.fit;
       if (typeof p.region === "string") state.wallRegion = p.region;
+      if (Number.isInteger(p.group)) state.wallGroup = p.group;
       if (Number(p.interval) >= 5) state.wallInterval = Number(p.interval);
       state.wallAuto = !!p.auto;
       if (["auto", "sub", "main"].includes(p.quality)) state.wallQuality = p.quality;
@@ -118,6 +122,11 @@ export class VideoWall {
 
   /* Devorga tushadigan kameralar: biriktirilganlar oldinda, keyin qolganlar. */
   cams() {
+    const group = state.wallGroup != null ? groupById(state.wallGroup) : null;
+    if (group) {
+      return group.camera_ids.map((id) => state.byId.get(id))
+        .filter((cam) => cam && !state.wallHidden.has(cam.id));
+    }
     const seen = new Set();
     const out = [];
     const fits = (cam) =>
@@ -135,14 +144,31 @@ export class VideoWall {
     return out;
   }
 
+  /* Tanlov: hamma kameralar, hudud ("r:<nom>") yoki guruh ("g:<id>"). */
   fillRegions() {
     const sel = $("wall-region");
     const regions = [...new Set(state.cameras.map((c) => c.region))].sort();
-    const cur = state.wallRegion;
-    sel.innerHTML = '<option value="">Barcha hududlar</option>' +
-      regions.map((r) => '<option value="' + esc(r) + '"' +
-        (r === cur ? " selected" : "") + ">" + esc(r) + "</option>").join("");
-    if (cur && !regions.includes(cur)) { state.wallRegion = ""; sel.value = ""; }
+    const groups = allGroups();
+    if (state.wallGroup != null && !groupById(state.wallGroup) && groups.length) state.wallGroup = null;
+    if (state.wallRegion && !regions.includes(state.wallRegion)) state.wallRegion = "";
+    const cur = state.wallGroup != null ? "g:" + state.wallGroup
+      : state.wallRegion ? "r:" + state.wallRegion : "";
+    const opt = (v, label) => '<option value="' + esc(v) + '"' + (v === cur ? " selected" : "") + ">" +
+      esc(label) + "</option>";
+    sel.innerHTML = opt("", "Barcha kameralar") +
+      (groups.length ? '<optgroup label="Guruhlar">' + groups.map((g) =>
+        opt("g:" + g.id, g.name + " (" + g.camera_ids.length + ")")).join("") + "</optgroup>" : "") +
+      '<optgroup label="Hududlar">' + regions.map((r) => opt("r:" + r, r)).join("") + "</optgroup>";
+  }
+
+  /* Devordagi kameralarni guruh qilib saqlash: biriktirilganlar bo'lsa —
+     ular, aks holda joriy sahifadagi kameralar. */
+  saveAsGroup() {
+    const slots = state.wallSize * state.wallSize;
+    const ids = state.pinned.length ? [...state.pinned]
+      : this.cams().slice(state.wallPage * slots, state.wallPage * slots + slots).map((c) => c.id);
+    if (!ids.length) { toast("Devorda kamera yo'q", true); return; }
+    openGroupPicker(ids, "");
   }
 
   build() {
@@ -165,7 +191,8 @@ export class VideoWall {
 
     $("wall-label").textContent = state.wallSize + "×" + state.wallSize + " setka · " +
       all.length + " kamera" +
-      (state.wallRegion ? " · " + state.wallRegion : "") +
+      (state.wallGroup != null && groupById(state.wallGroup) ? " · " + groupById(state.wallGroup).name
+        : state.wallRegion ? " · " + state.wallRegion : "") +
       (state.pinned.length ? " · " + state.pinned.length + " biriktirilgan" : "");
     $("wall-page").textContent = (state.wallPage + 1) + " / " + pages;
     $("wall-prev").disabled = state.wallPage === 0;
@@ -413,10 +440,17 @@ export class VideoWall {
         this.build();
       }));
     $("wall-region").addEventListener("change", (e) => {
-      state.wallRegion = e.target.value;
+      const v = e.target.value;
+      state.wallGroup = v.startsWith("g:") ? Number(v.slice(2)) : null;
+      state.wallRegion = v.startsWith("r:") ? v.slice(2) : "";
       state.wallPage = 0;
       this.savePrefs();
       this.build();
+    });
+    $("wall-save-group").addEventListener("click", () => this.saveAsGroup());
+    // Guruhlar o'zgarsa (yaratildi, a'zo qo'shildi) devor tanlovi ham yangilansin.
+    document.addEventListener("groups:changed", () => {
+      if (state.tab === "wall") this.build(); else this.fillRegions();
     });
     $("wall-fit").addEventListener("click", () => {
       state.wallFit = state.wallFit === "cover" ? "contain" : "cover";

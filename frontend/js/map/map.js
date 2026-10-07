@@ -101,7 +101,10 @@ function camIcon(cam) {
 
 export function visibleCams() {
   const q = state.q.trim().toLowerCase();
+  // Guruh filtri (map/groups.js) — xarita ham, ro'yxat ham faqat shu guruh.
+  const group = state.groupMembers;
   return state.cameras.filter((c) => {
+    if (group && !group.has(c.id)) return false;
     if (state.filter === "online" && c.online === false) return false;
     if (state.filter === "offline" && c.online !== false) return false;
     if (!q) return true;

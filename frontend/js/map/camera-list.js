@@ -3,7 +3,8 @@
    --------------------------------------------------------------------------
    Vazifasi:
      Xarita sahifasidagi chap panel: hudud bo'yicha guruhlangan kameralar
-     daraxti yoki hududlar ro'yxati, qidiruv (ikki maydon, bitta holat),
+     daraxti, hududlar ro'yxati yoki foydalanuvchi guruhlari (map/groups.js),
+     "Tanlash" rejimi (belgilab guruhga qo'shish), qidiruv (ikki maydon, bitta holat),
      filtrlar va pastki chiplar, kamera ustida turganda surat (tooltip),
      pastki statistika chiziqchasi va panel ostidagi raqamlar.
 
@@ -21,7 +22,7 @@
      import: ../core/state.js, ./map.js (hasGeo, map, rebuildMarkers, visibleCams),
              ../player/player.js (prewarm), ./selection.js (fmtLastSeen, selPlayer, selectCamera),
              ../wall/video-wall.js (wallPlayers), ../layout/notifications.js (renderBell),
-             ../layout/tabs.js (showTab)
+             ../layout/tabs.js (showTab), ./groups.js (renderGroupList, togglePick)
      global: L (L.latLngBounds — hududga uchish)
 
    DOM: #list-panel, #list-body, #list-count, #list-exp, #list-close, #filters,
@@ -43,6 +44,7 @@ import { fmtLastSeen, selPlayer, selectCamera } from "./selection.js";
 import { wallPlayers } from "../wall/video-wall.js";
 import { renderBell } from "../layout/notifications.js";
 import { showTab } from "../layout/tabs.js";
+import { renderGroupBar, renderGroupList, togglePick } from "./groups.js";
 
 /* Tor ekran: ro'yxat va tafsilotlar paneli xarita ustida suzadi. */
 export const MOBILE = window.matchMedia("(max-width:820px)");
@@ -114,10 +116,11 @@ export class CameraList {
   render(force) {
     const cams = visibleCams();
     const q = state.q.trim();
-    const sig = [state.filter, q, state.listView,
+    const sig = [state.filter, q, state.listView, state.groupFilter, state.pickMode,
       state.cameras.map((c) => c.id + (c.online === false ? "d" : c.online ? "u" : "?")).join("")
     ].join("|");
     if (!force && sig === this.lastListSig) { this.syncListSel(); return; }
+    renderGroupBar();          // guruhlardagi onlayn/jami soni ham yangilansin
     this.lastListSig = sig;
 
     $("list-count").textContent = cams.length + " / " + state.cameras.length + " kamera";
@@ -132,6 +135,7 @@ export class CameraList {
     });
 
     if (state.listView === "regs") { this.renderRegionList(cams); this.renderFootStats(); return; }
+    if (state.listView === "grps") { renderGroupList(); this.renderFootStats(); return; }
 
     // Hudud bo'yicha bir o'tishda guruhlanadi (ilgari har hudud uchun
     // butun ro'yxat qayta filtrlanardi: 110 hudud x 5000 kamera).
@@ -161,13 +165,22 @@ export class CameraList {
           '<span class="bdg"><span>' + (list.length - down) + "</span>" +
             (down ? '<span class="d">' + down + "</span>" : "") + "</span>" +
         "</button>" +
-        '<button class="grp-fly" title="Xaritada ko\'rsatish">&#9678;</button>';
+        (state.pickMode
+          ? '<button class="grp-fly grp-pickall" title="Hududdagi hammasini belgilash">&#10003;</button>'
+          : '<button class="grp-fly" title="Xaritada ko\'rsatish">&#9678;</button>');
       headRow.querySelector(".grp-head").addEventListener("click", () => {
         state.openRegions[region] = !state.openRegions[region];
         if (state.openRegions[region]) fillRows();
         grp.classList.toggle("open", state.openRegions[region]);
       });
-      headRow.querySelector(".grp-fly").addEventListener("click", () => this.flyToRegion(region));
+      headRow.querySelector(".grp-fly").addEventListener("click", () => {
+        if (!state.pickMode) { this.flyToRegion(region); return; }
+        // Tanlash rejimida — hududdagi (filtrga mos) hammasi belgilanadi yoki olinadi.
+        const all = list.every((c) => state.pickIds.has(c.id));
+        list.forEach((c) => { if (all === state.pickIds.has(c.id)) togglePick(c.id); });
+        state.openRegions[region] = true;
+        this.render(true);
+      });
       grp.appendChild(headRow);
 
       const wrap = document.createElement("div");
@@ -190,16 +203,27 @@ export class CameraList {
           const oqimsiz = cam.online !== false && !cam.codec;
           row.className = "cam-row" + (cam.online === false ? " down" : "") +
                           (oqimsiz ? " nostream" : "") +
-                          (cam.id === state.selectedId ? " sel" : "");
+                          (cam.id === state.selectedId ? " sel" : "") +
+                          (state.pickMode && state.pickIds.has(cam.id) ? " picked" : "");
           if (oqimsiz) {
             row.title = "Tarmoqda ko'rinadi, lekin oqim bermayapti — "
                       + "RTSP login/parol yoki yo'l xato bo'lishi mumkin";
           }
           row.innerHTML =
+            (state.pickMode ? '<span class="pk"></span>' : "") +
             '<span class="dot"></span>' +
             '<span class="nm">' + esc(cam.name) + "</span>" +
             '<span class="cdx">' + esc(cam.codec || "oqim yo'q") + "</span>";
-          row.addEventListener("click", () => { this.hideCamTip(); selectCamera(cam.id, true); });
+          row.addEventListener("click", () => {
+            this.hideCamTip();
+            // Tanlash rejimida bosish kamerani ochmaydi — belgilaydi.
+            if (state.pickMode) {
+              togglePick(cam.id);
+              row.classList.toggle("picked", state.pickIds.has(cam.id));
+              return;
+            }
+            selectCamera(cam.id, true);
+          });
           row.addEventListener("mouseenter", (e) => { prewarm(cam); this.showCamTip(cam, row); });
           row.addEventListener("mouseleave", () => this.hideCamTip());
           wrap.appendChild(row);

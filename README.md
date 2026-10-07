@@ -288,6 +288,7 @@ backend/               SERVER — backendchi (backend/README.md)
   ├─ stats/            STATISTIKA: /stats/*, dashboard, uptime hisobi
   ├─ users/            FOYDALANUVCHILAR: /auth/*, rollar, operator hududlari
   ├─ walls/            VIDEO DEVOR: server tomonidagi mozaika
+  ├─ groups/           KAMERA GURUHLARI: foydalanuvchi tanlagan to'plamlar
   ├─ core/             umumiy: env, paths, log, bus, security, alerts, watchdog
   ├─ tests/  scripts/
   └─ stream_launcher.py   MediaMTX chaqiradigan qobiq

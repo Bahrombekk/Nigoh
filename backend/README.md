@@ -74,6 +74,7 @@ backend/
 ├─ users/                FOYDALANUVCHILAR: api (/auth/*), admin_api (/admin/users),
 │                        access (rollar, operator hududlari), schemas
 ├─ walls/                VIDEO DEVOR: api (/walls), registry, mosaic
+├─ groups/               KAMERA GURUHLARI: api (/groups) — shaxsiy/umumiy guruhlar
 ├─ core/                 umumiy: env, paths, bus, throttle, watchdog, security, alerts, version
 │  ├─ log.py             log(service, event, ...) — yagona kirish nuqtasi
 │  └─ logs/              log tizimi: toifalar, kunlik fayllar, request_id, maxfiylik (docs/LOGGING.md)
@@ -114,7 +115,8 @@ Hamma yo'l `/api/v1/...` da; `/api/...` — o'sha yo'llarning eski nomi
 | | `POST /auth/stream`, `GET /auth/hls` — MediaMTX/nginx chaqiradi | ochiq (chipta) |
 | ko'rish | `GET /cameras`, `GET /cameras/status`, `GET /cameras/{ref}/stream`, `GET /cameras/{ref}/snapshot`, `GET /cameras/{ref}/details` (pasport, 7 kunlik ishonchlilik, tarix), `POST /streams`, `POST /walls`, `GET /events` (SSE), `POST /metrics/open`, `GET /metrics/open` (kamera kesimida ochilish vaqti), `GET /vendors` | kirgan / kalit / mehmon |
 | dashboard | `GET /stats/dashboard`, `/stats/timeline`, `/stats/overview` | kirgan / kalit |
-| statistika | `GET /stats/summary`, `/availability`, `/coverage`, `/series`, `/sla`, `/outages`, `/outages/summary`, `/daily`, `/hourly`, `/heatmap`, `/regions`, `/ranking`, `/cameras/{id}`, `/rail`, `/quality`, `/feed` | kirgan / kalit |
+| statistika | `GET /stats/summary`, `/availability`, `/coverage`, `/series`, `/sla`, `/outages`, `/outages/summary`, `/daily`, `/hourly`, `/heatmap`, `/regions`, `/vendors`, `/ranking`, `/cameras/{id}`, `/rail`, `/quality`, `/feed` | kirgan / kalit |
+| guruhlar | `GET /groups`, `POST /groups`, `PATCH /groups/{id}`, `DELETE /groups/{id}`, `POST /groups/{id}/cameras` (add / remove / set) — shaxsiy; `shared` bo'lsa boshqalar ham ko'radi | kirgan / kalit |
 | boshqaruv | `/admin/cameras` (CRUD, enabled, uptime, keyframe, detect-sub), `/admin/users`, `/admin/nvr/import`, `/admin/scan`, `/admin/probe`, `/admin/nodes`, `/admin/status`, `/admin/events`, `/admin/mediamtx/*`, `/admin/uptime`, `/admin/outages/hourly`, `/devices/*` | admin / kalit |
 | salomatlik | `GET /health` (prefikssiz) | ochiq |
 

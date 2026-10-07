@@ -6,6 +6,7 @@ Har modulda bitta klass va bu yerda uning bitta nusxasi yaratiladi:
     cameras  CameraRepository     cameras + devices + camera_status, slug, pasport
     events   EventRepository      camera_events — oqim/holat hodisalari
     geo      GeoRepository        nuqta hudud ichidami (geometriya)
+    groups   GroupRepository      camera_groups — foydalanuvchi kamera guruhlari
     nodes    MediaNodeRepository  media_nodes — MediaMTX tugunlari
     rail     RailRepository       rail_lines / rail_units — km, piket
     reports  ReportRepository     hisobot uchun xom qatorlar (bo'shliq, o'tish, sifat)
@@ -39,11 +40,13 @@ geo = GeoRepository()
 
 from database.repositories.cameras import CameraRepository  # noqa: E402
 from database.repositories.events import EventRepository  # noqa: E402
+from database.repositories.groups import GroupRepository  # noqa: E402
 from database.repositories.nodes import MediaNodeRepository  # noqa: E402
 from database.repositories.rail import RailRepository  # noqa: E402
 
 cameras = CameraRepository()
 events = EventRepository()
+groups = GroupRepository()
 nodes = MediaNodeRepository()
 rail = RailRepository()
 
@@ -57,5 +60,5 @@ stats = StatsRepository()
 users = UserRepository()
 walls = WallRepository()
 
-__all__ = ["areas", "cameras", "events", "geo", "nodes", "rail", "reports", "stats",
+__all__ = ["areas", "cameras", "events", "geo", "groups", "nodes", "rail", "reports", "stats",
            "users", "walls"]

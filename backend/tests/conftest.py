@@ -52,3 +52,13 @@ def _db():
         db.execute("DROP SCHEMA IF EXISTS public CASCADE")
         db.execute("CREATE SCHEMA public")
     init_db()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _stats_cache():
+    """Statistika hisobi 60 s keshlanadi (stats/reporting/engine.py). Har modul
+    toza keshdan boshlasin: oldingi modul qoldirgan, yangi kameralarsiz hisob
+    keyingi modulga o'tib, testlar ishga tushish tartibiga qarab yiqilardi."""
+    from stats.reporting import engine
+    engine.clear_cache()
+    yield

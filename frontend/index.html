@@ -133,9 +133,12 @@
               <button data-wq="main">Yuqori</button>
             </div>
           </div>
-          <div class="tgroup" title="Hudud bo'yicha filter">
-            <span class="tg-k">Hudud bo'yicha filter</span>
-            <select id="wall-region" class="toolsel"><option value="">Barcha hududlar</option></select>
+          <div class="tgroup" title="Hudud yoki guruh bo'yicha">
+            <span class="tg-k">Hudud / guruh</span>
+            <div class="tg-row">
+              <select id="wall-region" class="toolsel"><option value="">Barcha kameralar</option></select>
+              <button class="btn ic auth-only" id="wall-save-group" title="Devordagi kameralarni guruh sifatida saqlash"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7"/><path d="M14 17.5h7"/></svg></button>
+            </div>
           </div>
           <div class="tgroup" title="Avto-almashish">
             <span class="tg-k">Avto-almashish</span>
@@ -468,6 +471,7 @@
                 <div class="lh-tabs">
                   <button class="on" data-lview="cams">Kameralar</button>
                   <button data-lview="regs">Hududlar</button>
+                  <button data-lview="grps" class="auth-only">Guruhlar</button>
                 </div>
                 <button id="list-close" title="Yopish"><svg viewBox="0 0 24 24"><path d="m6 6 12 12"/><path d="m18 6-12 12"/></svg></button>
               </div>
@@ -482,10 +486,16 @@
               </div>
               <div class="lh-meta">
                 <span id="list-count"></span>
+                <button id="sel-mode" class="auth-only" title="Bir nechta kamerani belgilab guruhga qo'shish">Tanlash</button>
                 <button id="list-exp" title="Hammasini ochish/yopish">Hammasini ochish</button>
               </div>
             </div>
             <div id="list-body"><div class="empty">Yuklanmoqda…</div></div>
+            <div id="pick-bar" hidden>
+              <span id="pick-bar-n">0 tanlandi</span>
+              <button class="btn" id="pick-bar-clear">Bekor</button>
+              <button class="btn acc" id="pick-bar-add">Guruhga qo'shish</button>
+            </div>
             <div id="list-foot">
               <div class="stat"><div class="k">O'rtacha ochilish</div><div class="v acc" id="stat-open">&mdash;</div></div>
               <div class="stat"><div class="k">Faol oqim</div><div class="v" id="stat-live">0</div></div>
@@ -498,6 +508,7 @@
             <div id="mapctl">
               <button id="z-in" title="Kattalashtirish"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
               <button id="z-out" title="Kichiklashtirish"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+              <button id="lasso-btn" class="auth-only" title="Soha chizib kameralarni tanlash"><svg viewBox="0 0 24 24"><path d="M7 21c1-2 1-4 0-5"/><path d="M4.5 13.5C3.6 12.4 3 11 3 9.6 3 5.9 7 3 12 3s9 2.9 9 6.6-4 6.6-9 6.6c-1.4 0-2.7-.2-3.9-.6"/><circle cx="7" cy="15" r="1.6"/></svg></button>
               <button id="fit-all" title="Hammasini ko'rsatish"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/></svg></button>
             </div>
             <div id="map-legend">
@@ -509,6 +520,9 @@
               <div class="ml-r"><span class="ml-i bd"></span>Hudud chegarasi</div>
             </div>
             <button class="btn ghost" id="map-fs"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg>To'liq ekran</button>
+            <!-- Guruh filtri: xarita pastida, bir bosishda (map/groups.js) -->
+            <div id="map-groups" class="auth-only" hidden></div>
+            <div id="lasso-hint">Xaritada kameralar atrofini chizing · Esc — bekor qilish</div>
             <div id="pick-hint">Xaritada kerakli nuqtani bosing — koordinata shaklga tushadi</div>
           </div>
 
@@ -545,6 +559,7 @@
                 <div><dt><svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg>Model</dt><dd id="sel-f-model">&mdash;</dd></div>
                 <div><dt><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Rejim</dt><dd id="sel-f-mode">&mdash;</dd></div>
                 <div><dt><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 18 0"/><path d="M12 12v6"/></svg>Oxirgi aloqa</dt><dd id="sel-f-seen">&mdash;</dd></div>
+                <div class="auth-only"><dt><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7"/><path d="M14 17.5h7"/></svg>Guruhlar</dt><dd id="sel-f-groups" class="sp-chips">&mdash;</dd></div>
               </dl>
 
               <!-- Ishonchlilik: oxirgi 7 kun (GET /cameras/{id}/details) -->
@@ -964,6 +979,31 @@
       <button class="btn" id="n-scan" style="margin-right:auto">&#128269; Kanallarni avto-aniqlash</button>
       <button class="btn" id="n-check">Tekshirish</button>
       <button class="btn acc" id="n-save" disabled>Qo'shish</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Kamera guruhi oynasi (map/groups.js) ===== -->
+<div class="backdrop" id="group-modal">
+  <div class="modal sm" role="dialog" aria-modal="true">
+    <h2 id="gm-title">Guruhga qo'shish</h2>
+    <p class="lead" id="gm-lead"></p>
+    <div id="gm-list"></div>
+    <div id="gm-new">
+      <label>Guruh nomi
+        <input id="gm-name" maxlength="80" placeholder="Masalan: Toshkent stansiyasi" autocomplete="off">
+      </label>
+      <div class="gm-row">
+        <div id="gm-colors"></div>
+        <label class="gm-check"><input type="checkbox" id="gm-shared"> Hamma ko'rsin</label>
+      </div>
+    </div>
+    <div class="err" id="gm-err"></div>
+    <div class="modal-actions">
+      <button class="btn danger" id="gm-delete" hidden>Guruhni o'chirish</button>
+      <span class="gm-sp"></span>
+      <button class="btn" data-close="group-modal">Bekor</button>
+      <button class="btn acc" id="gm-save">Saqlash</button>
     </div>
   </div>
 </div>

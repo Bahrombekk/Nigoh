@@ -25,7 +25,7 @@
              ./camera-list.js (MOBILE, renderFootStats, renderList, setListOpen),
              ../player/player.js (createPlayer), ../wall/video-wall.js (saveSnapshot),
              ../layout/notifications.js (addEvent), ../layout/tabs.js (showTab),
-             ../admin/camera-form.js (openCameraForm)
+             ../admin/camera-form.js (openCameraForm), ./groups.js (renderCamGroups)
 
    DOM: #sel-body, #sel-empty, #sel-video, #sel-msg, #sel-name, #sel-sub, .sp-st,
         #sel-badge, #sel-badge-tx, #sel-badge-2, #sel-f-region, #sel-f-res,
@@ -55,6 +55,7 @@ import { saveSnapshot } from "../wall/video-wall.js";
 import { addEvent } from "../layout/notifications.js";
 import { showTab } from "../layout/tabs.js";
 import { openCameraForm } from "../admin/camera-form.js";
+import { renderCamGroups } from "./groups.js";
 
 /* Jonli eksport — camera-list.js ochiq oqimlarni sanaydi. SelectionPanel.player
    bilan birga yoziladi. */
@@ -206,6 +207,7 @@ export class SelectionPanel {
     $("sel-f-seen").textContent = down ? fmtLastSeen(cam.last_seen) : "hozirgina";
     $("sel-f-codec").textContent = cam.codec || "—";
     $("sel-f-mode").textContent = cam.always_on ? "doim tayyor" : "so'rov bo'yicha";
+    renderCamGroups(cam);
     const now = new Date();
     $("sel-stamp").textContent = p2(now.getDate()) + "-" + p2(now.getMonth() + 1) + "-" +
       now.getFullYear() + " " + p2(now.getHours()) + ":" + p2(now.getMinutes());

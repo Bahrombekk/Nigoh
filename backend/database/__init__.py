@@ -53,6 +53,7 @@ from database.repositories import (
     cameras,
     events,
     geo,
+    groups,
     nodes,
     rail,
     reports,
@@ -74,7 +75,7 @@ from database.schema import init_db  # noqa: E402
 
 __all__ = [
     "IntegrityError", "UniqueViolation", "areas", "cameras", "cameras_by_slug",
-    "cameras_without_sub", "events", "geo", "get_db", "init_db", "nodes", "rail",
+    "cameras_without_sub", "events", "geo", "get_db", "groups", "init_db", "nodes", "rail",
     "reports", "set_sub_bad", "set_sub_path", "single_connection", "slugify", "stats",
     "sub_bad_cameras", "unique_slug", "users", "walls",
 ]

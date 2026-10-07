@@ -385,8 +385,8 @@ button.mini-kpi:hover{border-color:var(--c)}
 #filters button:hover{color:var(--text)}
 #filters button.on{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-sm)}
 .lh-meta{display:flex;align-items:center;gap:8px}
-#list-count{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
-#list-exp{margin-left:auto;font-size:10.5px;font-weight:600;color:var(--accent)}
+#list-count{font-family:var(--mono);font-size:10.5px;color:var(--muted);white-space:nowrap}
+#list-exp{margin-left:auto;white-space:nowrap;font-size:10.5px;font-weight:600;color:var(--accent)}
 #list-exp:hover{text-decoration:underline}
 
 #list-body{flex:1;min-height:0;overflow-y:auto}
@@ -1293,4 +1293,95 @@ button.live-pill:disabled{opacity:.6}
   .vt-row{grid-template-columns:minmax(0,1.3fr) 48px minmax(80px,1.1fr) 56px;gap:8px;padding-left:14px;padding-right:14px}
   .vt-row>:nth-child(5){display:none}
   .vt-row.sub .vt-name{padding-left:22px}
+}
+
+/* ---------- Kamera guruhlari (map/groups.js) ---------- */
+/* Guruhlar shaxsiy — kirmagan (mehmon) foydalanuvchiga ko'rinmaydi. */
+body.anon .auth-only{display:none!important}
+#sel-mode{flex:none;white-space:nowrap;font-size:10.5px;font-weight:600;color:var(--muted);padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+#sel-mode:hover{color:var(--accent);border-color:var(--accent)}
+#sel-mode.on{background:var(--accent);border-color:var(--accent);color:#fff}
+/* Tanlash rejimi: katakcha va pastki panel */
+.cam-row .pk{flex:0 0 15px;width:15px;height:15px;border-radius:4px;border:1.5px solid var(--faint);display:grid;place-items:center}
+.cam-row.picked{background:var(--accent-soft)}
+.cam-row.picked .pk{background:var(--accent);border-color:var(--accent)}
+.cam-row.picked .pk::after{content:"";width:7px;height:4px;border:2px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+body.pick-mode .grp-fly{color:var(--faint)}
+#pick-bar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:10px;border-top:1px solid var(--line-2);background:var(--surface-2)}
+#pick-bar[hidden]{display:none}
+#pick-bar span{flex:1;font-size:12px;font-weight:600}
+#pick-bar .btn{height:32px;padding:0 12px;font-size:12px}
+#pick-bar .btn:disabled{opacity:.45;cursor:default}
+/* "Guruhlar" ko'rinishi */
+.gl-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line-2)}
+.gl-head .btn{height:32px;padding:0 12px;font-size:12px}
+.gl-head span{font-size:10.5px;color:var(--muted);line-height:1.35}
+.gl-row{display:flex;align-items:center;gap:9px;padding:9px 8px 9px 14px;cursor:pointer;border-bottom:1px solid var(--line-2)}
+.gl-row:hover{background:var(--surface-2)}
+.gl-row.on{background:var(--accent-soft)}
+.gl-dot{flex:0 0 10px;width:10px;height:10px;border-radius:3px}
+.gl-row .nm{flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gl-row .nm em{display:block;font-style:normal;font-weight:400;font-size:10.5px;color:var(--muted)}
+.gl-row .bdg{display:flex;gap:5px}
+.gl-row .bdg span{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:999px;background:var(--ok-soft);color:var(--ok)}
+.gl-row .bdg span.d{background:var(--danger-soft);color:var(--danger)}
+.gl-ic{flex:0 0 28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--faint)}
+.gl-ic:hover{background:var(--surface);color:var(--accent)}
+.gl-ic svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+/* Lasso */
+#mapctl button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#map.lasso,#map.lasso .leaflet-interactive{cursor:crosshair!important}
+#lasso-hint{display:none;position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:640;
+  background:var(--surface);border:1px solid var(--accent);color:var(--accent);
+  font-size:12.5px;font-weight:600;padding:9px 18px;border-radius:11px;box-shadow:var(--shadow);white-space:nowrap}
+/* Kamera paneli: guruh chiplari */
+.sp-facts dd.sp-chips{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;white-space:normal;overflow:visible}
+.sp-chips .chip{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:3px 8px;border-radius:999px;
+  background:var(--surface-2);border:1px solid var(--line);font-size:11px;font-weight:600;cursor:pointer}
+.sp-chips .chip:hover{border-color:var(--accent)}
+.sp-chips .chip i{flex:0 0 7px;width:7px;height:7px;border-radius:2px}
+.sp-chips .chip b{margin-left:2px;color:var(--faint);font-size:13px;line-height:1}
+.sp-chips .chip b:hover{color:var(--danger)}
+.sp-chips .chip.add{color:var(--accent);border-style:dashed;font-weight:600}
+/* Devor: guruh sifatida saqlash */
+.btn.ic{width:38px;padding:0;flex:0 0 38px}
+.btn.ic svg{width:16px;height:16px}
+/* Guruh oynasi */
+.modal.sm{width:440px}
+#gm-list{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;margin-bottom:14px}
+#gm-list[hidden],#gm-new[hidden]{display:none}
+.gm-opt{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r-sm);border:1px solid var(--line);
+  background:var(--surface-2);text-align:left}
+.gm-opt:hover{border-color:var(--accent)}
+.gm-opt.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
+.gm-opt i{flex:0 0 12px;width:12px;height:12px;border-radius:4px;font-style:normal;font-weight:700;color:var(--accent);
+  display:grid;place-items:center;font-size:14px}
+.gm-opt span{display:flex;flex-direction:column;font-size:13px;font-weight:600}
+.gm-opt em{font-style:normal;font-weight:400;font-size:11px;color:var(--muted)}
+.gm-row{display:flex;align-items:center;gap:14px;margin:-2px 0 14px;flex-wrap:wrap}
+#gm-colors{display:flex;gap:6px}
+#gm-colors button{width:22px;height:22px;border-radius:7px;border:2px solid transparent}
+#gm-colors button.on{border-color:var(--text);box-shadow:0 0 0 2px var(--surface) inset}
+.modal label.gm-check{display:flex;align-items:center;gap:7px;margin:0;font-size:12.5px;color:var(--text);font-weight:600;cursor:pointer}
+.modal label.gm-check input{width:auto;margin:0}
+.gm-sp{flex:1}
+/* Xarita pastidagi guruh filtri — belgilar (chap) va to'liq ekran (o'ng) orasida. */
+#map-groups{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:500;
+  display:flex;flex-wrap:wrap;justify-content:center;gap:6px;padding:6px;
+  width:max-content;max-width:calc(100% - 340px);max-height:84px;overflow-y:auto;scrollbar-width:thin;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-sm)}
+#map-groups[hidden]{display:none}
+.mg-chip{flex:none;display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:9px;
+  font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;transition:background .15s,color .15s}
+.mg-chip:hover{background:var(--surface-2);color:var(--text)}
+.mg-chip.on{background:var(--accent);color:#fff}
+.mg-chip i{flex:0 0 9px;width:9px;height:9px;border-radius:3px}
+.mg-chip.on i{box-shadow:0 0 0 2px rgba(255,255,255,.85)}
+.mg-chip b{font-family:var(--mono);font-size:10.5px;font-weight:600;opacity:.8}
+.mg-chip em{font-style:normal;margin-left:5px;color:var(--danger)}
+.mg-chip.on em{color:#ffd2cc}
+.mg-chip.add{color:var(--accent);border:1px dashed var(--line)}
+@media (max-width:1100px){
+  /* Pastda belgilar va tugma bilan sig'maydi — tepaga, zoom tugmalari chapiga. */
+  #map-groups{top:14px;bottom:auto;left:14px;transform:none;max-width:calc(100% - 78px)}
 }

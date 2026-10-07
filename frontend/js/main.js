@@ -52,6 +52,7 @@ import { closeModal, openModal } from "./core/modals.js";
 import { applyMe, kirishniKut, openLogin } from "./auth/auth.js";
 import { loadVendors, stopPicking, xaritaTanlashniUlash } from "./admin/camera-form.js";
 import { initOverview } from "./dashboard/overview.js";
+import { initGroups, loadGroups } from "./map/groups.js";
 import "./core/icons.js";
 import "./map/map.js";
 import "./player/player.js";
@@ -64,6 +65,8 @@ import "./admin/nvr.js";
 xaritaTanlashniUlash();
 // Hisobot (dashboard) tugmalari va o'lcham kuzatuvchisi — xuddi shu sababdan shu yerda.
 initOverview();
+// Kamera guruhlari: oyna, tanlash rejimi, lasso — xuddi shu sababdan shu yerda.
+initGroups();
 
 
 
@@ -169,6 +172,9 @@ let bootSafety = setTimeout(bootDone, 8000);
   // Uzilgan kameralar birinchi ochilishda hodisalar ro'yxatiga tushadi.
   state.cameras.filter((c) => c.online === false).forEach((c) =>
     addEvent(c.name + " — uzilgan (oxirgi onlayn: " + fmtLastSeen(c.last_seen) + ")", "danger"));
+
+  // Guruhlar kameralar ro'yxatiga tayanadi (a'zolar holati) — undan keyin.
+  loadGroups();
 
   drawHeadMaps();
   if (hashTab) showTab(hashTab);

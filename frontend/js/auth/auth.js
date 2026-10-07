@@ -96,6 +96,8 @@ export class Auth {
     // Operator boshqaruv bo'limini ko'rmaydi — server ham 403 qaytaradi.
     document.body.classList.toggle("operator", !!admin && admin.role === "operator");
     if (admin && admin.role === "operator" && state.tab === "admin") showTab("map");
+    // Foydalanuvchiga bog'liq ma'lumot (guruhlar) qayta yuklansin — map/groups.js.
+    document.dispatchEvent(new Event("auth:changed"));
   }
 
   /* /api/auth/me javobini qo'llash. Kirilmagan bo'lsa interfeys ochilmaydi;

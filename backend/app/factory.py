@@ -22,7 +22,8 @@ Kirish darajalari (`mount()` da beriladi):
     require_viewer   camera/api: cameras, streams, events, metrics; walls —
                      kalit, sessiya yoki (PUBLIC_VIEW=1) mehmon; operator
                      hududi endpoint ichida tekshiriladi
-    require_user     stats/api.py — dashboard, mehmonga yopiq
+    require_user     stats/api.py — dashboard; groups/api.py — kamera guruhlari;
+                     mehmonga yopiq
     key_guard        boshqaruv: camera/api/admin, users/admin_api,
                      app/system_api, camera/api/mediamtx, database/api,
                      camera/api/nodes, stats/admin_api — routerning o'zida
@@ -82,6 +83,7 @@ from core.logs import config as log_config
 from core.logs import context as log_context
 from core.version import VERSION
 from database.api import router as database_router
+from groups.api import router as groups_router
 from stats.admin_api import router as analytics_router
 from stats.api import router as stats_router
 from users.access import require_admin
@@ -298,6 +300,8 @@ def create_app() -> FastAPI:
         mount(router, require_viewer)
     # Dashboard — faqat kirganlar (yoki kalit): interfeysda ham yopiq bo'lim.
     mount(stats_router, require_user)
+    # Kamera guruhlari — shaxsiy, mehmonga yopiq; egalik endpoint ichida.
+    mount(groups_router, require_user)
     # Boshqaruv: admin/nodes/analytics routerlarining o'zida require_admin
     # bor; key_guard xato kalitni sekinlashtiradi. devices'da yo'q edi.
     for router in (camera_admin_router, users_admin_router, system_router, mediamtx_router,

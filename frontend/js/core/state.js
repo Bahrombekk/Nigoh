@@ -40,6 +40,11 @@ export const state = {
   listOpen: true,
   openRegions: {},
   pinned: [],                 // "Devorga qo'shish" bilan tanlanganlar
+  groupFilter: null,          // xarita/ro'yxat shu guruh bilan cheklangan (map/groups.js)
+  groupMembers: null,         // groupFilter a'zolari (Set) — visibleCams tez tekshirsin
+  wallGroup: null,            // devorda shu guruh kameralari (null — hudud yoki hammasi)
+  pickMode: false,            // ro'yxatda "Tanlash" rejimi (guruhga qo'shish uchun)
+  pickIds: new Set(),         // tanlash rejimida belgilangan kameralar
   wallSize: 3,
   wallRegion: "",             // devorda faqat shu hudud ("" — hammasi)
   wallQuality: "auto",        // auto | sub (past) | main (asl) — devor oqimi

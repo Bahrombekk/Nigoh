@@ -13,6 +13,7 @@ import pytest
 
 from database import get_db
 from stats import overview
+from stats.reporting import engine
 from tests.factories import add_camera, add_event
 
 NOW = datetime.now(timezone.utc)
@@ -51,6 +52,10 @@ def ids():
 
 @pytest.fixture(scope="module")
 def report(ids):
+    # Hisob 60 s keshlanadi (stats/reporting/engine.py). Oldingi modul shu
+    # daqiqada /overview ni so'ragan bo'lsa (test_stats_api), keshda bu
+    # kameralarsiz hisob turadi va testlar tartibga qarab yiqilardi.
+    engine.clear_cache()
     return overview._compute(1, None)
 
 
@@ -78,7 +83,11 @@ def test_sakrash_va_haqiqiy_uzilish_ajratiladi(report, ids):
 def test_davom_etayotgan_uzilish_hozirgacha_sanaladi(report, ids):
     b = _cam(report, ids["b"])
     assert (b["blips"], b["outages"]) == (0, 1)
-    assert b["offline_seconds"] == pytest.approx(3600, abs=5)
+    # "Hozirgacha" — hisobot davrining oxirigacha (report["to"]), NOW gacha emas:
+    # NOW modul import qilinganda olinadi, hisobot esa soniyalar keyin
+    # hisoblanadi — qat'iy 3600 ±5 sekin yurishda tasodifan yiqilardi.
+    expected = (report["to"] - _ago(hours=1)).total_seconds()
+    assert b["offline_seconds"] == pytest.approx(expected, abs=2)
 
 
 def test_boshliqdagi_vaqt_uzilishga_kirmaydi(report, ids):

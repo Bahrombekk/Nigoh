@@ -22,12 +22,13 @@ def _stamp(hours_ago: float) -> datetime:
 
 @pytest.fixture(scope="module", autouse=True)
 def seed():
-    """Ikki hududda uch kamera va ma'lum o'tishlar."""
+    """Ikki hududda uch kamera va ma'lum o'tishlar. Hududlar (Xorazm, Qashqadaryo)
+    faqat shu modulniki — boshqa testlar qo'shgan kameralar sanoqni buzmasin."""
     with get_db() as db:
         for slug, name, region in (
-            ("tah_a", "Tahlil A", "Jizzax"),
-            ("tah_b", "Tahlil B", "Jizzax"),
-            ("tah_c", "Tahlil C", "Navoiy"),
+            ("tah_a", "Tahlil A", "Xorazm"),
+            ("tah_b", "Tahlil B", "Xorazm"),
+            ("tah_c", "Tahlil C", "Qashqadaryo"),
         ):
             add_camera(db, slug, name=name, region=region, ip="10.9.9.1")
         # A: 3 soat oldin uzildi, 2 soat oldin qaytdi -> 1 uzilish, 1 soat offline
@@ -83,9 +84,9 @@ def test_hudud_kesimida_guruhlash(client):
     body = client.get("/api/v1/admin/uptime?hours=24&group_by=region",
                       headers=KEY).json()
     groups = {g["key"]: g for g in body["groups"]}
-    assert groups["Jizzax"]["cameras"] == 2
-    assert groups["Jizzax"]["outages"] == 1
-    assert groups["Navoiy"]["outages"] == 1
+    assert groups["Xorazm"]["cameras"] == 2
+    assert groups["Xorazm"]["outages"] == 1
+    assert groups["Qashqadaryo"]["outages"] == 1
     # Guruh reytingi ham eng yomonidan boshlanadi.
     outages = [g["outages"] for g in body["groups"]]
     assert outages == sorted(outages, reverse=True)
