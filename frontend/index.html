@@ -31,7 +31,7 @@
       <i class="ring r1"></i><i class="ring r2"></i><i class="ring r3"></i>
       <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" class="o"/><circle cx="16" cy="16" r="5.5" class="i"/></svg>
     </span>
-    <div class="sp-name">NIGOH</div>
+    <div class="sp-name site-name">NIGOH</div>
     <div class="sp-sub">VIDEO NAZORAT TIZIMI</div>
     <div class="sp-bar"><i></i></div>
     <div class="sp-status" id="sp-status">Ulanmoqda…</div>
@@ -45,7 +45,7 @@
   <aside id="side">
     <div class="side-brand">
       <span class="logo"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" class="o"/><circle cx="16" cy="16" r="5.5" class="i"/></svg></span>
-      <span class="bt"><b>NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
+      <span class="bt"><b class="site-name">NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
     </div>
 
     <nav id="tabs">
@@ -53,6 +53,7 @@
       <button data-tab="map" class="on"><svg viewBox="0 0 24 24"><path d="M14.1 5.6a2 2 0 0 0 1.8 0l3.7-1.9A1 1 0 0 1 21 4.6v12.8a1 1 0 0 1-.6.9l-4.5 2.3a2 2 0 0 1-1.8 0l-4.2-2.1a2 2 0 0 0-1.8 0l-3.7 1.9A1 1 0 0 1 3 19.4V6.6a1 1 0 0 1 .6-.9l4.5-2.3a2 2 0 0 1 1.8 0z"/><path d="M15 5.8v15"/><path d="M9 3.2v15"/></svg><span>Xarita</span></button>
       <button data-tab="wall"><svg viewBox="0 0 24 24"><rect width="7.5" height="7.5" x="3" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="3" rx="1.6"/><rect width="7.5" height="7.5" x="13.5" y="13.5" rx="1.6"/><rect width="7.5" height="7.5" x="3" y="13.5" rx="1.6"/></svg><span>Video devor</span></button>
       <button data-tab="admin"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg><span>Boshqaruv</span></button>
+      <button data-tab="settings" class="admin-only"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Sozlamalar</span></button>
     </nav>
 
     <div class="side-foot">
@@ -161,6 +162,12 @@
             <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
             <span>To'liq ekran<i>Video devor rejimi</i></span>
           </button>
+        </div>
+      </div>
+      <div class="top-page" data-page="settings" hidden>
+        <div class="ph-main">
+          <h1>Sozlamalar</h1>
+          <p>Foydalanuvchilar, guruhlar, tizim holati va sayt sozlamalari — faqat administrator</p>
         </div>
       </div>
       <div class="top-page" data-page="admin" hidden>
@@ -518,6 +525,11 @@
               <div class="ml-r"><span class="ml-i cl">12</span>Kamera klasteri</div>
               <div class="ml-r"><span class="ml-i bdg">3</span>Klasterda uzilganlar</div>
               <div class="ml-r"><span class="ml-i bd"></span>Hudud chegarasi</div>
+              <!-- Temir yo'l qatlami (map/railways.js) -->
+              <div id="ml-rail-box">
+                <button class="ml-rail" id="ml-rail" role="switch" aria-checked="true"><span class="ml-i rl"></span>Temir yo'llar<i class="sw"></i></button>
+                <div id="ml-rail-list"></div>
+              </div>
             </div>
             <button class="btn ghost" id="map-fs"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg>To'liq ekran</button>
             <!-- Guruh filtri: xarita pastida, bir bosishda (map/groups.js) -->
@@ -728,6 +740,117 @@
         </div>
       </section>
 
+      <!-- ==================== SOZLAMALAR (admin/settings.js) ==================== -->
+      <section class="page" id="settings-view" hidden>
+        <div class="sx-layout">
+          <nav class="sx-nav" id="st-tabs">
+            <div class="sxn-g">Sozlamalar</div>
+            <button data-st="general"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/></svg><span>Umumiy</span></button>
+            <button data-st="access"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Kirish va xavfsizlik</span></button>
+            <button data-st="monitoring"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Kuzatuv</span></button>
+            <div class="sxn-g">Boshqaruv</div>
+            <button data-st="users"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Foydalanuvchilar</span></button>
+            <button data-st="groups"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Kamera guruhlari</span></button>
+            <div class="sxn-g">Tizim</div>
+            <button data-st="status"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01"/><path d="M7 17h.01"/></svg><span>Tizim holati</span></button>
+            <button data-st="logs"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg><span>Loglar</span></button>
+            <button data-st="audit"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>O‘zgarishlar jurnali</span></button>
+          </nav>
+
+          <div class="sx-main">
+            <!-- Umumiy / Kirish / Kuzatuv — sayt sozlamalari (bir xil shakl, guruh bo'yicha) -->
+            <div class="st-panel" data-st="general" hidden>
+              <header class="sx-head"><h2>Umumiy</h2><p>Saytning nomi va ko‘rinishi. O‘zgarishlar hamma foydalanuvchiga darhol qo‘llanadi.</p></header>
+              <div class="sx-card" id="sx-form-general"></div>
+            </div>
+            <div class="st-panel" data-st="access" hidden>
+              <header class="sx-head"><h2>Kirish va xavfsizlik</h2><p>Kim tizimga kira oladi va sessiya qancha davom etadi.</p></header>
+              <div class="sx-card" id="sx-form-access"></div>
+            </div>
+            <div class="st-panel" data-st="monitoring" hidden>
+              <header class="sx-head"><h2>Kuzatuv</h2><p>Kameralar holati qanchalik tez-tez tekshiriladi va qachon nosoz hisoblanadi. Server qayta ishga tushmasdan qo‘llanadi.</p></header>
+              <div class="sx-card" id="sx-form-monitoring"></div>
+            </div>
+
+            <!-- Foydalanuvchilar -->
+            <div class="st-panel" data-st="users" hidden>
+              <header class="sx-head"><h2>Foydalanuvchilar</h2><p>Administratorlar hamma narsani boshqaradi; operatorlar faqat biriktirilgan hududlardagi kameralarni ko‘radi.</p></header>
+              <div class="card">
+                <div class="c-head">
+                  <div class="c-t"><span class="c-sub" id="su-sub">—</span></div>
+                  <div class="c-tools">
+                    <input id="su-q" class="st-search" placeholder="Login yoki F.I.Sh…" autocomplete="off">
+                    <button class="btn acc" id="su-new"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Yangi foydalanuvchi</button>
+                  </div>
+                </div>
+                <div class="st-scroll"><table class="st-table" id="su-table"></table></div>
+              </div>
+            </div>
+
+            <!-- Guruhlar -->
+            <div class="st-panel" data-st="groups" hidden>
+              <header class="sx-head"><h2>Kamera guruhlari</h2><p>Barcha foydalanuvchilarning guruhlari. Administrator har qanday guruhni tahrirlay, umumiy qila yoki o‘chira oladi.</p></header>
+              <div class="card">
+                <div class="c-head">
+                  <div class="c-t"><span class="c-sub" id="sg-sub">—</span></div>
+                  <div class="c-tools">
+                    <input id="sg-q" class="st-search" placeholder="Guruh yoki egasi…" autocomplete="off">
+                    <button class="btn acc" id="sg-new"><svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Yangi guruh</button>
+                  </div>
+                </div>
+                <div class="st-scroll"><table class="st-table" id="sg-table"></table></div>
+              </div>
+            </div>
+
+            <!-- Tizim holati -->
+            <div class="st-panel" data-st="status" hidden>
+              <header class="sx-head"><h2>Tizim holati</h2><p>Server, video xizmati (MediaMTX), holat tekshiruvi, baza va disk.</p></header>
+              <div class="st-cards" id="ss-cards"></div>
+              <div class="card" id="ss-db-card">
+                <div class="c-head"><div class="c-t">Baza jadvallari<span class="c-sub" id="ss-db-sub">—</span></div></div>
+                <div class="st-scroll"><table class="st-table" id="ss-db"></table></div>
+              </div>
+            </div>
+
+            <!-- Loglar -->
+            <div class="st-panel" data-st="logs" hidden>
+              <header class="sx-head"><h2>Loglar</h2><p>Server jurnallari — toifa, daraja va davr bo‘yicha. Eng yangisi birinchi.</p></header>
+              <div class="card">
+                <div class="c-head">
+                  <div class="c-t"><span class="c-sub" id="sl-sub">—</span></div>
+                  <div class="c-tools st-filters">
+                    <select id="sl-cat" class="toolsel sm"></select>
+                    <select id="sl-level" class="toolsel sm">
+                      <option value="">Hamma daraja</option><option value="ERROR">ERROR</option>
+                      <option value="WARNING">WARNING</option><option value="INFO">INFO</option>
+                    </select>
+                    <select id="sl-hours" class="toolsel sm">
+                      <option value="1">1 soat</option><option value="24" selected>24 soat</option>
+                      <option value="168">7 kun</option>
+                    </select>
+                    <input id="sl-q" class="st-search sm" placeholder="Qidirish…" autocomplete="off">
+                  </div>
+                </div>
+                <div class="st-scroll"><table class="st-table mono" id="sl-table"></table></div>
+              </div>
+            </div>
+
+            <!-- O'zgarishlar jurnali -->
+            <div class="st-panel" data-st="audit" hidden>
+              <header class="sx-head"><h2>O‘zgarishlar jurnali</h2><p>Kim, qachon, qayerdan, nimani o‘zgartirdi: sozlamalar, foydalanuvchilar, guruhlar. Jurnal o‘chirilmaydi va tahrirlanmaydi.</p></header>
+              <div class="card"><div id="sa-list"></div></div>
+            </div>
+
+            <!-- Saqlanmagan o'zgarishlar paneli -->
+            <div class="sx-bar" id="sx-bar" hidden>
+              <span id="sx-bar-n">Saqlanmagan o‘zgarishlar</span>
+              <button class="btn" id="sx-cancel">Bekor qilish</button>
+              <button class="btn acc" id="sx-save">Saqlash</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 </div>
@@ -737,7 +860,7 @@
   <div class="ls-left">
     <div class="ls-brand">
       <span class="logo"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" class="o"/><circle cx="16" cy="16" r="5.5" class="i"/></svg></span>
-      <span class="bt"><b>NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
+      <span class="bt"><b class="site-name">NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
     </div>
     <h2>Xavfsiz<br>O'zbekiston uchun<br>birgalikda</h2>
     <p class="ls-lead">Butun mamlakat bo'ylab video kuzatuv, real vaqt monitoringi
@@ -766,7 +889,7 @@
     <div class="ls-card" role="dialog" aria-modal="true">
       <div class="ls-brand center">
         <span class="logo"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" class="o"/><circle cx="16" cy="16" r="5.5" class="i"/></svg></span>
-        <span class="bt"><b>NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
+        <span class="bt"><b class="site-name">NIGOH</b><i>VIDEO NAZORAT TIZIMI</i></span>
       </div>
       <h3>Tizimga kirish</h3>
       <p class="ls-sub">Hisobingiz orqali NIGOH platformasiga kiring</p>
@@ -983,6 +1106,30 @@
   </div>
 </div>
 
+<!-- ===== Foydalanuvchi oynasi (admin/settings.js) ===== -->
+<div class="backdrop" id="user-modal">
+  <div class="modal sm" role="dialog" aria-modal="true">
+    <h2 id="um-title">Yangi foydalanuvchi</h2>
+    <p class="lead" id="um-lead">Operator faqat biriktirilgan hududlardagi kameralarni ko'radi.</p>
+    <div class="um-grid">
+      <label>Login<input id="um-login" maxlength="64" autocomplete="off"></label>
+      <label>F.I.Sh<input id="um-name" maxlength="120" autocomplete="off"></label>
+      <label>Parol<input id="um-pass" type="password" maxlength="200" autocomplete="new-password"></label>
+      <label>Rol<select id="um-role"><option value="operator">Operator</option><option value="admin">Administrator</option></select></label>
+    </div>
+    <div id="um-regions-box">
+      <div class="um-k">Hududlar <span>(operator shu hududlardagi kameralarni ko'radi)</span></div>
+      <div id="um-regions"></div>
+    </div>
+    <label class="gm-check"><input type="checkbox" id="um-active" checked> Faol (o'chirilsa — kira olmaydi)</label>
+    <div class="err" id="um-err"></div>
+    <div class="modal-actions">
+      <button class="btn" data-close="user-modal">Bekor</button>
+      <button class="btn acc" id="um-save">Saqlash</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Kamera guruhi oynasi (map/groups.js) ===== -->
 <div class="backdrop" id="group-modal">
   <div class="modal sm" role="dialog" aria-modal="true">
@@ -997,6 +1144,19 @@
         <div id="gm-colors"></div>
         <label class="gm-check"><input type="checkbox" id="gm-shared"> Hamma ko'rsin</label>
       </div>
+    </div>
+    <!-- Kameralar: bittalab belgilash (katakcha); qidiruv va hudud — faqat filtr -->
+    <div id="gm-cams" hidden>
+      <div class="gm-ch"><b>Kameralar</b><span id="gm-cams-n"></span></div>
+      <div class="gm-add">
+        <div class="gm-q">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="gm-cam-q" placeholder="Qidirish: nomi yoki km…" autocomplete="off">
+        </div>
+        <select id="gm-cam-reg" class="gm-sel"><option value="">Barcha hududlar</option></select>
+        <button type="button" class="gm-only" id="gm-only">Faqat tanlanganlar</button>
+      </div>
+      <div id="gm-pick"></div>
     </div>
     <div class="err" id="gm-err"></div>
     <div class="modal-actions">

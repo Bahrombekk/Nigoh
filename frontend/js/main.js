@@ -136,7 +136,7 @@ let bootSafety = setTimeout(bootDone, 8000);
   // Chuqur havola: /#wall, /#dash, /#admin. Yopiq bo'lim so'ralgan bo'lsa-yu
   // kirilmagan bo'lsa — manzil tozalanadi, bo'lim umuman ochilmaydi.
   let hashTab = location.hash.replace("#", "");
-  if (!["wall", "dash", "admin"].includes(hashTab)) hashTab = "";
+  if (!["wall", "dash", "admin", "settings"].includes(hashTab)) hashTab = "";
   if (hashTab && AUTH_TABS.includes(hashTab) && !(me && me.authenticated)) {
     history.replaceState(null, "", location.pathname);
   }

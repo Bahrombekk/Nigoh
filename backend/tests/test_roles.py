@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 from app import config, deps
 from app.factory import create_app
 from database import get_db, init_db, users
-from users import access as helpers
 
 KEY = {"X-API-Key": "test-kalit"}
 PAROL = "sinov-parol-123"
@@ -133,12 +132,22 @@ def test_foydalanuvchi_hududlari_saqlanadi(client):
     assert noto_g_ri.status_code == 422
 
 
-def test_mehmon_public_view(client, hududlar, monkeypatch):
+@pytest.fixture()
+def mehmon_ochiq(client):
+    """Mehmon ko'rishi Sozlamalar orqali yoqiladi (server qayta ishga tushmaydi)
+    va test oxirida standartga (.env: PUBLIC_VIEW=0) qaytariladi."""
+    r = client.put("/api/v1/admin/settings", headers=KEY, json={"values": {"public_view": True}})
+    assert r.status_code == 200, r.text
+    yield
+    client.put("/api/v1/admin/settings", headers=KEY, json={"values": {"public_view": None}})
+
+
+def test_mehmon_public_view(client, hududlar):
     # O'chiq: kalit ham, sessiya ham yo'q — ko'rish yopiq.
     assert client.get("/api/v1/cameras").status_code == 401
 
-    monkeypatch.setattr(deps, "PUBLIC_VIEW", True)
-    monkeypatch.setattr(helpers, "PUBLIC_VIEW", True)
+
+def test_mehmon_korishi_yoqilganda(client, hududlar, mehmon_ochiq):
     mehmon = TestClient(create_app())
     nomlar = {c["name"] for c in mehmon.get("/api/v1/cameras").json()["cameras"]}
     assert {"rol-andijon", "rol-buxoro"} <= nomlar
@@ -146,14 +155,17 @@ def test_mehmon_public_view(client, hududlar, monkeypatch):
     # Mehmon faqat ko'radi.
     assert mehmon.get("/api/v1/stats/dashboard").status_code == 401
     assert mehmon.get("/api/v1/admin/cameras").status_code == 401
+    assert mehmon.get("/api/v1/groups").status_code == 401
 
 
-def test_me_public_view_bayrogi(client, monkeypatch):
-    assert client.get("/api/v1/auth/me").json()["public_view"] is False
-    from users import api as auth
-    monkeypatch.setattr(auth, "PUBLIC_VIEW", True)
-    assert client.get("/api/v1/auth/me").json()["public_view"] is True
+def test_me_public_view_bayrogi(client):
+    me = client.get("/api/v1/auth/me").json()
+    assert me["public_view"] is False and me["site_name"] == "NIGOH"
     assert config.PUBLIC_VIEW is False      # conftest: PUBLIC_VIEW=0
+
+
+def test_me_public_view_sozlamadan(client, mehmon_ochiq):
+    assert client.get("/api/v1/auth/me").json()["public_view"] is True
 
 
 def test_dashboard_kalitsiz_yopiq(client):

@@ -47,7 +47,7 @@ from camera.media import fast_start
 from camera.media import sync as mediamtx_sync
 from camera.media.mapping import camera_for_mediamtx
 from camera.monitoring import health, snapshots
-from camera.state import camera_state, resolve_ref
+from camera.state import camera_state, camera_state_reason, resolve_ref
 from camera.streaming import node_info, stream_urls
 from database import cameras, events, get_db
 from database import rail as rail_db
@@ -106,9 +106,10 @@ def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
             "name": r["name"], "region": r["region"],
             "lat": r["lat"], "lng": r["lng"],
             "online": health.online(r["ip"], r["port"]),
-            # Yagona holat: disabled / unknown / offline / stalled / online.
+            # Yagona holat: disabled / unknown / offline / stalled / online
+            # (camera/state.py) va sababi (stalled — nega tasvir yo'q).
             # `online` maydoni eski mijozlar uchun qoldirilgan.
-            "state": camera_state(r),
+            **dict(zip(("state", "state_reason"), camera_state_reason(r))),
             "last_seen": r["last_seen"] or "",
             "codec": r["codec"] or "",
             "sub_codec": r["sub_codec"] or "",
@@ -384,7 +385,7 @@ def camera_details(ref: str, request: Request,
 
     return {
         "id": row["id"], "name": row["name"], "region": row["region"],
-        "state": camera_state(row),
+        **dict(zip(("state", "state_reason"), camera_state_reason(row))),
         "passport": passport,
         "reliability": reliability,
         "history": [{"ts": r["ts"], "kind": r["kind"], "detail": r["detail"] or ""}

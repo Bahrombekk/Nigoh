@@ -93,9 +93,20 @@ class UserRepository:
             f"VALUES (%s, %s, %s, %s, %s) RETURNING {_PUBLIC}",
             (username, pw_hash, pw_salt, role, organization_id)).fetchone()
 
-    def update_identity(self, db, user_id: int, username: str, role: str) -> None:
-        db.execute("UPDATE users SET username = %s, role = %s WHERE id = %s",
-                   (username, role, user_id))
+    def update_identity(self, db, user_id: int, username: str, role: str,
+                        full_name: str | None = None, is_active: bool | None = None) -> None:
+        # full_name: None — o'zgarmasin, "" — tozalansin (bazada bo'sh qator emas, NULL).
+        db.execute("UPDATE users SET username = %s, role = %s, "
+                   "full_name = CASE WHEN %s::text IS NULL THEN full_name ELSE NULLIF(%s, '') END, "
+                   "is_active = COALESCE(%s, is_active) WHERE id = %s",
+                   (username, role, full_name, full_name, is_active, user_id))
+        if is_active is False:            # bloklangan — ochiq sessiyalari ham yopiladi
+            db.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+
+    def count_active_admins(self, db, exclude_id: int | None = None) -> int:
+        """Faol (bloklanmagan) adminlar soni — oxirgisini bloklab bo'lmasin."""
+        return db.execute("SELECT count(*) FROM users WHERE role = 'admin' AND is_active "
+                          "AND id IS DISTINCT FROM %s", (exclude_id,)).fetchone()[0]
 
     def set_password(self, db, user_id: int, pw_hash: str, pw_salt: str) -> None:
         """Parol almashadi va shu foydalanuvchining barcha sessiyalari bekor."""

@@ -24,7 +24,7 @@ Tarkibi:
     require_viewer(request)   kalit, sessiya yoki PUBLIC_VIEW mehmon; aks holda 401
     require_user(request)     kalit yoki sessiya; aks holda 401
 
-Ishlatadi: app.config (PUBLIC_VIEW), app.network (client_ip),
+Ishlatadi: app.settings (public_view — Sozlamalar sahifasidan), app.network (client_ip),
     users.access (api_key_ok, current_user), core.throttle, core.log.
 Kim ishlatadi: app/factory.py (routerlarni ulashda), tests/test_api.py.
 """
@@ -32,8 +32,8 @@ import math
 
 from fastapi import HTTPException, Request
 
-from app.config import PUBLIC_VIEW
 from app.network import client_ip
+from app.settings import site_settings
 from core.log import log
 from core.throttle import Throttle
 from users.access import api_key_ok, current_user
@@ -86,7 +86,7 @@ def require_viewer(request: Request) -> None:
         return
     if current_user(request) is not None:
         return
-    if PUBLIC_VIEW:
+    if site_settings.get("public_view"):
         return
     raise HTTPException(401, "Avval tizimga kiring")
 

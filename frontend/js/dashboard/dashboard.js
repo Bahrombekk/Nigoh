@@ -87,19 +87,22 @@ function setDelta(id, diff, unit, higherIsBetter) {
 
 /* Holat taqsimoti — donut + batafsil legenda.
 
-   To'rt holat alohida segment: "tasvir to'xtagan" (port ochiq, video yo'q)
-   va "tekshirilmagan" ham ko'rinsin — ular "uzilgan"ga qo'shilsa yoki
-   umuman ko'rsatilmasa muammo yashiringan bo'lardi. Segmentlar yumaloq
-   uchli, orasida havo; markazda bosh ko'rsatkich. */
+   Holatlar server qoidasidan (camera/state.py): "tasvirsiz" — port ochiq,
+   lekin tasvir olinmayapti (parol/oqim xatosi, ~30 daqiqa kadr yo'q yoki
+   ochiq oqim muzlagan); "tekshirilmagan" — server hali tekshirmagan yoki IP
+   yo'q; "o'chirilgan" — admin o'chirgan, foizga kirmaydi va faqat bor
+   bo'lsa ko'rinadi. Segmentlar yumaloq uchli, orasida havo; markazda
+   onlayn ulushi (o'chirilganlarsiz). */
 const DONUT_STATES = [
-  { key: "online", label: "Onlayn", color: "var(--ok)", hint: "Video kelyapti" },
-  { key: "stalled", label: "Tasvir to'xtagan", color: "var(--warn)", hint: "Tarmoqda, lekin video kelmayapti" },
+  { key: "online", label: "Onlayn", color: "var(--ok)", hint: "Tarmoq va tasvir bor" },
+  { key: "stalled", label: "Tasvirsiz", color: "var(--warn)", hint: "Tarmoqda, lekin tasvir olinmayapti" },
   { key: "offline", label: "Uzilgan", color: "var(--danger)", hint: "Tarmoqdan javob yo'q" },
-  { key: "unknown", label: "Tekshirilmagan", color: "var(--faint)", hint: "Holati hali aniqlanmagan" },
+  { key: "unknown", label: "Tekshirilmagan", color: "var(--faint)", hint: "Server hali tekshirmagan yoki IP yo'q" },
+  { key: "disabled", label: "O'chirilgan", color: "var(--surface-3)", hint: "Administrator o'chirgan", optional: true },
 ];
 
 function camStateOf(c) {
-  if (c.state) return c.state === "disabled" ? "unknown" : c.state;
+  if (c.state) return c.state;
   return c.online === true ? "online" : c.online === false ? "offline" : "unknown";
 }
 
@@ -197,14 +200,18 @@ export class Dashboard {
 
   renderMetrics() {
     const total = state.cameras.length;
-    const on = state.cameras.filter((c) => c.online === true).length;
+    // Donut bilan bir qoida (camera/state.py): onlayn — tasvir ham bor;
+    // foiz o'chirilganlarsiz.
+    const by = (k) => state.cameras.filter((c) => camStateOf(c) === k).length;
+    const on = by("online"), noImage = by("stalled");
     const off = state.cameras.filter((c) => c.online === false).length;
+    const active = total - by("disabled");
     $("m-total").textContent = total;
     $("m-total-note").textContent = new Set(state.cameras.map((c) => c.region)).size + " hududda";
-    const pctOn = total ? Math.round((on / total) * 100) : 0;
+    const pctOn = active ? Math.round((on / active) * 100) : 0;
     $("m-online").textContent = total ? pctOn + "%" : "—";
     $("m-online-n").textContent = on;
-    $("m-online-note").textContent = "Hozirda faol kameralar";
+    $("m-online-note").textContent = noImage ? noImage + " ta tarmoqda, lekin tasvirsiz" : "Tarmoq va tasvir bor";
     $("m-online-bar").style.width = pctOn + "%";
     const pctOff = total ? Math.round((off / total) * 100) : 0;
     $("m-down-pct").textContent = total ? pctOff + "%" : "—";
@@ -299,7 +306,9 @@ export class Dashboard {
     const total = state.cameras.length;
     const counts = Object.fromEntries(DONUT_STATES.map((st) => [st.key, 0]));
     state.cameras.forEach((c) => { counts[camStateOf(c)] = (counts[camStateOf(c)] || 0) + 1; });
-    const parts = DONUT_STATES.map((st) => ({ ...st, n: counts[st.key] || 0 }));
+    // "O'chirilgan" faqat bor bo'lsa — aks holda afsonada bo'sh qator turmasin.
+    const parts = DONUT_STATES.map((st) => ({ ...st, n: counts[st.key] || 0 }))
+      .filter((p) => !p.optional || p.n > 0);
     const shown = parts.filter((p) => p.n > 0);
 
     const R = 50, SW = 11, C = 2 * Math.PI * R;
@@ -320,17 +329,27 @@ export class Dashboard {
         C.toFixed(2) + '" stroke-dashoffset="' + off.toFixed(2) + '" transform="rotate(-90 70 70)"/>';
     }).join("");
     const on = counts.online || 0;
-    const pct = total ? Math.round((on / total) * 100) : 0;
+    const active = total - (counts.disabled || 0);          // o'chirilganlar foizga kirmaydi
+    const pct = active ? Math.round((on / active) * 100) : 0;
     $("donut").setAttribute("viewBox", "0 0 140 140");
     $("donut").innerHTML =
       '<circle cx="70" cy="70" r="' + R + '" fill="none" style="stroke:var(--surface-3);stroke-width:' + SW + '"/>' +
       segs +
       '<text x="70" y="70" text-anchor="middle" class="dn-pct">' + pct + '<tspan class="dn-unit" dx="1" dy="-11">%</tspan></text>' +
-      '<text x="70" y="88" text-anchor="middle" class="dn-sub">' + on + " / " + total + "</text>";
+      '<text x="70" y="88" text-anchor="middle" class="dn-sub">' + on + " / " + active + "</text>";
 
+    // Muammoli holatlarda qaysi kameralar va nima uchun — sichqoncha bilan.
+    const why = (key) => {
+      if (!["stalled", "unknown", "offline", "disabled"].includes(key)) return "";
+      const list = state.cameras.filter((c) => camStateOf(c) === key);
+      return list.slice(0, 15).map((c) => c.name + (c.state_reason ? " — " + c.state_reason : "")).join("\n") +
+        (list.length > 15 ? "\n… va yana " + (list.length - 15) + " ta" : "");
+    };
     $("donut-legend").innerHTML = parts.map((p) => {
       const share = total ? (p.n / total) * 100 : 0;
-      return '<div class="dl' + (p.n ? "" : " zero") + '" data-k="' + p.key + '">' +
+      const tip = p.n ? why(p.key) : "";
+      return '<div class="dl' + (p.n ? "" : " zero") + '" data-k="' + p.key + '"' +
+        (tip ? ' title="' + esc(tip) + '"' : "") + ">" +
         '<i style="background:' + p.color + '"></i>' +
         '<span class="dl-t"><b>' + p.label + "</b><em>" + p.hint + "</em></span>" +
         '<span class="dl-v"><b>' + p.n + '</b><u>' + (share ? share.toFixed(share < 10 ? 1 : 0).replace(".", ",") : "0") +

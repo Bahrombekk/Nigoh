@@ -11,6 +11,7 @@ Mavjud migratsiyalar:
     0002_schema_v2.py           sxema v2: tashkilotlar, hududlar, qurilmalar, audit
     0003_camera_probe.py        camera_status.probe_at / probe_error (pasport tekshiruvi)
     0004_camera_groups.py       foydalanuvchi kamera guruhlari (camera_groups, _members)
+    0005_app_settings.py        sayt sozlamalari (app_settings); audit_log.user_id FK olib tashlandi
 
 Tarkibi:
     load()                      `NNNN_[a-z0-9_]+` modullarini import qiladi, tekshiradi

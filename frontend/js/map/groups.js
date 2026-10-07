@@ -258,7 +258,7 @@ export class GroupStore {
     $("gm-lead").textContent = ids.length
       ? (ids.length === 1 && title ? title + " — " : ids.length + " ta kamera — ") +
         (editable.length ? "mavjud guruhni tanlang yoki yangisini yarating." : "yangi guruhga nom bering.")
-      : "Nom bering — kameralarni keyin ro‘yxatdan, xaritadan yoki panel orqali qo‘shasiz.";
+      : "Nom bering va kameralarni pastdagi ro‘yxatdan bittalab belgilang (keyin ham qo‘shsa bo‘ladi).";
     const list = $("gm-list");
     list.innerHTML = ids.length && editable.length ? editable.map((g) => {
       const has = ids.filter((id) => g.camera_ids.includes(id)).length;
@@ -276,22 +276,104 @@ export class GroupStore {
     $("gm-new").hidden = false;
     $("gm-delete").hidden = true;
     $("gm-save").textContent = ids.length ? "Qo‘shish" : "Yaratish";
+    if (ids.length) this.closeCams(); else this.openCams([]);
     this.showModal();
   }
 
   openEditor(g) {
     this.modal = { mode: "edit", ids: [], group: g, target: null };
     $("gm-title").textContent = "Guruhni tahrirlash";
-    $("gm-lead").textContent = g.camera_ids.length + " ta kamera" +
-      (g.mine ? "" : " · egasi: " + g.owner_name) +
-      " · kameralarni olib tashlash uchun kamera panelidagi × dan foydalaning.";
+    $("gm-lead").textContent = (g.mine ? "Nomi, rangi, ko'rinishi va kameralari." : "Egasi: " + g.owner_name + ".") +
+      (g.hidden ? " " + g.hidden + " ta kamera sizning hududingizda emas — ular o'zgarmaydi." : "");
     $("gm-list").hidden = true;
     $("gm-list").innerHTML = "";
     this.fillForm(g);
     $("gm-new").hidden = false;
     $("gm-delete").hidden = false;
     $("gm-save").textContent = "Saqlash";
+    this.openCams(g.camera_ids);
     this.showModal();
+  }
+
+  /* ---------- oyna: kameralar bo'limi (tahrir va bo'sh yangi guruh) ----------
+     Bitta ro'yxat — barcha kameralar, hudud bo'yicha; katakcha bilan bittalab
+     belgilanadi. Qidiruv, hudud va "faqat tanlanganlar" — faqat filtr, o'zi
+     hech narsa qo'shmaydi. Hududni to'liq belgilash — sarlavhadagi alohida
+     tugma bilan, ataylab. */
+
+  openCams(ids) {
+    this.editIds = [...ids];
+    this.origIds = [...ids];
+    this.onlyPicked = false;
+    $("gm-cams").hidden = false;
+    document.querySelector("#group-modal .modal").classList.add("wide");
+    $("gm-cam-q").value = "";
+    $("gm-only").classList.remove("on");
+    const regions = [...new Set(state.cameras.map((c) => c.region))].sort();
+    $("gm-cam-reg").innerHTML = '<option value="">Barcha hududlar</option>' +
+      regions.map((r) => '<option value="' + esc(r) + '">' + esc(r) + "</option>").join("");
+    this.renderPick();
+  }
+
+  closeCams() {
+    $("gm-cams").hidden = true;
+    document.querySelector("#group-modal .modal").classList.remove("wide");
+    this.editIds = null;
+  }
+
+  renderPick() {
+    const picked = new Set(this.editIds);
+    const q = $("gm-cam-q").value.trim().toLowerCase();
+    const reg = $("gm-cam-reg").value;
+    const cams = state.cameras.filter((c) =>
+      (!reg || c.region === reg) && (!this.onlyPicked || picked.has(c.id)) &&
+      (!q || (c.name + " " + (c.km != null ? c.km : "") + " " + c.region).toLowerCase().includes(q)));
+    // Sarlavha: tanlanganlar soni va o'zgarish belgisi.
+    const sel = this.editIds.map((id) => state.byId.get(id)).filter(Boolean);
+    const changed = this.editIds.length !== this.origIds.length ||
+      this.editIds.some((id, i) => id !== this.origIds[i]);
+    $("gm-cams-n").innerHTML = "<b>" + sel.length + "</b> ta tanlangan" +
+      (changed ? ' · <span class="acc">o‘zgardi</span>' : "") +
+      (sel.length ? ' <button type="button" class="gm-clear">tanlovni tozalash</button>' : "");
+    $("gm-only").textContent = "Faqat tanlanganlar (" + sel.length + ")";
+    const box = $("gm-pick");
+    if (!cams.length) {
+      box.innerHTML = '<div class="gm-empty">' + (this.onlyPicked ? "Hali kamera tanlanmagan." : "Mos kamera topilmadi.") + "</div>";
+      return;
+    }
+    const LIMIT = 400;
+    const byReg = new Map();
+    cams.slice(0, LIMIT).forEach((c) => {
+      if (!byReg.has(c.region)) byReg.set(c.region, []);
+      byReg.get(c.region).push(c);
+    });
+    let html = "";
+    byReg.forEach((list, region) => {
+      const n = list.filter((c) => picked.has(c.id)).length;
+      const all = n === list.length;
+      html += '<div class="gm-rh"><span>' + esc(region) + "<em>" + n + " / " + list.length + "</em></span>" +
+        '<button type="button" class="gm-rall" data-r="' + esc(region) + '">' +
+        (all ? "hammasini olib tashlash" : "hammasini belgilash") + "</button></div>";
+      html += list.map((c) => {
+        const where = c.km != null ? c.km + (c.picket ? "/" + c.picket : "") + " km" : "";
+        return '<button type="button" class="gm-cam' + (picked.has(c.id) ? " on" : "") + '" data-id="' + c.id + '">' +
+          '<span class="pk"></span><i class="' + (c.online === false ? "down" : "") + '"></i>' +
+          "<span><b>" + esc(c.name) + "</b>" + (where && where !== c.name ? "<em>" + esc(where) + "</em>" : "") + "</span>" +
+          (c.online === false ? '<small>uzilgan</small>' : "") + "</button>";
+      }).join("");
+    });
+    if (cams.length > LIMIT) {
+      html += '<div class="gm-empty">va yana ' + (cams.length - LIMIT) + " ta — qidiruv yoki hudud bilan toraytiring</div>";
+    }
+    const top = box.scrollTop;
+    box.innerHTML = html;
+    box.scrollTop = top;               // belgilaganda ro'yxat sakramasin
+  }
+
+  togglePickCam(id) {
+    if (this.editIds.includes(id)) this.editIds = this.editIds.filter((x) => x !== id);
+    else this.editIds.push(id);
+    this.renderPick();
   }
 
   fillForm(g) {
@@ -325,19 +407,29 @@ export class GroupStore {
     const shared = $("gm-shared").checked;
     try {
       if (m.mode === "edit") {
-        this.replace(await api("/api/groups/" + m.group.id, { method: "PATCH",
-          body: JSON.stringify({ name, color: this.color, shared }) }));
-        toast("Guruh saqlandi");
+        if (!name) { this.fail("Guruh nomini kiriting"); return; }
+        let g = await api("/api/groups/" + m.group.id, { method: "PATCH",
+          body: JSON.stringify({ name, color: this.color, shared }) });
+        const changed = this.editIds && (this.editIds.length !== this.origIds.length ||
+          this.editIds.some((id, i) => id !== this.origIds[i]));
+        if (changed) {
+          // To'liq almashtirish: server operator ko'rmaydigan a'zolarni saqlab qoladi.
+          g = await api("/api/groups/" + m.group.id + "/cameras", { method: "POST",
+            body: JSON.stringify({ camera_ids: this.editIds, mode: "set" }) });
+        }
+        this.replace(g);
+        toast("Guruh saqlandi" + (changed ? " · " + g.camera_ids.length + " kamera" : ""));
       } else if (m.target != null) {
         const g = await this.members(m.target, m.ids, "add");
         if (!g) return;
         toast(m.ids.length + " ta kamera “" + g.name + "” guruhiga qo‘shildi");
       } else {
         if (!name) { this.fail("Guruh nomini kiriting"); return; }
+        const ids = m.ids.length ? m.ids : (this.editIds || []);
         const g = await api("/api/groups", { method: "POST",
-          body: JSON.stringify({ name, color: this.color, shared, camera_ids: m.ids }) });
+          body: JSON.stringify({ name, color: this.color, shared, camera_ids: ids }) });
         this.replace(g);
-        toast("“" + g.name + "” guruhi yaratildi" + (m.ids.length ? " · " + m.ids.length + " kamera" : ""));
+        toast("“" + g.name + "” guruhi yaratildi" + (ids.length ? " · " + ids.length + " kamera" : ""));
       }
     } catch (e) { this.fail(e.message); return; }
     closeModal("group-modal");
@@ -445,6 +537,36 @@ export class GroupStore {
     $("gm-save").addEventListener("click", () => this.save());
     $("gm-delete").addEventListener("click", () => this.remove());
     $("gm-name").addEventListener("keydown", (e) => { if (e.key === "Enter") this.save(); });
+    $("gm-cam-q").addEventListener("input", () => this.renderPick());
+    $("gm-cam-q").addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+    $("gm-cam-reg").addEventListener("change", () => this.renderPick());
+    $("gm-only").addEventListener("click", () => {
+      this.onlyPicked = !this.onlyPicked;
+      $("gm-only").classList.toggle("on", this.onlyPicked);
+      this.renderPick();
+    });
+    $("gm-pick").addEventListener("click", (e) => {
+      const all = e.target.closest(".gm-rall");
+      if (all) {
+        // Hudud sarlavhasidagi tugma — faqat ko'rinib turgan (filtrdagi) kameralar.
+        const rows = [...$("gm-pick").querySelectorAll(".gm-cam")].filter((r) =>
+          state.byId.get(Number(r.dataset.id)).region === all.dataset.r).map((r) => Number(r.dataset.id));
+        const picked = new Set(this.editIds);
+        const every = rows.every((id) => picked.has(id));
+        if (every) this.editIds = this.editIds.filter((id) => !rows.includes(id));
+        else rows.forEach((id) => { if (!picked.has(id)) this.editIds.push(id); });
+        this.renderPick();
+        return;
+      }
+      const row = e.target.closest(".gm-cam");
+      if (row) this.togglePickCam(Number(row.dataset.id));
+    });
+    $("gm-cams-n").addEventListener("click", (e) => {
+      if (!e.target.closest(".gm-clear")) return;
+      if (this.editIds.length > 5 && !confirm(this.editIds.length + " ta tanlangan kamera olib tashlansinmi?")) return;
+      this.editIds = [];
+      this.renderPick();
+    });
     $("map-groups").addEventListener("click", (e) => {
       const b = e.target.closest(".mg-chip");
       if (!b) return;

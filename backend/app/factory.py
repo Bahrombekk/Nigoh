@@ -44,7 +44,7 @@ Tarkibi:
 
 Endpointlar (shu faylning o'zida):
     GET  /                          index.html (FRONTEND_DIR bo'lsa), kirishsiz
-    GET  /assets/{name}.geojson     uz / uz_regions chegaralari, 1 kun kesh
+    GET  /assets/{name}.geojson     uz / uz_regions chegaralari, railways, 1 kun kesh
     GET  /api/v1/vendors            RTSP shablonlari (app.config.VENDORS),
                                     require_viewer
 
@@ -68,6 +68,7 @@ from app.deps import key_guard, require_user, require_viewer
 from app.health import router as health_router
 from app.logs_api import router as logs_router
 from app.network import client_ip
+from app.settings_api import router as settings_router
 from app.system_api import router as system_router
 from camera.api.admin import router as camera_admin_router
 from camera.api.cameras import router as cameras_router
@@ -265,11 +266,12 @@ def create_app() -> FastAPI:
             return FileResponse(FRONTEND_DIR / "index.html",
                                 headers={"Cache-Control": "no-cache"})
 
-        # Chegara fayllari katta (~100 KB) va o'zgarmaydi — bir kun keshda.
+        # Chegara va temir yo'l fayllari katta (100–700 KB) va o'zgarmaydi — bir kun keshda.
         @app.get("/assets/{name}.geojson", include_in_schema=False)
         def geojson(name: str):
-            """O'zbekiston chegarasi (uz) va viloyatlar (uz_regions)."""
-            if name not in ("uz", "uz_regions"):
+            """O'zbekiston chegarasi (uz), viloyatlar (uz_regions) va temir yo'l
+            tarmog'i (railways — backend/scripts/build_railways.py yasaydi)."""
+            if name not in ("uz", "uz_regions", "railways"):
                 raise HTTPException(404)
             return FileResponse(FRONTEND_DIR / "assets" / f"{name}.geojson",
                                 media_type="application/geo+json",
@@ -305,7 +307,8 @@ def create_app() -> FastAPI:
     # Boshqaruv: admin/nodes/analytics routerlarining o'zida require_admin
     # bor; key_guard xato kalitni sekinlashtiradi. devices'da yo'q edi.
     for router in (camera_admin_router, users_admin_router, system_router, mediamtx_router,
-                   database_router, logs_router, nodes_router, analytics_router):
+                   database_router, logs_router, nodes_router, analytics_router,
+                   settings_router):
         mount(router, key_guard)
     mount(devices_router, key_guard, require_admin)
 

@@ -69,6 +69,7 @@ import time
 from datetime import datetime, timezone
 from typing import Callable
 
+from app.settings import site_settings
 from camera.media import sync, transport
 from camera.probe.rtsp_probe import build_rtsp_url, sub_yol_nomzodlari
 from core import bus, security
@@ -646,6 +647,10 @@ class Reconciler:
         if active is None:
             return
         now = time.monotonic()
+        # Chegaralar Sozlamalar sahifasidan (standart — STALL_AFTER /
+        # NOT_READY_AFTER muhit qiymatlari); har tsiklda o'qiladi.
+        stall_after = site_settings.get("stall_after_s")
+        not_ready_after = site_settings.get("transport_check_after_s")
         changes: list[tuple[str, str, str]] = []     # (ko'rsatma, yo'l, holat)
         tekshirilsin: list[str] = []                 # transport sinoviga nomzodlar
         with self._lock:
@@ -674,7 +679,7 @@ class Reconciler:
                     if now - oxirgi <= STALL_INTERVAL * 3:
                         jami += now - oxirgi
                     self._not_ready[key] = (jami, now)
-                    if jami >= NOT_READY_AFTER:
+                    if jami >= not_ready_after:
                         tekshirilsin.append(name)
                 # Bayt keldi (yoki yo'lni birinchi marta ko'ryapmiz) — hisob
                 # noldan boshlanadi. Faqat shu yerda vaqt yangilanadi:
@@ -692,7 +697,7 @@ class Reconciler:
                     # bo'lgan bo'lardi.
                     self._prev_bytes[key] = (got, now)
                     continue
-                if now - prev[1] >= STALL_AFTER and key not in self._stalled:
+                if now - prev[1] >= stall_after and key not in self._stalled:
                     display = name if node_id == 1 else f"{name}@{node['name']}"
                     self._stalled[key] = display
                     changes.append((display, name, "stalled"))

@@ -31,10 +31,11 @@ Tarkibi:
         .online(ip, port)           oxirgi natija: True / False / None (noma'lum)
         .check_now(ip, port)        bitta manzilni darhol tekshiradi (yangi
                                     kamera 60 s kutib turmasin), o'tishni e'lon qiladi
+        .online_for(ip, port)       necha soniyadan beri uzluksiz onlayn (None — emas)
         .sweep_stats()              oxirgi sweep: checked, online, duration_ms, at
         .set_streaming_probe(fn)    MediaMTX oqim olayotgan (ip, port) lar
                                     manbasi — app/bootstrap.py o'rnatadi
-    service                         yagona nusxa; online, check_now, start,
+    service                         yagona nusxa; online, online_for, check_now, start,
                                     sweep_stats, set_streaming_probe — aliaslar
     CHECK_INTERVAL, TIMEOUT, RETRY_TIMEOUT, MAX_WORKERS   sozlamalar
 
@@ -50,6 +51,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Callable
 
+from app.settings import site_settings
 from core import bus
 from core.log import log
 from database import cameras, events, get_db
@@ -73,6 +75,10 @@ class HealthMonitor:
 
     def __init__(self) -> None:
         self._statuses: dict[tuple[str, int], bool] = {}
+        # Manzil qachondan beri uzluksiz onlayn (time.monotonic). Kamera
+        # uzilishdan qaytgach eski surati bir necha daqiqa eski turadi —
+        # camera/state.py shu vaqt ichida uni "tasvirsiz" demaydi.
+        self._online_since: dict[tuple[str, int], float] = {}
         self._stats = {"checked": 0, "online": 0, "duration_ms": 0, "at": ""}
         self._lock = threading.Lock()
         self._started = False
@@ -214,6 +220,15 @@ class HealthMonitor:
         with self._lock:
             self._statuses.clear()               # o'chirilgan manzillar chiqib ketadi
             self._statuses.update(fresh)
+            now = time.monotonic()
+            for pair, ok in fresh.items():
+                if not ok:
+                    self._online_since.pop(pair, None)
+                elif old.get(pair) is not True or pair not in self._online_since:
+                    # Yangi tiklangan (yoki server endi ishga tushgan) — hisob noldan.
+                    self._online_since[pair] = now
+            for pair in [p for p in self._online_since if p not in fresh]:
+                self._online_since.pop(pair)
             self._stats.update(
                 checked=len(pairs), online=sum(1 for ok in fresh.values() if ok),
                 duration_ms=int((time.monotonic() - started) * 1000),
@@ -264,7 +279,8 @@ class HealthMonitor:
                 self._sweep()
             except Exception as exc:        # kuzatuv hech qachon yiqilmasin
                 log("health", "sweep_failed", level="error", error=str(exc))
-            time.sleep(CHECK_INTERVAL)
+            # Oraliq Sozlamalar sahifasidan (health_interval_s) — har tsiklda o'qiladi.
+            time.sleep(site_settings.get("health_interval_s"))
 
     def start(self) -> None:
         """Fon tekshiruvini ishga tushiradi (bir marta)."""
@@ -280,6 +296,14 @@ class HealthMonitor:
             return None
         with self._lock:
             return self._statuses.get((ip, port or 554))
+
+    def online_for(self, ip: str | None, port: int | None) -> float | None:
+        """Necha soniyadan beri uzluksiz onlayn; None — onlayn emas yoki noma'lum."""
+        if not ip:
+            return None
+        with self._lock:
+            since = self._online_since.get((ip, port or 554))
+        return None if since is None else time.monotonic() - since
 
     def check_now(self, ip: str | None, port: int | None) -> bool | None:
         """Bitta manzilni darhol tekshiradi — yangi kamera navbatdagi sweep'ni
@@ -328,3 +352,4 @@ sweep_stats = service.sweep_stats
 start = service.start
 online = service.online
 check_now = service.check_now
+online_for = service.online_for

@@ -95,6 +95,9 @@ export class Auth {
     document.body.classList.toggle("anon", !admin);
     // Operator boshqaruv bo'limini ko'rmaydi — server ham 403 qaytaradi.
     document.body.classList.toggle("operator", !!admin && admin.role === "operator");
+    // Super-admin bo'limlari (Sozlamalar) faqat adminga ko'rinadi — .admin-only.
+    document.body.classList.toggle("is-admin", !!admin && admin.role === "admin");
+    if (!(admin && admin.role === "admin") && state.tab === "settings") showTab("map");
     if (admin && admin.role === "operator" && state.tab === "admin") showTab("map");
     // Foydalanuvchiga bog'liq ma'lumot (guruhlar) qayta yuklansin — map/groups.js.
     document.dispatchEvent(new Event("auth:changed"));
@@ -104,6 +107,11 @@ export class Auth {
      server anonim ko'rishga ruxsat bersa (public_view) kirish ekranida
      "Mehmon sifatida davom etish" tugmasi chiqadi. */
   applyMe(me) {
+    // Sayt nomi (Sozlamalar → Sayt) — kirish oynasidan oldin ham ko'rinsin.
+    if (me && me.site_name) {
+      document.querySelectorAll(".site-name").forEach((el) => { el.textContent = me.site_name; });
+      document.title = me.site_name + " — video nazorat tizimi";
+    }
     this.setAdmin(me && me.authenticated ? { username: me.username, role: me.role } : null);
     $("l-guest").hidden = !(me && !me.authenticated && me.public_view);
     $("ls-gate").hidden = !$("l-guest").hidden;

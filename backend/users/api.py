@@ -50,7 +50,7 @@ Tarkibi:
                                app/network.py ga taxalluslar — chaqiruvchilar
                                va testlar o'zgarmasin
 
-Ishlatadi: app.config (PUBLIC_VIEW), app.network, core.security,
+Ishlatadi: app.settings (site_name, public_view, session_hours), app.network, core.security,
     core.throttle, core.log, database.users, users.schemas.LoginIn.
 Kim ishlatadi: app/factory.py (kirishsiz ulanadi); MediaMTX
     (STREAM_AUTH_URL = /api/auth/stream), nginx (/_hlsauth -> /api/auth/hls,
@@ -64,9 +64,9 @@ from urllib.parse import parse_qs
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from app.config import PUBLIC_VIEW
 from app.network import TRUSTED_PROXIES as helpers_trusted
 from app.network import client_ip, ishonchli_proksi
+from app.settings import site_settings
 from core import security
 from core.log import log
 from core.throttle import Throttle
@@ -304,13 +304,14 @@ def login(body: LoginIn, request: Request, response: Response):
                 ip=ip, username=body.username)
             raise HTTPException(401, "Login yoki parol noto'g'ri")
         _clear_fails(ip)
+        hours = site_settings.get("session_hours")
         token = security.create_session(db, row["id"], ip,
-                                        request.headers.get("user-agent"))
+                                        request.headers.get("user-agent"), hours=hours)
         username, role = row["username"], row["role"]
 
     response.set_cookie(
         security.SESSION_COOKIE, token, httponly=True, samesite="lax",
-        max_age=security.SESSION_HOURS * 3600, path="/",
+        max_age=hours * 3600, path="/",
         # HTTPS orqali kelgan bo'lsa cookie faqat HTTPS'da yuborilsin —
         # 80-portdagi blok (yoki http'ga tushib qolgan havola) sessiyani
         # ochiq tarmoqqa chiqarib yubormasin. Lokal http bilan ishlaganda
@@ -338,8 +339,9 @@ def me(request: Request):
     # public_view — interfeys uchun: kirmagan foydalanuvchi xaritani ko'ra
     # oladimi. Frontend shunga qarab kirish ekranida "Mehmon sifatida
     # davom etish" tugmasini ko'rsatadi yoki yashiradi.
+    site = {"public_view": site_settings.get("public_view"),
+            "site_name": site_settings.get("site_name")}
     if user is None:
-        return {"authenticated": False, "public_view": PUBLIC_VIEW}
+        return {"authenticated": False, **site}
     return {"authenticated": True, "username": user["username"],
-            "role": user["role"], "regions": regions,
-            "public_view": PUBLIC_VIEW}
+            "role": user["role"], "regions": regions, **site}

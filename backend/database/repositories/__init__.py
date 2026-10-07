@@ -3,6 +3,7 @@
 Har modulda bitta klass va bu yerda uning bitta nusxasi yaratiladi:
 
     areas    AreaRepository       admin_areas — viloyat/tuman, chegaralar
+    audit    AuditRepository      audit_log — kim nimani o'zgartirdi (faqat yoziladi)
     cameras  CameraRepository     cameras + devices + camera_status, slug, pasport
     events   EventRepository      camera_events — oqim/holat hodisalari
     geo      GeoRepository        nuqta hudud ichidami (geometriya)
@@ -10,6 +11,7 @@ Har modulda bitta klass va bu yerda uning bitta nusxasi yaratiladi:
     nodes    MediaNodeRepository  media_nodes — MediaMTX tugunlari
     rail     RailRepository       rail_lines / rail_units — km, piket
     reports  ReportRepository     hisobot uchun xom qatorlar (bo'shliq, o'tish, sifat)
+    settings SettingsRepository   app_settings — sayt sozlamalari
     stats    StatsRepository      availability_snapshots, status_changes
     users    UserRepository       users, sessions, user_admin_areas
     walls    WallRepository       video_walls
@@ -33,9 +35,11 @@ Kim ishlatadi: database/__init__.py (qayta eksport); repositories/users.py
 (areas) va repositories/reports.py (cameras, rail) bir-birini shu yerdan oladi.
 """
 from database.repositories.areas import AreaRepository
+from database.repositories.audit import AuditRepository
 from database.repositories.geo import GeoRepository
 
 areas = AreaRepository()
+audit = AuditRepository()
 geo = GeoRepository()
 
 from database.repositories.cameras import CameraRepository  # noqa: E402
@@ -51,14 +55,16 @@ nodes = MediaNodeRepository()
 rail = RailRepository()
 
 from database.repositories.reports import ReportRepository  # noqa: E402
+from database.repositories.settings import SettingsRepository  # noqa: E402
 from database.repositories.stats import StatsRepository  # noqa: E402
 from database.repositories.users import UserRepository  # noqa: E402
 from database.repositories.walls import WallRepository  # noqa: E402
 
 reports = ReportRepository()
+settings = SettingsRepository()
 stats = StatsRepository()
 users = UserRepository()
 walls = WallRepository()
 
-__all__ = ["areas", "cameras", "events", "geo", "groups", "nodes", "rail", "reports", "stats",
+__all__ = ["areas", "audit", "cameras", "events", "geo", "groups", "nodes", "rail", "reports", "settings", "stats",
            "users", "walls"]

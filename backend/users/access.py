@@ -24,7 +24,7 @@ Tarkibi:
     area_allowed(row, areas)   kamera shu hududlar ichidami
     check_area(row, areas)     ichida bo'lmasa 403
 
-Ishlatadi: app.config (API_KEY, PUBLIC_VIEW), core.security, database.users.
+Ishlatadi: app.config (API_KEY), app.settings (public_view), core.security, database.users.
 Kim ishlatadi: app/{__init__,deps,system_api}.py,
     camera/api/{admin,cameras,events,mediamtx,nodes,streams}.py,
     database/api.py, stats/{api,admin_api}.py, users/admin_api.py,
@@ -34,10 +34,8 @@ import hmac
 
 from fastapi import HTTPException, Request
 
-from app.config import (
-    API_KEY,
-    PUBLIC_VIEW,
-)
+from app.config import API_KEY
+from app.settings import site_settings
 from core import security
 from database import get_db, users
 
@@ -87,7 +85,7 @@ def allowed_areas(request: Request) -> list[int] | None:
         return None
     user = current_user(request)
     if user is None:
-        return None if PUBLIC_VIEW else []
+        return None if site_settings.get("public_view") else []
     if user["role"] == "admin":
         return None
     with get_db() as db:

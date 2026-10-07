@@ -41,6 +41,7 @@
    ========================================================================== */
 import { $, state } from "../core/state.js";
 import { prewarm } from "../player/player.js";
+import { initRailways } from "./railways.js";
 import { selectCamera } from "./selection.js";
 
 /* Jonli eksportlar — theme.js mavzu almashganda o'qiydi. Qiymati MapView
@@ -149,6 +150,8 @@ export class MapView {
     this.uzBorder = null;
     this.uzRings = null;     // [[lat, lng], ...] halqalar — tiniq qatlam kesimi
     this.loadUzBoundary();
+    // Temir yo'l tarmog'i — kamera belgilari ostida (map/railways.js).
+    initRailways(map);
 
     /* Bitta ustunda ikki kamera (".. (2)") yoki NVR kanallari deyarli bir
        nuqtada turadi. Guruhlash hech qaysi masshtabda o'chirilmaydi —

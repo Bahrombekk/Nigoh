@@ -8,10 +8,10 @@
      tepadagi soat va sarlavhalardagi O'zbekiston konturi.
 
    Eksport:
-     AUTH_TABS        — kirish talab qiladigan bo'limlar: ["dash", "admin"]
+     AUTH_TABS        — kirish talab qiladigan bo'limlar: ["dash", "admin", "settings"]
      Tabs             — klass: show(tab); konstruktor tab tugmalari, [data-tab-go] va hashchange ni ulaydi
      tabs             — yagona nusxa
-     showTab(tab)     — bo'limga o'tish ("map" | "wall" | "dash" | "admin")
+     showTab(tab)     — bo'limga o'tish ("map" | "wall" | "dash" | "admin" | "settings")
      AppShell         — klass: startClock(), drawHeadMaps(); konstruktor yon menyu va yordamni ulaydi
      appShell         — yagona nusxa
      startClock()     — tepadagi sana/soatni har soniyada yangilash
@@ -46,17 +46,18 @@ import { buildWall, stopWall } from "../wall/video-wall.js";
 import { renderDash } from "../dashboard/dashboard.js";
 import { openModal } from "../core/modals.js";
 import { openLogin } from "../auth/auth.js";
+import { loadSettingsPage } from "../admin/settings.js";
 import { loadAdminCameras } from "../admin/admin.js";
 
 /* ---------- Tab'lar ---------- */
 /* Kirish talab qiladigan bo'limlar. */
-export const AUTH_TABS = ["dash", "admin"];
+export const AUTH_TABS = ["dash", "admin", "settings"];
 
 export class Tabs {
   constructor() {
     window.addEventListener("hashchange", () => {
       const t = location.hash.replace("#", "") || "map";
-      if (["map", "wall", "dash", "admin"].includes(t) && t !== state.tab) this.show(t);
+      if (["map", "wall", "dash", "admin", "settings"].includes(t) && t !== state.tab) this.show(t);
     });
     document.querySelectorAll("#tabs button").forEach((b) =>
       b.addEventListener("click", () => this.show(b.dataset.tab)));
@@ -77,7 +78,8 @@ export class Tabs {
       openLogin();
       return;
     }
-    if (tab === "admin" && state.admin && state.admin.role === "operator") tab = "map";
+    // Boshqaruv va Sozlamalar — faqat admin (server ham 403 beradi).
+    if ((tab === "admin" || tab === "settings") && state.admin && state.admin.role === "operator") tab = "map";
     const prev = state.tab;
     state.tab = tab;
     document.querySelectorAll("#tabs button").forEach((b) =>
@@ -88,6 +90,7 @@ export class Tabs {
     $("wall-view").hidden = tab !== "wall";
     $("dash-view").hidden = tab !== "dash";
     $("admin-view").hidden = tab !== "admin";
+    $("settings-view").hidden = tab !== "settings";
     document.body.classList.remove("side-open");
 
     // Xarita yashirin turganda o'lchamini bilmaydi — ko'ringanda qayta o'lchaydi.
@@ -99,6 +102,7 @@ export class Tabs {
     if (tab === "wall") buildWall();
     if (tab === "dash") renderDash();
     if (tab === "admin") loadAdminCameras(0);
+    if (tab === "settings") loadSettingsPage();
     if (tab === "map" && state.selectedId) selectCamera(state.selectedId, false);
 
     // Bo'lim manzilda saqlanadi — yangilansa yoki havola ulashilsa o'sha yerga qaytadi.

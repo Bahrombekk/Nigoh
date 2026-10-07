@@ -61,7 +61,19 @@ def test_interfeys_va_login_ochiq(client):
     assert client.post("/api/v1/auth/login",
                        json={"username": "a", "password": "b"}).status_code == 401
     me = client.get("/api/v1/auth/me").json()
-    assert me == {"authenticated": False, "public_view": False}
+    assert me == {"authenticated": False, "public_view": False, "site_name": "NIGOH"}
+
+
+def test_xarita_geojson_fayllari(client):
+    """Chegara va temir yo'l qatlamlari beriladi; ro'yxatdan tashqari nom — 404."""
+    for name in ("uz", "railways"):
+        r = client.get(f"/assets/{name}.geojson")
+        assert r.status_code == 200, name
+        assert r.json()["type"] == "FeatureCollection"
+    rails = client.get("/assets/railways.geojson").json()["features"]
+    assert {f["properties"]["branch"] for f in rails} >= {"toshkent", "buxoro", "qoqon"}
+    assert all(f["geometry"]["type"] == "MultiLineString" for f in rails)
+    assert client.get("/assets/maxfiy.geojson").status_code == 404
 
 
 def test_kamera_crud_va_external_id(client):

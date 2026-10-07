@@ -22,4 +22,6 @@ class UserIn(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str | None = Field(default=None, max_length=200)  # None = o'zgarmasin
     role: str = Field(default="operator", pattern="^(admin|operator)$")
+    full_name: str = Field(default="", max_length=120)
+    is_active: bool = True                              # False — kira olmaydi (bloklangan)
     regions: list[str] = Field(default_factory=list)   # operator uchun

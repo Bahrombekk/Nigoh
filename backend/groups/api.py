@@ -36,6 +36,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from app import audit as audit_log
 from database import UniqueViolation, cameras, get_db, groups
 from users.access import allowed_areas, api_key_ok, current_user
 
@@ -157,6 +158,8 @@ def create_group(body: GroupIn, request: Request):
             raise HTTPException(409, f"\"{name}\" nomli guruh allaqachon bor") from None
         groups.add_members(db, gid, ids)
         row = groups.get(db, gid)
+        audit_log.record(db, request, "group.create", "group", entity_id=gid,
+                         after={"name": name, "shared": body.shared, "cameras": len(ids)})
         visible = _visible_ids(db, request)
     return _out(row, uid, admin, visible)
 
@@ -167,12 +170,15 @@ def update_group(group_id: int, body: GroupPatch, request: Request):
     if body.name is not None and not body.name.strip():
         raise HTTPException(422, "Guruh nomi bo'sh")
     with get_db() as db:
-        _load(db, group_id, uid, admin, edit=True)
+        old = _load(db, group_id, uid, admin, edit=True)
         try:
             groups.update(db, group_id, name=body.name, color=body.color, shared=body.shared)
         except UniqueViolation:
             raise HTTPException(409, f"\"{body.name.strip()}\" nomli guruh allaqachon bor") from None
         row = groups.get(db, group_id)
+        fields = ("name", "color", "shared")
+        audit_log.record(db, request, "group.update", "group", entity_id=group_id,
+                         before={k: old[k] for k in fields}, after={k: row[k] for k in fields})
         visible = _visible_ids(db, request)
     return _out(row, uid, admin, visible)
 
@@ -181,7 +187,10 @@ def update_group(group_id: int, body: GroupPatch, request: Request):
 def delete_group(group_id: int, request: Request):
     uid, admin = _who(request)
     with get_db() as db:
-        _load(db, group_id, uid, admin, edit=True)
+        old = _load(db, group_id, uid, admin, edit=True)
+        audit_log.record(db, request, "group.delete", "group", entity_id=group_id,
+                         before={"name": old["name"], "owner": old["owner_name"],
+                                 "cameras": len(old["camera_ids"] or [])})
         groups.delete(db, group_id)
     return Response(status_code=204)
 

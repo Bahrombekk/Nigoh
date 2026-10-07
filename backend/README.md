@@ -46,7 +46,10 @@ backend/
 │  ├─ network.py         ishonchli proksi, mijoz IP manzili
 │  ├─ health.py          /health
 │  ├─ system_api.py      /admin/runtime, /admin/status
-│  └─ logs_api.py        /admin/logs — qidiruv, xulosa, fayllar
+│  ├─ logs_api.py        /admin/logs — qidiruv, xulosa, fayllar
+│  ├─ settings.py        sayt sozlamalari (app_settings) — jonli qo'llanadi
+│  ├─ settings_api.py    /admin/settings, /admin/audit
+│  └─ audit.py           audit_log ga yozish (kim, nima, qachon)
 ├─ database/             BAZA — bazaga tegishli hamma narsa (database/README.md)
 │  ├─ connection.py      ulanishlar hovuzi, get_db() (tranzaksiya), qator turi
 │  ├─ schema.py          migratsiyalarni qo'llash, versiya, jadval statistikasi
@@ -117,7 +120,7 @@ Hamma yo'l `/api/v1/...` da; `/api/...` — o'sha yo'llarning eski nomi
 | dashboard | `GET /stats/dashboard`, `/stats/timeline`, `/stats/overview` | kirgan / kalit |
 | statistika | `GET /stats/summary`, `/availability`, `/coverage`, `/series`, `/sla`, `/outages`, `/outages/summary`, `/daily`, `/hourly`, `/heatmap`, `/regions`, `/vendors`, `/ranking`, `/cameras/{id}`, `/rail`, `/quality`, `/feed` | kirgan / kalit |
 | guruhlar | `GET /groups`, `POST /groups`, `PATCH /groups/{id}`, `DELETE /groups/{id}`, `POST /groups/{id}/cameras` (add / remove / set) — shaxsiy; `shared` bo'lsa boshqalar ham ko'radi | kirgan / kalit |
-| boshqaruv | `/admin/cameras` (CRUD, enabled, uptime, keyframe, detect-sub), `/admin/users`, `/admin/nvr/import`, `/admin/scan`, `/admin/probe`, `/admin/nodes`, `/admin/status`, `/admin/events`, `/admin/mediamtx/*`, `/admin/uptime`, `/admin/outages/hourly`, `/devices/*` | admin / kalit |
+| boshqaruv | `/admin/cameras` (CRUD, enabled, uptime, keyframe, detect-sub), `/admin/users`, `/admin/nvr/import`, `/admin/scan`, `/admin/probe`, `/admin/nodes`, `/admin/status`, `/admin/events`, `/admin/mediamtx/*`, `/admin/uptime`, `/admin/outages/hourly`, `/admin/settings` (sayt sozlamalari, GET/PUT), `/admin/audit` (o'zgarishlar jurnali), `/devices/*` | admin / kalit |
 | salomatlik | `GET /health` (prefikssiz) | ochiq |
 
 `{ref}` — kamera id (`123`) yoki tashqi id (`ext:cam-014`).

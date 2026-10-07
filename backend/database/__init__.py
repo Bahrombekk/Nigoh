@@ -50,6 +50,7 @@ from database.connection import (
 )
 from database.repositories import (
     areas,
+    audit,
     cameras,
     events,
     geo,
@@ -57,6 +58,7 @@ from database.repositories import (
     nodes,
     rail,
     reports,
+    settings,
     stats,
     users,
     walls,
@@ -74,8 +76,8 @@ unique_slug = cameras.unique_slug
 from database.schema import init_db  # noqa: E402
 
 __all__ = [
-    "IntegrityError", "UniqueViolation", "areas", "cameras", "cameras_by_slug",
+    "IntegrityError", "UniqueViolation", "areas", "audit", "cameras", "cameras_by_slug",
     "cameras_without_sub", "events", "geo", "get_db", "groups", "init_db", "nodes", "rail",
-    "reports", "set_sub_bad", "set_sub_path", "single_connection", "slugify", "stats",
+    "reports", "set_sub_bad", "settings", "set_sub_path", "single_connection", "slugify", "stats",
     "sub_bad_cameras", "unique_slug", "users", "walls",
 ]

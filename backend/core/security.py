@@ -298,9 +298,10 @@ def _token_hash(token: str) -> str:
 
 
 def create_session(db, user_id: int, ip: str | None = None,
-                   user_agent: str | None = None) -> str:
+                   user_agent: str | None = None, hours: int | None = None) -> str:
+    """`hours` — sessiya muddati (Sozlamalar: session_hours); berilmasa SESSION_HOURS."""
     token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(hours=SESSION_HOURS)
+    expires = datetime.now(timezone.utc) + timedelta(hours=hours or SESSION_HOURS)
     users.add_session(db, _token_hash(token), user_id, expires, ip, user_agent)
     users.mark_login(db, user_id)
     return token

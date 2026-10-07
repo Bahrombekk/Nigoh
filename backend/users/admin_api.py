@@ -29,8 +29,9 @@ Ishlatadi: database (users, areas, IntegrityError), core.security
 Kim ishlatadi: app/factory.py (key_guard bilan ulanadi),
     tests/test_roles.py, scripts/acceptance_test.py.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from app import audit as audit_log
 from core import security
 from database import (
     IntegrityError,
@@ -91,8 +92,13 @@ def admin_users():
         return {"users": [_user_view(db, r) for r in users.list_all(db)]}
 
 
+def _audit_view(view: dict) -> dict:
+    """Audit uchun ochiq maydonlar (parol/xesh hech qachon)."""
+    return {k: view[k] for k in ("username", "role", "full_name", "is_active", "regions")}
+
+
 @router.post("/users", status_code=201)
-def admin_user_create(body: UserIn):
+def admin_user_create(body: UserIn, request: Request):
     _check_password(body.password, required=True)
     pw_hash, salt = security.hash_password(body.password)
     with get_db() as db:
@@ -101,18 +107,33 @@ def admin_user_create(body: UserIn):
                 row = users.create(db, body.username.strip(), pw_hash, salt, body.role)
         except IntegrityError:
             raise HTTPException(400, "Bunday login allaqachon bor")
+        users.update_identity(db, row["id"], row["username"], body.role,
+                              body.full_name.strip(), body.is_active)
         _set_regions(db, row["id"], body)
-        return _user_view(db, row)
+        view = _user_view(db, users.get(db, row["id"]))
+        audit_log.record(db, request, "user.create", "user", entity_id=row["id"],
+                         after=_audit_view(view))
+        return view
 
 
 @router.put("/users/{user_id}")
-def admin_user_update(user_id: int, body: UserIn):
+def admin_user_update(user_id: int, body: UserIn, request: Request,
+                      me=Depends(require_admin)):
     _check_password(body.password, required=False)
     with get_db() as db:
         _keep_one_admin(db, user_id, body.role)
+        before = _user_view(db, users.get(db, user_id))
+        if not body.is_active:
+            # Tizim adminsiz qolmasin: o'zini va oxirgi faol adminni bloklab bo'lmaydi.
+            if me["id"] == user_id:
+                raise HTTPException(400, "O'z hisobingizni bloklay olmaysiz")
+            if before["role"] == "admin" and before["is_active"] \
+                    and users.count_active_admins(db, exclude_id=user_id) == 0:
+                raise HTTPException(400, "Oxirgi faol adminni bloklab bo'lmaydi")
         try:
             with db.savepoint():
-                users.update_identity(db, user_id, body.username.strip(), body.role)
+                users.update_identity(db, user_id, body.username.strip(), body.role,
+                                      body.full_name.strip(), body.is_active)
         except IntegrityError:
             raise HTTPException(400, "Bunday login allaqachon bor")
         if body.password:
@@ -120,15 +141,21 @@ def admin_user_update(user_id: int, body: UserIn):
             pw_hash, salt = security.hash_password(body.password)
             users.set_password(db, user_id, pw_hash, salt)
         _set_regions(db, user_id, body)
-        return _user_view(db, users.get(db, user_id))
+        view = _user_view(db, users.get(db, user_id))
+        after = {**_audit_view(view), **({"password": "o'zgartirildi"} if body.password else {})}
+        audit_log.record(db, request, "user.update", "user", entity_id=user_id,
+                         before=_audit_view(before), after=after)
+        return view
 
 
 @router.delete("/users/{user_id}", status_code=204)
-def admin_user_delete(user_id: int, me=Depends(require_admin)):
+def admin_user_delete(user_id: int, request: Request, me=Depends(require_admin)):
     if me["id"] == user_id:
         raise HTTPException(400, "O'z hisobingizni o'chira olmaysiz")
     with get_db() as db:
         _keep_one_admin(db, user_id, None)
+        audit_log.record(db, request, "user.delete", "user", entity_id=user_id,
+                         before=_audit_view(_user_view(db, users.get(db, user_id))))
         # Sessiyalar va hududlar FOREIGN KEY ... ON DELETE CASCADE bilan ketadi.
         users.delete(db, user_id)
 
