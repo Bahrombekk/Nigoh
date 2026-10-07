@@ -49,6 +49,7 @@ export const state = {
   wallHidden: new Set(),      // devordan vaqtincha olib tashlanganlar
   openTimes: [],              // shu seansda o'lchangan ochilish vaqtlari (ms)
   openByCam: new Map(),       // kamera → oxirgi ochilish vaqti (ms)
+  openServer: null,           // /api/metrics/open — serverdagi kamera kesimi (dashboard)
   events: [],                 // shu seans hodisalari (oqim ochildi va h.k.)
   stats: null,                // /api/stats/dashboard javobi — tarixiy grafiklar
   editingId: null,

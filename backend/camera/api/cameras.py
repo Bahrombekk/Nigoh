@@ -100,6 +100,9 @@ def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
             "codec": r["codec"] or "",
             "sub_codec": r["sub_codec"] or "",
             "resolution": r["resolution"] or "",
+            # Qurilma pasporti (kamera paneli: "Model"). Maxfiy emas — IP/parol yo'q.
+            "vendor": r["vendor"] or "",
+            "model": r["model"] or "",
             "transcode": bool(r["transcode"]),
             "always_on": bool(r["always_on"]),
             # Temir yo'l bo'yicha joy — dashboard liniya sxemasi uchun.

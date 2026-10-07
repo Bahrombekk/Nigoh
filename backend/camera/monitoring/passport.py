@@ -8,7 +8,11 @@ aslida ishlab turgan. Sabab ham yozilmasdi: "parol noto'g'ri" bilan
 "vaqtincha javob bermadi" bir xil ko'rinardi.
 
 Endi:
-  * har `INTERVAL` da kodeki yoki modeli yo'q kameralardan bir nechtasi
+  * format (o'lcham) ham: 149 kamerada bo'sh edi — u faqat SDP'dagi
+    `x-dimensions` qatoridan olinardi (faqat Hikvision beradi). Endi SPS'dan
+    ham hisoblanadi (rtsp_probe.sps_resolution); SPS bermaydigan kameralarda
+    (Holowits H.265) kamera ochilganda MediaMTX'dan olinadi (reconciler);
+  * har `INTERVAL` da kodeki, formati yoki modeli yo'q kameralardan bir nechtasi
     qayta tekshiriladi — faqat hozir onlayn bo'lganlari (o'chiq kameraga
     urinish behuda);
   * natija bazaga yoziladi: `camera_status.probe_at` va `probe_error`
@@ -68,7 +72,8 @@ class PassportChecker:
         """
         password = security.decrypt(row["password_enc"])
         result = {"id": row["id"], "codec": "", "model": "", "error": None}
-        if row["codec"] is None:
+        # Format (o'lcham) ham shu DESCRIBE'dan chiqadi: SDP qatori yoki SPS.
+        if row["codec"] is None or row["resolution"] is None:
             p = probe(row["ip"], row["port"] or 554, row["rtsp_path"] or "",
                       row["username"] or "", password)
             if p.get("ok"):

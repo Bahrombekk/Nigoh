@@ -10,13 +10,14 @@
        * Ishonchlilik   — uptime, haqiqiy uzilish / qisqa sakrash, MTTR, qamrov;
        * Muammoli kameralar — 30 kunlik reyting (uzoq o'chiq / tez-tez sakraydi);
        * Uzilishlar xaritasi — kun x soat;
-       * Ma'lumot sifati — tuzatilishi kerak bo'lgan yozuvlar.
+       * Ma'lumot sifati — tuzatilishi kerak bo'lgan yozuvlar;
+       * Kamera markalari — marka/model kesimi (holat, uptime, uzilish/kamera, MTTR).
 
    Eksport:
      OverviewReport    — klass: load, render, renderLine, init (+ ichki render* metodlari)
      overviewReport    — yagona nusxa
      loadOverview()    — hisobotni so'rash; tugagach "overview:loaded" hodisasi
-     renderOverview()  — ishonchlilik, muammolilar, issiqlik xaritasi, sifat
+     renderOverview()  — ishonchlilik, muammolilar, issiqlik xaritasi, sifat, markalar
      renderLine()      — liniya sxemasi (kameralar ro'yxatidan, hisobot kerak emas)
      initOverview()    — davr / muammo rejimi tugmalari va ResizeObserver ni ulash (bir marta)
 
@@ -28,7 +29,7 @@
    DOM: #rail-line, #rail-sub, #rel-sub, #rel-up, #rel-out, #rel-blip, #rel-blip-n,
         #rel-mttr, #rel-mttr-n, #rel-cov, #rel-cov-n, #rel-never, #rel-regions,
         #prob-rows, #prob-mode, #heat-map, #heat-sub, #heat-legend,
-        #quality-rows, #quality-count, #period
+        #quality-rows, #quality-count, #vendor-rows, #ven-sub, #ven-count, #period
    Backend: GET /api/stats/overview?days=1|7|30 (va "Bugun"da qo'shimcha ?days=7 —
             hafta-kun issiqlik xaritasi uchun)
 
@@ -152,11 +153,21 @@ const QUALITY = [
   ["no_model", "Qurilma modeli noma'lum", "Firmware yangilanishlarini kuzatib bo'lmaydi"],
 ];
 
+/* ---------- Kamera markalari ---------- */
+
+const VENDOR_LABEL = { dahua: "Dahua", hikvision: "Hikvision", holowits: "Holowits",
+                       boshqa: "Boshqa", unknown: "Noma'lum" };
+const vendorLabel = (v) => VENDOR_LABEL[v] || (v ? v[0].toUpperCase() + v.slice(1) : "Noma'lum");
+const upClass = (v) => (v == null ? "" : v >= 99 ? "ok" : v >= 95 ? "warn" : "bad");
+/* Hozirgi holat ulushi: onlayn / tasvirsiz / uzilgan / qolgani — bitta chiziqda. */
+const NOW_PARTS = [["online", "var(--ok)"], ["stalled", "var(--warn)"], ["offline", "var(--danger)"]];
+
 export class OverviewReport {
   constructor() {
     this.loading = false;
     this.problemMode = "offline";
     this.qualityOpen = null;
+    this.vendorOpen = new Set();
     this.initialized = false;
   }
 
@@ -181,6 +192,72 @@ export class OverviewReport {
     this.renderProblems();
     this.renderHeatmap();
     this.renderQuality();
+    this.renderVendors();
+  }
+
+  /* ---------- Kamera markalari ---------- */
+
+  /* Har marka bitta qator: hozirgi holat, davr uptime'i, kameraga to'g'ri
+     keladigan uzilishlar (markalar soni har xil — mutlaq son adolatsiz),
+     MTTR, kodek va o'girish. Bosilsa — shu markaning modellari. */
+  renderVendors() {
+    const o = state.overview;
+    const box = $("vendor-rows");
+    if (!o || !box) return;
+    const list = o.vendors || [];
+    $("ven-sub").textContent = (o.days === 1 ? "Bugun" : "So'nggi " + o.days + " kun") +
+      " · bosilsa modellari ochiladi";
+    $("ven-count").textContent = list.length ? list.length + " marka · " +
+      list.reduce((s, v) => s + v.cameras, 0) + " kamera" : "";
+    // Eski server javobida bo'lim umuman yo'q — "kamera yo'q" deb chalg'itmasin.
+    if (!o.vendors) { box.innerHTML = '<div class="empty">Server bu hisobotni hali bermaydi — backend yangilanib qayta ishga tushirilishi kerak.</div>'; return; }
+    if (!list.length) { box.innerHTML = '<div class="empty">Kameralar yo‘q.</div>'; return; }
+    const maxRate = Math.max(...list.flatMap((v) => [v.outages_per_camera,
+      ...v.models.map((m) => m.outages_per_camera)]).filter((x) => x != null), 0.01);
+
+    const nowCell = (r) => {
+      const measured = r.now.online + r.now.stalled + r.now.offline;
+      const segs = NOW_PARTS.map(([k, color]) => r.now[k]
+        ? '<i style="width:' + (r.now[k] / r.cameras * 100).toFixed(1) + "%;background:" + color + '"></i>' : "").join("");
+      const tip = NOW_PARTS.map(([k]) => r.now[k] + " " + STATE_LABEL[k]).join(" · ") +
+        (r.cameras - measured ? " · " + (r.cameras - measured) + " tekshirilmagan" : "");
+      return '<span class="vt-now" title="' + tip + '"><span class="vt-stack">' + segs + "</span>" +
+        "<b>" + (measured ? r.now.online + "/" + measured : "—") + "</b></span>";
+    };
+    const rateCell = (v) => '<span class="vt-rate"><span class="bar"><i style="width:' +
+      (v == null ? 0 : Math.max(3, (v / maxRate) * 100)) + '%;background:var(--danger)"></i></span>' +
+      "<b>" + (v == null ? "—" : v.toFixed(1).replace(".", ",")) + "</b></span>";
+    const common = (r) =>
+      "<span class=\"vt-n\">" + r.cameras + "</span>" + nowCell(r) +
+      '<span class="vt-n ' + upClass(r.uptime_pct) + '">' + fmtPct(r.uptime_pct) + "</span>" +
+      rateCell(r.outages_per_camera) +
+      '<span class="vt-n">' + fmtNum(r.blips) + "</span>" +
+      '<span class="vt-n">' + fmtDur(r.mttr_median_s) + "</span>";
+
+    box.innerHTML = list.map((v) => {
+      const open = this.vendorOpen.has(v.vendor);
+      const codec = [["H.264", v.codecs.H264], ["H.265", v.codecs.H265], ["?", v.codecs.unknown]]
+        .filter(([, n]) => n).map(([k, n]) => k + " " + n).join(" · ");
+      let html = '<div class="vt-row click' + (open ? " open" : "") + '" data-v="' + esc(v.vendor) + '">' +
+        '<span class="vt-name"><svg class="vt-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg><b>' +
+        esc(vendorLabel(v.vendor)) + "</b><i>" + v.models.length + " model" +
+        (v.no_model ? " · " + v.no_model + " ta modeli noma'lum" : "") + "</i></span>" +
+        common(v) +
+        '<span class="vt-n vt-codec">' + (codec || "—") + "</span>" +
+        '<span class="vt-n">' + (v.transcode ? v.transcode + " ta" : "—") + "</span></div>";
+      if (open) {
+        html += v.models.map((m) => '<div class="vt-row sub">' +
+          '<span class="vt-name"><b>' + esc(m.model || "Model noma'lum") + "</b></span>" +
+          common(m) + "<span></span><span></span></div>").join("");
+      }
+      return html;
+    }).join("");
+    box.querySelectorAll(".vt-row.click").forEach((row) =>
+      row.addEventListener("click", () => {
+        const k = row.dataset.v;
+        if (this.vendorOpen.has(k)) this.vendorOpen.delete(k); else this.vendorOpen.add(k);
+        this.renderVendors();
+      }));
   }
 
   /* ---------- Liniya holati ---------- */

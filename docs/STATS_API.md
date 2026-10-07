@@ -24,6 +24,7 @@ Kod: hisob — [`backend/stats/reporting/`](../backend/stats/reporting/), HTTP �
 | [`GET /stats/hourly`](#hourly) | Sutkaning qaysi soatlarida ko'p uziladi? |
 | [`GET /stats/heatmap`](#heatmap) | Uzilishlar kun × soat (yoki hafta kuni × soat) bo'yicha qanday taqsimlangan? |
 | [`GET /stats/regions`](#regions) | Qaysi hudud eng yomon? |
+| [`GET /stats/vendors`](#vendors) | Qaysi kamera markasi / modeli yaxshi, qaysi biri ko'p uziladi? |
 | [`GET /stats/ranking`](#ranking) | Qaysi kameralar eng ko'p muammo beryapti? |
 | [`GET /stats/cameras/{id}`](#camera) | Bitta kameraning tarixi qanday? |
 | [`GET /stats/rail`](#rail) | Temir yo'l liniyasining qaysi km'larida muammo bor? |
@@ -490,6 +491,58 @@ curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/regions?days=7"
 `now` va `online_now_pct` — hozirgi lahza; `uptime_pct`, `outages`,
 `offline_hours` — davr bo'yicha. Hududi aniqlanmagan kameralar
 `"Belgilanmagan"` (`admin_area_id: null`) guruhida.
+
+---
+
+<a id="vendors"></a>
+## `GET /stats/vendors` — kamera markalari
+
+**Savol:** qaysi marka (va model) yaxshi ishlayapti, qaysi biri ko'p uziladi?
+
+Parametrlar: davr, `area_id`. Tartib: kamerasi ko'p marka birinchi;
+`models` ichida ham shunday.
+
+```bash
+curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/vendors?days=7"
+```
+
+```json
+{
+  "from": "...", "to": "...", "days": 7.0,
+  "vendors": [
+    {"vendor": "dahua", "cameras": 99,
+     "now": {"online": 73, "stalled": 0, "offline": 26, "unknown": 0, "disabled": 0},
+     "online_now_pct": 73.74,
+     "uptime_pct": 94.63, "outages": 570, "blips": 213, "stalls": 106,
+     "offline_hours": 378.9, "outages_per_camera": 5.76, "mttr_median_s": 262,
+     "codecs": {"H264": 59, "H265": 34, "unknown": 6},
+     "transcode": 29, "udp": 0, "no_model": 20,
+     "models": [
+       {"model": "DH-SD49425XB-HNR-S3", "cameras": 35, "now": {"...": 0},
+        "online_now_pct": 80.0, "uptime_pct": 95.0, "outages": 209, "blips": 40,
+        "stalls": 30, "offline_hours": 101.2, "outages_per_camera": 5.97,
+        "mttr_median_s": 240},
+       {"model": null, "cameras": 20, "...": "..."}
+     ]}
+  ]
+}
+```
+
+- `vendor` — `dahua`, `hikvision`, `holowits`, `boshqa`; marka yozilmagan
+  bo'lsa `unknown`. `model: null` — model hali aniqlanmagan (passport
+  tekshiruvi to'ldiradi).
+- Markalarda kamera soni har xil, shuning uchun taqqoslash uchun
+  **`outages_per_camera`** (davrdagi haqiqiy uzilishlar ÷ kameralar) va
+  `uptime_pct` dan foydalaning — mutlaq `outages` soni ko'p kamerali
+  markani noheq yomon ko'rsatadi.
+- `now`, `online_now_pct` — hozirgi lahza; `uptime_pct`, `outages`, `blips`,
+  `stalls`, `offline_hours`, `mttr_median_s` — davr bo'yicha (kuzatiladigan
+  yoqiq RTSP kameralar).
+- `codecs`, `transcode` (H.265 → H.264 o'girilayotganlar), `udp` (RTSP UDP
+  orqali olinayotganlar), `no_model` — texnik kesim, faqat marka darajasida.
+
+Dashboard'dagi "Kamera markalari" kartasi shu ma'lumotni `/stats/overview`
+javobining `vendors` bo'limidan oladi.
 
 ---
 

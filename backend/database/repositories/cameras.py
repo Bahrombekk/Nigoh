@@ -40,6 +40,7 @@ Tarkibi:
         .set_passport(db, ids, model, firmware)  model/firmware qurilmaga
         .set_vendor(db, id, vendor)  ishlab chiqaruvchi qurilmaga
         .passport_candidates(db, retry_after_s, limit)  kodeki/modeli noma'lum kameralar
+        .set_resolutions(db, {slug: "WxH"})  oqimdan o'lchangan o'lcham (MediaMTX)
         .set_probe_result(db, id, codec=, resolution=, fps=, error=)  faqat BO'SH
                                 maydonga yozadi, probe_at/probe_error ni yangilaydi
       jonli holat:
@@ -487,11 +488,11 @@ class CameraRepository:
         return total, rows
 
     def passport_candidates(self, db, retry_after_s: int, limit: int) -> list:
-        """Kodeki yoki modeli noma'lum yoqiq RTSP kameralar — oxirgi urinishdan
-        `retry_after_s` o'tganlari, hech tekshirilmaganlari birinchi."""
+        """Kodeki, formati yoki modeli noma'lum yoqiq RTSP kameralar — oxirgi
+        urinishdan `retry_after_s` o'tganlari, hech tekshirilmaganlari birinchi."""
         return db.execute(
             f"SELECT * FROM {DETAILS} WHERE enabled AND source_type = 'rtsp' "
-            "AND (codec IS NULL OR model IS NULL) "
+            "AND (codec IS NULL OR resolution IS NULL OR model IS NULL) "
             "AND (probe_at IS NULL OR probe_at < now() - make_interval(secs => %s)) "
             "ORDER BY probe_at NULLS FIRST, id LIMIT %s", (retry_after_s, limit)).fetchall()
 
@@ -505,6 +506,18 @@ class CameraRepository:
             "probe_at = now(), probe_error = %s WHERE camera_id = %s",
             (_none_if_empty(codec), _none_if_empty(resolution), fps or None,
              error or None, camera_id))
+
+    def set_resolutions(self, db, by_slug: dict[str, str]) -> int:
+        """Oqimdan o'lchangan kadr o'lchami (MediaMTX) — slug -> "1920x1080".
+        Haqiqiy oqim eng ishonchli manba: farq qilsa ustidan yoziladi.
+        Qaytaradi: o'zgargan kameralar soni."""
+        changed = 0
+        for slug, resolution in by_slug.items():
+            changed += db.execute(
+                "UPDATE camera_status SET resolution = %s WHERE camera_id = "
+                "(SELECT id FROM cameras WHERE slug = %s) AND resolution IS DISTINCT FROM %s",
+                (resolution, slug, resolution)).rowcount
+        return changed
 
     def set_vendor(self, db, camera_id: int, vendor: str) -> None:
         """Ishlab chiqaruvchi — kameraning qurilmasiga yoziladi."""

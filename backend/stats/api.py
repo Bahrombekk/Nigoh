@@ -39,6 +39,7 @@ prefiks /api/v1/stats, eski /api/stats):
     GET  /api/v1/stats/hourly           sutka soatlari kesimi (yoki bitta `day`)
     GET  /api/v1/stats/heatmap          sana × soat yoki hafta kuni × soat
     GET  /api/v1/stats/regions          hudud kesimi — eng yomoni birinchi
+    GET  /api/v1/stats/vendors          kamera markalari va modellari kesimi
     GET  /api/v1/stats/ranking          muammoli kameralar reytingi (`by`)
     GET  /api/v1/stats/cameras/{id}     bitta kamera: onlaynlik, uzilishlar, MTTR
     GET  /api/v1/stats/rail             temir yo'l liniyasi bo'ylab holatlar (`bin_km`)
@@ -323,6 +324,14 @@ def stat_regions(period: Window, area_ids: Scope):
     """Hudud kesimi: hozirgi holat va davrdagi onlaynlik — eng yomoni birinchi."""
     snap = _snap(period, area_ids)
     return {**period.as_dict(), "regions": metrics.regions(snap, states_of(snap.rows))}
+
+
+@router.get("/vendors")
+def stat_vendors(period: Window, area_ids: Scope):
+    """Kamera markalari kesimi: hozirgi holat, davrdagi onlaynlik, uzilishlar
+    (kameraga nisbatan ham), MTTR, kodek/o'girish/UDP va modellar bo'yicha."""
+    snap = _snap(period, area_ids)
+    return {**period.as_dict(), "vendors": metrics.vendors(snap, states_of(snap.rows))}
 
 
 @router.get("/ranking")

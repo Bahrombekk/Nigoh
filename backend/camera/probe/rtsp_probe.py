@@ -27,6 +27,7 @@ Tarkibi:
                         Hikvision 101->102, stream1->2, main->sub); har
                         nomzod haqiqatda tekshiriladi
     sdp_codec / sdp_resolution / sdp_fps / sdp_has_audio / sdp_video_control
+    sps_resolution(describe)    SPS (sprop-parameter-sets / sprop-sps) dan o'lcham
                         DESCRIBE javobidan ma'lumot ajratish
     TIMEOUT             6 s
 
@@ -35,6 +36,7 @@ camera.media (sync, reconciler, launcher, transport), camera/monitoring/passport
 scripts, database/scripts/fix_camera_data.py, testlar
 """
 import base64
+import binascii
 import hashlib
 import re
 import secrets
@@ -142,13 +144,149 @@ def sdp_resolution(describe: str) -> str:
     """SDP'dan kadr o'lchamini ajratadi ("1920x1080" yoki bo'sh).
 
     Kameralar buni har xil beradi: Hikvision `a=x-dimensions:1920,1080`,
-    boshqalar `a=framesize:96 1920-1080`; ba'zilari umuman bermaydi
-    (o'lcham H.264 SPS ichida yashiringan bo'ladi) — u holda bo'sh.
+    boshqalar `a=framesize:96 1920-1080`. Dahua kabilar alohida qator
+    bermaydi — o'lcham SPS ichida (`sprop-parameter-sets` / `sprop-sps`),
+    u yerdan hisoblanadi. SPS ham bo'lmasa (masalan Holowits H.265) —
+    bo'sh; unda o'lcham kamera ochilganda MediaMTX'dan olinadi
+    (camera/media/reconciler.py).
     """
     match = re.search(r"a=x-dimensions:\s*(\d+)\s*,\s*(\d+)", describe)
     if not match:
         match = re.search(r"a=framesize:\d+\s+(\d+)-(\d+)", describe)
-    return f"{match.group(1)}x{match.group(2)}" if match else ""
+    if match:
+        return f"{match.group(1)}x{match.group(2)}"
+    return sps_resolution(describe)
+
+
+class _Bits:
+    """SPS o'quvchi: emulyatsiya baytlari (00 00 03) olib tashlangan bitlar."""
+
+    def __init__(self, nal: bytes) -> None:
+        clean, zeros = bytearray(), 0
+        for byte in nal:
+            if zeros >= 2 and byte == 3:
+                zeros = 0
+                continue
+            clean.append(byte)
+            zeros = zeros + 1 if byte == 0 else 0
+        self.data, self.pos = bytes(clean), 0
+
+    def u(self, n: int) -> int:
+        value = 0
+        for _ in range(n):
+            if self.pos >= len(self.data) * 8:
+                raise ValueError("SPS tugadi")
+            value = (value << 1) | ((self.data[self.pos // 8] >> (7 - self.pos % 8)) & 1)
+            self.pos += 1
+        return value
+
+    def ue(self) -> int:
+        zeros = 0
+        while self.u(1) == 0:
+            zeros += 1
+            if zeros > 31:
+                raise ValueError("buzuq Exp-Golomb")
+        return (1 << zeros) - 1 + self.u(zeros)
+
+    def se(self) -> int:
+        k = self.ue()
+        return (k + 1) // 2 if k % 2 else -(k // 2)
+
+
+def _h264_size(sps: bytes) -> tuple[int, int]:
+    b = _Bits(sps[1:])                      # NAL sarlavhasi (1 bayt) tashlanadi
+    profile = b.u(8)
+    b.u(16)                                 # cheklov bayroqlari + level
+    b.ue()                                  # sps id
+    chroma = 1
+    if profile in (100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135):
+        chroma = b.ue()
+        if chroma == 3:
+            b.u(1)
+        b.ue(), b.ue()                      # bit chuqurligi
+        b.u(1)
+        if b.u(1):                          # scaling matrix
+            for i in range(8 if chroma != 3 else 12):
+                if b.u(1):
+                    last = nxt = 8
+                    for _ in range(16 if i < 6 else 64):
+                        if nxt:
+                            nxt = (last + b.se()) % 256
+                        last = nxt or last
+    b.ue()                                  # log2_max_frame_num
+    poc = b.ue()
+    if poc == 0:
+        b.ue()
+    elif poc == 1:
+        b.u(1), b.se(), b.se()
+        for _ in range(b.ue()):
+            b.se()
+    b.ue(), b.u(1)                          # ref frames, gaps
+    w_mbs, h_map = b.ue() + 1, b.ue() + 1
+    frame_mbs_only = b.u(1)
+    if not frame_mbs_only:
+        b.u(1)
+    b.u(1)
+    width, height = w_mbs * 16, (2 - frame_mbs_only) * h_map * 16
+    if b.u(1):                              # kesish (cropping)
+        left, right, top, bottom = b.ue(), b.ue(), b.ue(), b.ue()
+        cx = 1 if chroma == 0 else 2 if chroma in (1, 2) else 1
+        cy = (1 if chroma in (0, 2, 3) else 2) * (2 - frame_mbs_only)
+        width -= (left + right) * cx
+        height -= (top + bottom) * cy
+    return width, height
+
+
+def _h265_size(sps: bytes) -> tuple[int, int]:
+    b = _Bits(sps[2:])                      # H.265 NAL sarlavhasi — 2 bayt
+    b.u(4)
+    max_sub = b.u(3)
+    b.u(1)
+    b.u(96 - 8)                             # general profile_tier_level (88 bit)
+    b.u(8)                                  # general_level_idc
+    flags = [(b.u(1), b.u(1)) for _ in range(max_sub)]
+    if max_sub:
+        b.u(2 * (8 - max_sub))
+    for profile_present, level_present in flags:
+        if profile_present:
+            b.u(88)
+        if level_present:
+            b.u(8)
+    b.ue()                                  # sps id
+    chroma = b.ue()
+    if chroma == 3:
+        b.u(1)
+    width, height = b.ue(), b.ue()
+    if b.u(1):                              # conformance window
+        left, right, top, bottom = b.ue(), b.ue(), b.ue(), b.ue()
+        cx = 2 if chroma in (1, 2) else 1
+        cy = 2 if chroma == 1 else 1
+        width -= (left + right) * cx
+        height -= (top + bottom) * cy
+    return width, height
+
+
+def sps_resolution(describe: str) -> str:
+    """SDP `a=fmtp` dagi SPS dan kadr o'lchami ("1920x1080" yoki bo'sh).
+
+    H.264: `sprop-parameter-sets=<SPS>,<PPS>`; H.265: `sprop-sps=<SPS>`.
+    Buzuq yoki tanilmagan SPS — bo'sh (xato chiqarmaydi).
+    """
+    found = re.search(r"sprop-sps=([A-Za-z0-9+/=]+)", describe)
+    parse = _h265_size
+    if not found:
+        found = re.search(r"sprop-parameter-sets=([A-Za-z0-9+/=]+)", describe)
+        parse = _h264_size
+    if not found:
+        return ""
+    try:
+        raw = base64.b64decode(found.group(1) + "=" * (-len(found.group(1)) % 4))
+        width, height = parse(raw)
+    except (ValueError, IndexError, binascii.Error):
+        return ""
+    if not (16 <= width <= 16384 and 16 <= height <= 16384):
+        return ""
+    return f"{width}x{height}"
 
 
 def sdp_fps(describe: str) -> float:

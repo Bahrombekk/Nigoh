@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.factory import create_app
-from database import areas, get_db
+from database import areas, cameras, get_db
 from stats.reporting import engine
 from tests.factories import add_camera, add_event
 
@@ -148,6 +148,36 @@ def test_regions_va_ranking(client, data):
     assert top["items"][0]["id"] == data["a"]
     stalls = get(client, data, "ranking", by="stalls")
     assert [i["id"] for i in stalls["items"]] == [data["c"]]
+
+
+def test_markalar(client, data):
+    a, b, c = data["a"], data["b"], data["c"]
+    with get_db() as db:
+        for cam, vendor in ((a, "dahua"), (b, "dahua"), (c, "hikvision")):
+            cameras.set_vendor(db, cam, vendor)
+        cameras.set_passport(db, [a], "DH-X", None)
+        for cam, codec, tr in ((a, "H265", True), (b, "H264", False), (c, None, False)):
+            db.execute("UPDATE camera_status SET codec = %s, transcode = %s WHERE camera_id = %s",
+                       (codec, tr, cam))
+        cameras.set_rtsp_udp(db, c, True)
+    engine.clear_cache()
+    body = get(client, data, "vendors")
+    by = {v["vendor"]: v for v in body["vendors"]}
+    dahua, hik = by["dahua"], by["hikvision"]
+    assert dahua["cameras"] == 2 and hik["cameras"] == 1
+    # A: 1 uzilish + 1 sakrash, B: 1 ochiq uzilish; C: 1 to'xtash.
+    assert (dahua["outages"], dahua["blips"], dahua["stalls"]) == (2, 1, 0)
+    assert dahua["outages_per_camera"] == 1.0
+    assert dahua["codecs"] == {"H264": 1, "H265": 1, "unknown": 0}
+    assert (dahua["transcode"], dahua["no_model"]) == (1, 1)
+    assert (hik["udp"], hik["stalls"], hik["outages"]) == (1, 1, 0)
+    assert hik["uptime_pct"] == 100.0 and dahua["uptime_pct"] < 100
+    assert [m["model"] for m in dahua["models"]] == ["DH-X", None]
+    assert sum(m["outages"] for m in dahua["models"]) == dahua["outages"]
+    assert dahua["mttr_median_s"] == 3600
+    # Dashboard hisobotida ham shu kesim bor.
+    ov = client.get("/api/v1/stats/overview", params={"days": 1}, headers=KEY).json()
+    assert {v["vendor"] for v in ov["vendors"]} >= {"dahua", "hikvision"}
 
 
 def test_series_va_sla(client, data):

@@ -15,14 +15,22 @@ Tarkibi:
 
 Endpointlar (require_viewer):
     POST /api/v1/metrics/open     o'lchovni yozadi, javob 204
+    GET  /api/v1/metrics/open     kamera kesimi: eng sekin ochiladiganlar
+                                  (median bo'yicha), umumiy p50/p95; operator —
+                                  faqat o'z hududlari
 
-Ishlatadi: camera.monitoring.open_times
-Kim ishlatadi: app/factory.py (router); frontend pleyeri
+Ishlatadi: camera.monitoring.open_times, database (cameras), users.access
+Kim ishlatadi: app/factory.py (router); frontend pleyeri (POST),
+    dashboard "Ochilish vaqti" kartasi (GET)
 """
-from fastapi import APIRouter, Response
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from camera.monitoring import open_times as metrics
+from database import cameras, get_db
+from users.access import allowed_areas
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -54,3 +62,26 @@ def report_open(body: OpenIn):
     transport = body.transport if body.transport in TRANSPORTS else "boshqa"
     metrics.record(transport, body.model_dump())
     return Response(status_code=204)
+
+
+@router.get("/open")
+def open_times(request: Request, limit: int = Query(default=8, ge=1, le=200)):
+    """Kamera kesimida ochilish vaqti — barcha foydalanuvchilar va devorlar
+    bo'yicha, server ishga tushganidan beri. Sekinlari (median) birinchi."""
+    data = metrics.by_camera()
+    allowed = allowed_areas(request)
+    with get_db() as db:
+        rows = {r["id"]: r for r in cameras.list_all(db) if r["id"] in data}
+    items = []
+    for cid, m in data.items():
+        row = rows.get(cid)
+        if row is None or (allowed is not None and row["admin_area_id"] not in allowed):
+            continue
+        items.append({"camera_id": cid, "name": row["name"], "region": row["region"],
+                      **m, "at": datetime.fromtimestamp(m["at"], timezone.utc)})
+    items.sort(key=lambda x: -x["median_ms"])
+    medians = sorted(x["median_ms"] for x in items)
+    return {"cameras": len(items), "opens": sum(x["n"] for x in items),
+            "p50_ms": metrics.percentile(medians, 0.5) if medians else None,
+            "p95_ms": metrics.percentile(medians, 0.95) if medians else None,
+            "items": items[:limit]}

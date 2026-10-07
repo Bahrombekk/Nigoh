@@ -69,3 +69,22 @@ def test_halqa_bufer_chegarasi():
 
 def test_kalitsiz_yozib_bolmaydi(client):
     assert client.post("/api/v1/metrics/open", json={"total_ms": 1}).status_code == 401
+
+
+def test_kamera_kesimi_sekini_birinchi(client):
+    from database import get_db
+    from tests.factories import add_camera
+    with get_db() as db:
+        tez = add_camera(db, "ot_tez", ip="10.77.0.1")
+        sekin = add_camera(db, "ot_sekin", ip="10.77.0.2")
+    for cam, totals in ((tez, (900, 1100, 1000)), (sekin, (4000, 6000, 30000))):
+        for t in totals:
+            client.post("/api/v1/metrics/open", headers=KEY,
+                        json={"camera_id": cam, "transport": "webrtc", "total_ms": t})
+    client.post("/api/v1/metrics/open", headers=KEY,           # kamerasiz — kesimga kirmaydi
+                json={"transport": "hls", "total_ms": 9999})
+    body = client.get("/api/v1/metrics/open", headers=KEY).json()
+    assert [i["camera_id"] for i in body["items"]] == [sekin, tez]
+    first = body["items"][0]
+    assert (first["n"], first["median_ms"], first["max_ms"], first["last_ms"]) == (3, 6000, 30000, 30000)
+    assert first["name"] == "ot_sekin" and body["opens"] == 6

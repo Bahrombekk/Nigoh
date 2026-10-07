@@ -49,6 +49,8 @@ Tarkibi:
         .stalled_count(node_id)     tugundagi muzlagan oqimlar soni
         .pending_count(node_id)     tugunda tozalanmagan ortiqcha yo'llar
         .foreign_nodes()            begona MediaMTX'ga qarab turgan tugunlar soni
+    stream_resolution(item)         MediaMTX yo'lidan video o'lchami (format
+                                    bazaga shu bilan yoziladi)
     service                         yagona nusxa; stalled_paths, stalled_count,
                                     pending_count, foreign_nodes, start — aliaslar
     CHECK_INTERVAL, STALL_INTERVAL, STALL_AFTER, SUB_DEAD_AFTER, SUB_RECHECK,
@@ -157,6 +159,23 @@ DEATH_WARN_EVERY = 300.0     # soniya — jurnal toshib ketmasin
 PRUNE_INTERVAL = 3600.0    # soniya — eski hodisalar soatiga bir tozalanadi
 
 
+def stream_resolution(item: dict) -> str:
+    """MediaMTX yo'lidagi video o'lchami ("2560x1440" yoki bo'sh).
+
+    `tracks2[].codecProps.width/height` (MediaMTX v1.12+) — oqimning
+    o'zidan (SPS) olingan haqiqiy qiymat. SDP'da o'lcham bermaydigan
+    kameralar (Holowits H.265) formati faqat shu yo'l bilan bilinadi.
+    """
+    if not item.get("ready"):
+        return ""
+    for track in item.get("tracks2") or []:
+        props = track.get("codecProps") or {}
+        width, height = props.get("width"), props.get("height")
+        if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+            return f"{width}x{height}"
+    return ""
+
+
 class Reconciler:
     """MediaMTX kuzatuvchisi: yo'llarni kelishtiradi, muzlagan oqimlar va sub oqim salomatligini tekshiradi, MediaMTX yiqilsa qayta ko'taradi."""
 
@@ -194,6 +213,8 @@ class Reconciler:
         # O'lchov: bitta kamera TCP'da sekundiga 1200-1700 paket yo'qotgan,
         # o'sha kamera UDP'da bemalol ishlagan.
         self._errors: dict[tuple[int, str], int] = {}
+        # slug -> bazaga yozilgan o'lcham: har 5 soniyada qayta yozilmasin.
+        self._resolutions: dict[str, str] = {}
         # (tugun, yo'l) -> (jami NOSOZ vaqt, oxirgi ko'rilgan payt).
         #
         # Nima uchun JAMI vaqt, "birinchi ko'rilgan payt" emas: ochilmayotgan
@@ -690,6 +711,7 @@ class Reconciler:
                 self._errors.pop(key, None)
         # Ro'yxat allaqachon qo'lda — ikkinchi API so'rovi shart emas.
         self._check_sub_health(node, active)
+        self._record_resolutions(active)
         # Qulfdan TASHQARIDA: sinovning o'zi fon thread'ida ketadi, lekin
         # navbatga qo'yish ham reconciler qulfini ushlab turmasin.
         for name in tekshirilsin:
@@ -726,6 +748,35 @@ class Reconciler:
                         "state": "stalled" if kind == "stalled" else "online",
                         "at": at,
                     })
+
+    def _record_resolutions(self, active: dict[str, dict]) -> None:
+        """Ochiq asosiy oqimlarning haqiqiy o'lchamini bazaga yozadi (format).
+
+        Sub oqim olinmaydi — u boshqa (kichik) o'lchamda. `_h264` (o'girilgan)
+        yo'l asl o'lchamni saqlaydi (transcode masshtablamaydi). Bazaga faqat
+        yangi yoki o'zgargan qiymat ketadi.
+        """
+        found: dict[str, str] = {}
+        for name, item in active.items():
+            if name.endswith(sync.SUB_SUFFIX):
+                continue
+            resolution = stream_resolution(item)
+            if not resolution:
+                continue
+            slug = name[: -len(sync.TRANSCODE_SUFFIX)] if name.endswith(sync.TRANSCODE_SUFFIX) else name
+            if self._resolutions.get(slug) != resolution:
+                found[slug] = resolution
+        if not found:
+            return
+        try:
+            with get_db() as db:
+                changed = cameras_db.set_resolutions(db, found)
+        except Exception as exc:                  # baza band — keyingi tsiklda qayta
+            log("reconciler", "resolution_save_failed", level="warning", error=str(exc))
+            return
+        self._resolutions.update(found)
+        if changed:
+            log("reconciler", "resolution_updated", cameras=changed)
 
     def _tick(self, load_cameras: Callable[[], list[dict]], announce: bool) -> bool:
         """Bitta tekshiruv (barcha tugunlar). Sinxron bajarilsa True qaytaradi."""

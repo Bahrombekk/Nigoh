@@ -18,6 +18,8 @@ Tarkibi:
     outage_list(snap, ...)             uzilishlar jurnali: kind, open_only,
                                        camera_id, sort, limit/offset
     regions(snap, states)              hudud kesimi — eng yomoni birinchi
+    vendors(snap, states)              marka kesimi: holat, onlaynlik, uzilish/kamera,
+                                       kodek, o'girish, UDP va modellar
     ranking(snap, states, by, limit)   muammoli kameralar (RANKINGS bo'yicha)
     camera_detail(snap, cam, state)    bitta kamera: onlaynlik, uzilishlar, MTTR
     daily(snap)                        kunlik kesim
@@ -211,6 +213,76 @@ def regions(snap: Snapshot, states: dict[int, str]) -> list[dict]:
         g["offline_hours"] = round(offline / 3600, 1)
         out.append(g)
     out.sort(key=lambda g: (g["uptime_pct"] is None, g["uptime_pct"] or 0))
+    return out
+
+
+def _codec_family(codec: str | None) -> str:
+    c = (codec or "").lower()
+    if "265" in c or "hevc" in c:
+        return "H265"
+    if "264" in c or "avc" in c:
+        return "H264"
+    return "unknown"
+
+
+def vendors(snap: Snapshot, states: dict[int, str]) -> list[dict]:
+    """Marka (vendor) kesimi: hozirgi holat, davrdagi onlaynlik, uzilishlar
+    va kameraga to'g'ri keladigan uzilishlar (markalar soni har xil — adolatli
+    taqqoslash uchun), kodek/o'girish/UDP va modellar bo'yicha bo'linish.
+    Eng ko'p kamerali marka birinchi."""
+    def bucket(key: str) -> dict:
+        return {"cameras": 0, "now": {s: 0 for s in STATES}, "outages": 0, "blips": 0,
+                "stalls": 0, "_observed": 0.0, "_offline": 0.0, "_recovered": []}
+
+    groups: dict[str, dict] = {}
+    models: dict[str, dict[str, dict]] = {}
+    for row in snap.rows:
+        v = row["vendor"] or "unknown"
+        g = groups.setdefault(v, {**bucket(v), "vendor": v,
+                                  "codecs": {"H264": 0, "H265": 0, "unknown": 0},
+                                  "transcode": 0, "udp": 0, "no_model": 0})
+        m = models.setdefault(v, {}).setdefault(row["model"] or "", bucket(v))
+        st = states.get(row["id"], "unknown")
+        for b in (g, m):
+            b["cameras"] += 1
+            b["now"][st] += 1
+        g["codecs"][_codec_family(row["codec"])] += 1
+        g["transcode"] += bool(row["transcode"])
+        g["udp"] += bool(row["rtsp_udp"])
+        g["no_model"] += not row["model"]
+    for cam in snap.cameras:
+        row = cam.row
+        v = row["vendor"] or "unknown"
+        for b in (groups[v], models[v][row["model"] or ""]):
+            b["outages"] += len(cam.real)
+            b["blips"] += len(cam.blips)
+            b["stalls"] += cam.stalls
+            b["_observed"] += cam.covered_s
+            b["_offline"] += cam.offline_s
+            b["_recovered"] += [o.seconds for o in cam.real if not o.open]
+
+    def finish(b: dict) -> dict:
+        observed, offline = b.pop("_observed"), b.pop("_offline")
+        recovered = b.pop("_recovered")
+        measured = b["now"]["online"] + b["now"]["stalled"] + b["now"]["offline"]
+        b["online_now_pct"] = pct(b["now"]["online"], measured)
+        b["uptime_pct"] = pct(observed - offline, observed)
+        b["offline_hours"] = round(offline / 3600, 1)
+        b["outages_per_camera"] = round(b["outages"] / b["cameras"], 2) if b["cameras"] else None
+        b["mttr_median_s"] = int(statistics.median(recovered)) if recovered else None
+        return b
+
+    out = []
+    for v, g in groups.items():
+        finish(g)
+        g["models"] = sorted(
+            ({"model": name or None, **{k: b[k] for k in (
+                "cameras", "now", "online_now_pct", "uptime_pct", "outages", "blips",
+                "stalls", "offline_hours", "outages_per_camera", "mttr_median_s")}}
+             for name, b in ((n, finish(b)) for n, b in models[v].items())),
+            key=lambda m: (-m["cameras"], m["model"] or "~"))
+        out.append(g)
+    out.sort(key=lambda g: (-g["cameras"], g["vendor"]))
     return out
 
 

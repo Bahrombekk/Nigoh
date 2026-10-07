@@ -11,6 +11,7 @@ Javob bo'limlari:
   * coverage — kuzatuv qamrovi va bo'shliqlari (server ishlamagan vaqt);
   * fleet    — butun park: uptime, haqiqiy uzilishlar, qisqa sakrashlar, MTTR;
   * regions  — hudud kesimi;
+  * vendors  — kamera markalari va modellari kesimi;
   * most_offline / most_flapping — muammoli kameralar reytingi;
   * heatmap  — kun x soat uzilishlar xaritasi;
   * quality  — ma'lumot sifati (tuzatilishi kerak bo'lgan yozuvlar).
@@ -76,7 +77,8 @@ def _compute(days: int, area_ids: list[int] | None) -> dict:
         "regions": [{"region": g["region"], "cameras": g["cameras"], "outages": g["outages"],
                      "blips": g["blips"], "uptime_pct": g["uptime_pct"]}
                     for g in metrics.regions(snap, states)],
-        "most_offline": metrics.ranking(snap, states, "offline_time", TOP_N)["items"],
+        "vendors": metrics.vendors(snap, states),
+        "most_offline":metrics.ranking(snap, states, "offline_time", TOP_N)["items"],
         "most_flapping": metrics.ranking(snap, states, "flapping", TOP_N)["items"],
         "heatmap": [{"date": r["key"], "hours": r["hours"], "coverage_pct": r["coverage_pct"]}
                     for r in heat["rows"]],

@@ -25,7 +25,7 @@
 
    DOM: #sel-body, #sel-empty, #sel-video, #sel-msg, #sel-name, #sel-sub, .sp-st,
         #sel-badge, #sel-badge-tx, #sel-badge-2, #sel-f-region, #sel-f-res,
-        #sel-f-seen, #sel-f-codec, #sel-f-mode, #sel-f-open, #sel-stamp,
+        #sel-f-seen, #sel-f-codec, #sel-f-model, #sel-f-mode, #sel-f-open, #sel-stamp,
         #sel-close, #sel-full, #sel-shot, #sel-edit, #sel-center, #sel-wall
    Backend: GET /api/cameras/{id}/snapshot (poster),
             GET /api/admin/cameras?q=...&limit=50&offset=0 (tahrirlash uchun to'liq yozuv),
@@ -155,7 +155,12 @@ export class SelectionPanel {
     $("sel-badge-tx").textContent = down ? "Uzilgan" : "Onlayn";
     $("sel-badge-2").textContent = down ? "OFFLINE" : "LIVE";
     $("sel-f-region").textContent = cam.region || "—";
-    $("sel-f-res").textContent = cam.resolution || "—";
+    $("sel-f-res").textContent = cam.resolution ? cam.resolution.replace("x", "×") : "—";
+    // Marka + model; model hali aniqlanmagan bo'lsa — faqat marka.
+    const vendor = { dahua: "Dahua", hikvision: "Hikvision", holowits: "Holowits" }[cam.vendor] || "";
+    const model = [vendor, cam.model].filter(Boolean).join(" ") || "—";
+    $("sel-f-model").textContent = model;
+    $("sel-f-model").title = model;
     $("sel-f-seen").textContent = down ? fmtLastSeen(cam.last_seen) : "hozirgina";
     $("sel-f-codec").textContent = cam.codec || "—";
     $("sel-f-mode").textContent = cam.always_on ? "doim tayyor" : "so'rov bo'yicha";

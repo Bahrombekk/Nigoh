@@ -123,3 +123,25 @@ def test_tuzatish_yozuvi_izohda_qoladi():
         row = cameras.get(db, cid)
     assert (row["vendor"], row["rtsp_path"], row["lat"]) == ("holowits", "/LiveMedia/ch1/Media1", 40.1)
     assert row["note"] == "Tuzatildi: sinov · ikkinchi"
+
+
+def test_format_oqimdan_yoziladi():
+    """Format (o'lcham) SDP'da bo'lmasa — kamera ochilganda MediaMTX'dan."""
+    from camera.media import reconciler
+    item = {"ready": True, "tracks2": [{"codec": "H265",
+                                        "codecProps": {"width": 2560, "height": 1440}}]}
+    assert reconciler.stream_resolution(item) == "2560x1440"
+    assert reconciler.stream_resolution({**item, "ready": False}) == ""
+    assert reconciler.stream_resolution({"ready": True, "tracks": ["H264"]}) == ""   # eski MediaMTX
+
+    with get_db() as db:
+        cam = add_camera(db, "fmt_a", ip="10.66.0.1", codec="H265")
+    rec = reconciler.Reconciler()
+    rec._record_resolutions({"fmt_a_h264": item,
+                             "fmt_a_sub": {**item, "tracks2": [{"codecProps": {"width": 640, "height": 360}}]}})
+    with get_db() as db:
+        assert cameras.get(db, cam)["resolution"] == "2560x1440"   # sub o'lchami yozilmadi
+        # Formati bo'sh, kodeki bor kamera ham pasport tekshiruviga tushadi.
+        db.execute("UPDATE camera_status SET resolution = NULL WHERE camera_id = %s", (cam,))
+        ids = [r["id"] for r in cameras.passport_candidates(db, 0, 10000)]
+    assert cam in ids

@@ -17,7 +17,7 @@
      renderDash()         — butun dashboardni chizish + statistika/hisobotni so'rash
      renderDashMetrics()  — faqat KPI qatori (pleyer har ochilishda chaqiradi)
      renderUptimeKpi()    — uptime KPI (hisobotdan)
-     loadStats()          — /api/stats/dashboard ni olish va bog'liq bloklarni chizish
+     loadStats()          — /api/stats/dashboard va /api/metrics/open ni olish, bog'liq bloklarni chizish
      renderRegions()      — hududlar jadvali
      renderSystem()       — "Tizim holati" (faqat haqiqiy signallardan)
 
@@ -36,7 +36,7 @@
         #m-open-note, #dash-upd, #dash-refresh, #donut, #donut-legend, #donut-wrap,
         #region-rows, #reg-sub, #reg-mode, #reg-csv, #tech-rows, #today-facts,
         #att-rows, #att-count, #slow-rows, #sys-list, #qa-add, #qa-mtx, #sync-btn
-   Backend: GET /api/stats/dashboard (loadStats); boshqalari overview.js/charts.js orqali
+   Backend: GET /api/stats/dashboard, GET /api/metrics/open (loadStats); boshqalari overview.js/charts.js orqali
 
    Qoidalar / tuzoqlar:
      - Dashboard faqat ochiq bo'lsa (state.tab === "dash") chiziladi va har
@@ -226,11 +226,6 @@ export class Dashboard {
       : "tarix yuklanmoqda…";
     const now = new Date(), pd = (n) => String(n).padStart(2, "0");
     $("dash-upd").textContent = pd(now.getHours()) + ":" + pd(now.getMinutes()) + ":" + pd(now.getSeconds());
-    const t = state.openTimes;
-    $("m-open-note").textContent = t.length
-      ? "Shu seans · o'rtacha " + (t.reduce((s, v) => s + v, 0) / t.length / 1000).toFixed(2)
-          .replace(".", ",") + " s · sekinlari yuqorida"
-      : "Shu seans · hali oqim ochilmadi";
     this.renderUptimeKpi();
     $("m-down").textContent = off;
     $("m-down-note").textContent = off ? "Tekshirish talab qiladi"
@@ -378,9 +373,13 @@ export class Dashboard {
     this.statsLoading = true;
     try {
       state.stats = await api("/api/stats/dashboard");
+      // Ochilish vaqti — barcha foydalanuvchilar va devorlar bo'yicha (server xotirasi).
+      try { state.openServer = await api("/api/metrics/open?limit=8"); } catch (e) { /* eski server */ }
       if (state.tab === "dash") {
+        this.renderSlow();
         this.renderMetrics();
         this.renderRegions();
+        this.renderToday();
         renderEvents();
         renderTimeline();
         renderDailyCharts();
@@ -525,22 +524,40 @@ export class Dashboard {
       row.addEventListener("click", () => selectCamera(Number(row.dataset.id), true)));
   }
 
-  /* Shu seansda o'lchangan oqim ochilish vaqtlari — sekinlari yuqorida. */
+  /* Ochilish vaqti: serverdagi kamera kesimi (hamma foydalanuvchi va devorlar,
+     server ishga tushganidan beri, har kameraning oxirgi 10 ochilishi medianasi);
+     server bermasa — shu seans o'lchovlari. Sekinlari yuqorida. */
   renderSlow() {
-    const rows = [...state.openByCam.entries()]
-      .map(([id, ms]) => ({ cam: state.byId.get(id), ms }))
-      .filter((r) => r.cam)
-      .sort((a, b) => b.ms - a.ms)
-      .slice(0, 8);
+    const srv = state.openServer;
+    let rows, note;
+    if (srv && srv.items && srv.items.length) {
+      rows = srv.items.map((x) => ({ name: x.name, ms: x.median_ms,
+        tip: x.n + " ochilish · oxirgisi " + (x.last_ms / 1000).toFixed(1) + " s · eng sekini " +
+             (x.max_ms / 1000).toFixed(1) + " s · " + x.transport }));
+      note = "Barcha foydalanuvchilar · " + srv.cameras + " kamera, " + srv.opens +
+        " ochilish · median " + (srv.p50_ms / 1000).toFixed(1).replace(".", ",") + " s";
+    } else {
+      rows = [...state.openByCam.entries()]
+        .map(([id, ms]) => ({ cam: state.byId.get(id), ms }))
+        .filter((r) => r.cam)
+        .map((r) => ({ name: r.cam.name, ms: r.ms, tip: "shu seans" }));
+      const t = state.openTimes;
+      note = t.length
+        ? "Shu seans · o'rtacha " + (t.reduce((s, v) => s + v, 0) / t.length / 1000).toFixed(2)
+            .replace(".", ",") + " s · sekinlari yuqorida"
+        : "Hali hech kim kamera ochmagan";
+    }
+    rows = rows.sort((a, b) => b.ms - a.ms).slice(0, 8);
+    $("m-open-note").textContent = note;
     const max = rows.length ? rows[0].ms : 1;
     $("slow-rows").innerHTML = rows.length ? rows.map((r) => {
       const sec = r.ms / 1000;
       const color = sec <= 2 ? "var(--ok)" : sec <= 5 ? "var(--warn)" : "var(--danger)";
-      return '<div class="rrow"><span class="rg wide">' + esc(r.cam.name) + "</span>" +
+      return '<div class="rrow" title="' + esc(r.tip) + '"><span class="rg wide">' + esc(r.name) + "</span>" +
         '<div class="bar"><i style="width:' + Math.max(6, Math.round((r.ms / max) * 100)) +
         "%;background:" + color + '"></i></div>' +
         '<span class="lb">' + sec.toFixed(2) + " s</span></div>";
-    }).join("") : '<div class="empty">Hali oqim ochilmadi — kamera oching, o\'lchov shu yerda ko\'rinadi.</div>';
+    }).join("") : '<div class="empty">Server ishga tushganidan beri hech kim kamera ochmagan — ochilganda o‘lchov shu yerda ko‘rinadi.</div>';
   }
 
   /* Tizim holati — faqat haqiqiy signallardan chiqariladi. */
