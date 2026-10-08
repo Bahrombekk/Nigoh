@@ -418,7 +418,7 @@ def heatmap(snap: Snapshot, mode: str = "date", kind: str = "outage") -> dict:
 
 # ---------- onlaynlik qatori va maqsad ----------
 
-STEP_SECONDS = {"5m": 300, "hour": 3600, "day": 86400}
+STEP_SECONDS = {"5m": 300, "hour": 3600, "6h": 21600, "day": 86400}
 
 
 def series(points, step: str) -> dict:

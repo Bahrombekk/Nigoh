@@ -65,3 +65,6 @@ backend/database/pgdata/
 
 # OpenStreetMap xom yuklamasi (backend/scripts/fetch_osm_railways.py)
 osm_rail.json
+
+# OpenStreetMap chegaralar xom yuklamasi (backend/scripts/fetch_osm_boundaries.py)
+osm_boundaries.json

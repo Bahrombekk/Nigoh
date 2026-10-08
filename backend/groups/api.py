@@ -7,6 +7,7 @@ Ruxsatlar:
   * ko'rish — o'z guruhlari va umumiy (`shared`) guruhlar; admin va API
     kalit — hammasi;
   * o'zgartirish/o'chirish — egasi yoki admin (API kalit admin hisoblanadi);
+    kuzatuvchi (viewer) guruh yarata/o'zgartira olmaydi — 403, faqat ko'radi;
   * kamera qo'shish — faqat foydalanuvchi ko'ra oladigan kameralar (operator —
     o'z hududlari); begonasi — 403, mavjud bo'lmagani — 422;
   * javobdagi `camera_ids` ham ko'ruvchining hududlari bilan cheklanadi:
@@ -65,13 +66,18 @@ class MembersIn(BaseModel):
     mode: Literal["add", "remove", "set"] = "add"
 
 
-def _who(request: Request) -> tuple[int | None, bool]:
-    """(foydalanuvchi id, admin). API kalit — egasiz admin."""
+def _who(request: Request, write: bool = False) -> tuple[int | None, bool]:
+    """(foydalanuvchi id, admin). API kalit — egasiz admin.
+
+    `write` — guruh yaratish/o'zgartirish: kuzatuvchi (viewer) faqat ko'radi — 403.
+    """
     if api_key_ok(request):
         return None, True
     user = current_user(request)
     if user is None:                       # require_user o'tkazmaydi, baribir
         raise HTTPException(401, "Avval tizimga kiring")
+    if write and user["role"] == "viewer":
+        raise HTTPException(403, "Kuzatuvchi guruh yarata yoki oʻzgartira olmaydi")
     return user["id"], user["role"] == "admin"
 
 
@@ -110,7 +116,7 @@ def _load(db, group_id: int, uid, admin, *, edit: bool):
     if row is None or not _can_see(row, uid, admin):
         raise HTTPException(404, "Guruh topilmadi")
     if edit and not _can_edit(row, uid, admin):
-        raise HTTPException(403, "Bu guruhni faqat egasi o'zgartira oladi")
+        raise HTTPException(403, "Bu guruhni faqat egasi oʻzgartira oladi")
     return row
 
 
@@ -128,7 +134,7 @@ def _check_cameras(db, request: Request, ids: list[int]) -> list[int]:
         allowed = set(areas)
         foreign = [i for i in ids if rows[i]["admin_area_id"] not in allowed]
         if foreign:
-            raise HTTPException(403, "Ba'zi kameralar sizning hududingizda emas")
+            raise HTTPException(403, "Baʼzi kameralar sizning hududingizda emas")
     return ids
 
 
@@ -144,10 +150,10 @@ def list_groups(request: Request):
 
 @router.post("", status_code=201)
 def create_group(body: GroupIn, request: Request):
-    uid, admin = _who(request)
+    uid, admin = _who(request, write=True)
     name = body.name.strip()
     if not name:
-        raise HTTPException(422, "Guruh nomi bo'sh")
+        raise HTTPException(422, "Guruh nomi boʻsh")
     with get_db() as db:
         if groups.count_owned(db, uid) >= MAX_GROUPS:
             raise HTTPException(409, f"Guruhlar soni chegarasi: {MAX_GROUPS}")
@@ -166,9 +172,9 @@ def create_group(body: GroupIn, request: Request):
 
 @router.patch("/{group_id}")
 def update_group(group_id: int, body: GroupPatch, request: Request):
-    uid, admin = _who(request)
+    uid, admin = _who(request, write=True)
     if body.name is not None and not body.name.strip():
-        raise HTTPException(422, "Guruh nomi bo'sh")
+        raise HTTPException(422, "Guruh nomi boʻsh")
     with get_db() as db:
         old = _load(db, group_id, uid, admin, edit=True)
         try:
@@ -185,7 +191,7 @@ def update_group(group_id: int, body: GroupPatch, request: Request):
 
 @router.delete("/{group_id}", status_code=204)
 def delete_group(group_id: int, request: Request):
-    uid, admin = _who(request)
+    uid, admin = _who(request, write=True)
     with get_db() as db:
         old = _load(db, group_id, uid, admin, edit=True)
         audit_log.record(db, request, "group.delete", "group", entity_id=group_id,
@@ -202,7 +208,7 @@ def group_cameras(group_id: int, body: MembersIn, request: Request):
     `set` da operator ko'rmaydigan a'zolar (admin qo'shgan) o'chib ketmaydi —
     ular ro'yxat oxirida saqlanadi.
     """
-    uid, admin = _who(request)
+    uid, admin = _who(request, write=True)
     with get_db() as db:
         row = _load(db, group_id, uid, admin, edit=True)
         if body.mode == "remove":
@@ -212,7 +218,7 @@ def group_cameras(group_id: int, body: MembersIn, request: Request):
             if body.mode == "add":
                 current = len(row["camera_ids"] or [])
                 if current + len(ids) > MAX_MEMBERS:
-                    raise HTTPException(409, f"Guruhda {MAX_MEMBERS} tadan ko'p kamera bo'lmaydi")
+                    raise HTTPException(409, f"Guruhda {MAX_MEMBERS} tadan koʻp kamera boʻlmaydi")
                 groups.add_members(db, group_id, ids)
             else:
                 visible = _visible_ids(db, request)

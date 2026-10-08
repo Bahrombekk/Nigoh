@@ -76,9 +76,9 @@ def _minutes(seconds: float) -> str:
 def camera_state_reason(row) -> tuple[str, str]:
     """(holat, sabab). Sabab — operatorga tushunarli qisqa izoh (bo'sh bo'lishi mumkin)."""
     if not row["enabled"]:
-        return "disabled", "administrator o'chirgan"
+        return "disabled", "administrator oʻchirgan"
     if not row["ip"]:
-        return "unknown", "IP manzil yo'q (tashqi oqim)"
+        return "unknown", "IP manzil yoʻq (tashqi oqim)"
     slug = row["slug"] or ""
     # Faqat TOMOSHA qilinadigan oqimlar kamerani "muzlagan" qiladi: asosiy
     # (slug) va H.264 o'girish (_h264). SUB oqim ALOHIDA — u faqat devor
@@ -89,7 +89,7 @@ def camera_state_reason(row) -> tuple[str, str]:
     if alive is None:
         return "unknown", "server hali tekshirmagan"
     if not alive:
-        return "offline", "tarmoqdan javob yo'q"
+        return "offline", "tarmoqdan javob yoʻq"
     for display in reconciler.stalled_paths():
         if display.split("@", 1)[0] in variants:
             return "stalled", "ochiq oqimga tasvir kelmayapti"
@@ -97,7 +97,7 @@ def camera_state_reason(row) -> tuple[str, str]:
     if error:
         stage = error.split(":", 1)[0].strip()
         if stage not in _NETWORK_STAGES:
-            return "stalled", ("parol noto'g'ri" if stage == "parol"
+            return "stalled", ("parol notoʻgʻri" if stage == "parol"
                                else error.split(":", 1)[-1].strip()[:80] or stage)
     # Surat — tasvir haqiqatan olinyaptimi. Faqat kamera max_age dan uzoqroq
     # onlayn bo'lsa: yangi qaytgan kameraning eski surati soxta signal bermasin.

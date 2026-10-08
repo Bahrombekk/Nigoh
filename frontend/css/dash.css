@@ -1,0 +1,335 @@
+/* ==========================================================================
+   css/dash.css — Dashboard (Figma 03: Hozir / Trend / Tahlil + v2 vidjetlari)
+   --------------------------------------------------------------------------
+   Faqat tokenlar. Klasslar .db- prefiksi bilan. Umumiy komponentlar
+   (.card, .seg, .kpi-tile, .badge, .dot, .infotip, .alert, .skeleton, .empty)
+   base.css da — bu yerda faqat dashboard joylashuvi va o'ziga xos qismlar.
+   Asos: 1440×800 (sheet 1336×768, padding 16/24, gap 12). Tab ichida
+   bo'limlar Overline sarlavha (.db-sec) bilan ajratiladi; sahifa aylanadi.
+   ========================================================================== */
+
+/* ---------- Sarlavha ---------- */
+.db-head { gap: var(--spacing-md); }
+.db-head .page-head__title { margin-right: var(--spacing-xs); }
+.db-tabs { width: 300px; }
+.db-period { width: 240px; }
+.db-sysbar { display: flex; }
+.db-panel { display: flex; flex-direction: column; gap: var(--spacing-base); flex: none; }
+.db-sec { margin: var(--spacing-md) 0 calc(-1 * var(--spacing-xs)) var(--spacing-xs); }
+.db-sec:first-child { margin-top: 0; }
+
+/* ---------- Joylashuv to'rlari ---------- */
+.db-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--spacing-base); }
+.db-g21 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--spacing-base); align-items: stretch; }
+.db-g12 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--spacing-base); align-items: stretch; }
+.db-col { display: flex; flex-direction: column; gap: var(--spacing-base); min-width: 0; }
+.db-col > .card:first-child { flex: 1 1 auto; }
+
+/* ---------- Karta ---------- */
+.db-card { display: flex; flex-direction: column; gap: var(--spacing-base); min-width: 0; }
+.db-card__head { display: flex; align-items: center; gap: var(--spacing-xs); min-height: 24px; flex: none; }
+.db-card__head .card__title { white-space: nowrap; }
+.db-card__sub { font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); margin-left: var(--spacing-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.db-link { display: inline-flex; align-items: center; gap: var(--spacing-xs); font: 500 13px/18px var(--family-sans); color: var(--color-text-link); white-space: nowrap; border-radius: var(--radius-sm); padding: 0 var(--spacing-xxs); }
+.db-link:hover { color: var(--color-text-link-hover); }
+.db-body { min-width: 0; }
+.db-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.db-xscroll { overflow-x: auto; }
+.db-num { font: 400 12px/16px var(--family-mono); color: var(--color-text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.db-num.t-tertiary { color: var(--color-text-tertiary); }
+.db-num.t-success, .db-vt-row .t-success { color: var(--color-text-success); }
+.db-num.t-warning, .db-vt-row .t-warning { color: var(--color-text-warning); }
+.db-num.t-error { color: var(--color-text-error); }
+.db-skel { display: flex; flex-direction: column; gap: var(--spacing-base); padding: var(--spacing-xs) 0; }
+.db-skel__block { display: block; width: 100%; border-radius: var(--radius-md); }
+.db-alert { margin: var(--spacing-xs) 0; }
+.db-card .empty { padding: var(--spacing-lg) var(--spacing-md); }
+
+/* ---------- StatCard ---------- */
+.db-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--spacing-base); }
+.db-stat { display: flex; flex-direction: column; gap: var(--spacing-sm); min-height: 164px; min-width: 0; }
+.db-stat__head { display: flex; align-items: center; gap: var(--spacing-xxs); min-height: 24px; }
+.db-stat__label { font: 500 13px/18px var(--family-sans); color: var(--color-text-secondary); white-space: nowrap; }
+.db-stat__value { display: flex; align-items: baseline; gap: var(--spacing-sm); min-width: 0; }
+.db-stat__num { font: 600 32px/40px var(--family-sans); letter-spacing: var(--letter-spacing-tighter); font-variant-numeric: tabular-nums; color: var(--color-text-primary); white-space: nowrap; }
+.db-stat__unit { font: 400 14px/20px var(--family-sans); color: var(--color-text-tertiary); white-space: nowrap; }
+.db-spark { width: 100%; height: 30px; flex: none; margin-top: auto; }
+.db-stat__meta { font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); min-height: 16px; }
+.db-delta {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 var(--spacing-sm); border-radius: var(--radius-full);
+  font: 500 11px/14px var(--family-sans); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.db-stat[data-tone="success"] .db-delta { background: var(--color-status-online-bg); color: var(--color-status-online-fg); }
+.db-stat[data-tone="error"] .db-delta { background: var(--color-status-offline-bg); color: var(--color-status-offline-fg); }
+.db-stat[data-tone="brand"] .db-delta { background: var(--color-bg-brand-subtle); color: var(--color-text-brand); }
+.db-stat[data-tone="warning"] .db-delta { background: var(--color-status-no-video-bg); color: var(--color-status-no-video-fg); }
+
+/* ---------- Holat ranglari (kvadrat, chiziq, legenda) ---------- */
+.db-sq, .db-legend i, .db-bar i { background: var(--color-status-unknown-icon); }
+[data-status="online"].db-sq, .db-legend i[data-status="online"], .db-bar i[data-status="online"] { background: var(--color-status-online-icon); }
+[data-status="offline"].db-sq, .db-legend i[data-status="offline"], .db-bar i[data-status="offline"] { background: var(--color-status-offline-icon); }
+[data-status="no-video"].db-sq, .db-legend i[data-status="no-video"], .db-bar i[data-status="no-video"] { background: var(--color-status-no-video-icon); }
+[data-status="disabled"].db-sq { background: var(--color-status-disabled-icon); }
+.db-legend i.db-k-err { background: var(--color-icon-error); }
+.db-legend i.db-k-warn { background: var(--color-icon-warning); opacity: .6; }
+
+/* ---------- Liniya holati ---------- */
+.db-line { cursor: pointer; }
+.db-legend { display: flex; flex-wrap: wrap; gap: var(--spacing-base); font: 400 12px/16px var(--family-sans); color: var(--color-text-secondary); }
+.db-legend span { display: inline-flex; align-items: center; gap: var(--spacing-sm); white-space: nowrap; }
+.db-legend i { width: 10px; height: 10px; border-radius: 3px; }
+.db-line__strip { display: flex; flex-wrap: wrap; gap: var(--spacing-md) var(--spacing-base); align-items: flex-start; }
+.db-seg { display: flex; flex-direction: column; gap: var(--spacing-sm); min-width: min(100%, max(64px, calc(var(--n, 1) * 7px))); }
+.db-sqs { display: flex; flex-wrap: wrap; gap: 2px; }
+.db-sq { display: block; width: 12px; height: 12px; border-radius: 3px; cursor: pointer; transition: transform var(--dur-hover); }
+.db-sq:hover { transform: scale(1.35); box-shadow: 0 0 0 1.5px var(--color-bg-primary); position: relative; z-index: 1; }
+.db-line__strip.is-dense .db-sqs { gap: 1px; }
+.db-line__strip.is-dense .db-sq { width: 6px; height: 6px; border-radius: 1.5px; }
+.db-seg__l { display: flex; flex-wrap: nowrap; overflow: hidden; white-space: nowrap; align-items: baseline; column-gap: var(--spacing-sm); font: 500 11px/14px var(--family-sans); color: var(--color-text-secondary); min-width: 0; }
+.db-seg__name, .db-seg__km { flex: none; }
+.db-seg__km { font: 400 11px/14px var(--family-mono); color: var(--color-text-tertiary); white-space: nowrap; }
+
+/* ---------- Ro'yxat qatorlari (Diqqat, hodisalar, reyting, uzun uzilishlar) ---------- */
+.db-att-mode { flex: none; }
+.db-att-row, .db-ev, .db-rk-row {
+  display: flex; align-items: center; gap: var(--spacing-md); width: 100%; text-align: left;
+  border-radius: var(--radius-md); padding: var(--spacing-xs) var(--spacing-sm); transition: background var(--dur-hover);
+}
+.db-att-row:hover, .db-ev:hover, .db-rk-row:hover { background: var(--color-bg-hover); }
+#db-att, #db-long, #db-rank { display: flex; flex-direction: column; gap: var(--spacing-xs); margin: 0 calc(-1 * var(--spacing-sm)); }
+.db-att-row { min-height: 46px; }
+.db-att-row__t { display: flex; flex-direction: column; min-width: 0; flex: 1; font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); }
+.db-att-row__s { font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); }
+.db-att-row__d { font: 400 12px/16px var(--family-mono); white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+.db-att-row__d.t-error { color: var(--color-text-error); }
+.db-att-row__d.t-warning { color: var(--color-text-warning); }
+.db-long-when { font-family: var(--family-mono); white-space: nowrap; flex: none; }
+.db-tag { flex: none; height: 20px; display: inline-flex; align-items: center; padding: 0 var(--spacing-sm); border-radius: var(--radius-sm); background: var(--color-bg-warning-subtle); color: var(--color-text-warning); font: 500 11px/14px var(--family-sans); white-space: nowrap; }
+.db-tag--err { background: var(--color-status-offline-bg); color: var(--color-status-offline-fg); }
+
+.db-rk-row { min-height: 46px; }
+.db-rk-n { width: 16px; flex: none; text-align: right; font: 400 11px/14px var(--family-mono); color: var(--color-text-tertiary); }
+.db-rk-v { display: grid; grid-template-columns: auto; justify-items: end; gap: 2px; width: 104px; flex: none; }
+.db-rk-v .db-bar { width: 100%; height: 4px; }
+.db-rk-note { font: 400 11px/14px var(--family-sans); color: var(--color-text-tertiary); max-width: 100%; }
+
+#db-regions { display: flex; flex-direction: column; gap: var(--spacing-xs); margin: 0 calc(-1 * var(--spacing-sm)); }
+.db-reg { display: flex; flex-direction: column; gap: var(--spacing-sm); width: 100%; text-align: left; padding: var(--spacing-xs) var(--spacing-sm); border-radius: var(--radius-md); transition: background var(--dur-hover); }
+.db-reg:hover { background: var(--color-bg-hover); }
+.db-reg__top { display: flex; align-items: baseline; gap: var(--spacing-md); font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); }
+.db-reg__top .ellipsis { flex: 1; }
+.db-reg__v { font: 400 12px/16px var(--family-mono); color: var(--color-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.db-bar { display: block; height: 6px; border-radius: var(--radius-full); background: var(--color-bg-tertiary); overflow: hidden; }
+.db-bar i { display: block; height: 100%; border-radius: var(--radius-full); }
+
+#db-events { display: flex; flex-direction: column; gap: var(--spacing-xxs); margin: 0 calc(-1 * var(--spacing-sm)); }
+.db-ev { min-height: 34px; }
+.db-ev__time { font: 500 11px/14px var(--family-mono); color: var(--color-text-tertiary); flex: none; font-variant-numeric: tabular-nums; }
+.db-ev__name { font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); white-space: nowrap; flex: none; }
+.db-ev__desc { font: 400 13px/18px var(--family-sans); color: var(--color-text-secondary); flex: 1; }
+.db-ev__img { flex: none; width: 48px; height: 28px; object-fit: cover; border-radius: var(--radius-xs); background: var(--color-bg-tertiary); border: 1px solid var(--color-border-secondary); }
+
+/* ---------- Bugungi tahlil, Tizim holati, Tezkor amallar ---------- */
+.db-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--spacing-sm); }
+.db-tiles--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; flex: 1 1 auto; }
+.db-tiles--rel { grid-template-columns: repeat(auto-fit, minmax(156px, 1fr)); }
+.db-tile { padding: var(--spacing-base); gap: var(--spacing-xs); min-height: 68px; justify-content: space-between; }
+.db-tile__head { display: flex; align-items: center; gap: var(--spacing-xxs); font: 500 12px/16px var(--family-sans); color: var(--color-text-tertiary); min-width: 0; }
+.db-tile__head .infotip { width: 20px; height: 20px; margin: -2px -4px -2px 0; }
+.db-tile__val { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--spacing-sm); min-width: 0; }
+.db-tile__val .kpi-tile__value { flex: none; max-width: 100%; }
+.db-tile__val .kpi-tile__meta { min-width: 0; }
+/* Uzun oʻzbekcha yorliq/izoh kesilmasin — 2 qatorgacha oʻraladi. */
+/* Jadval sarlavhasi va saralash tugmalari: uzun soʻz (ru/en tarjimada ham) qoʻshni katakka chiqmasin. */
+.db-vt-head > span, .db-rt-head > span { min-width: 0; overflow-wrap: anywhere; }
+.db-att-mode > button { display: block; line-height: 28px; padding: 0 var(--spacing-sm); text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.db-tile__label, .db-tile__meta { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.db-tile .t-success { color: var(--color-text-success); }
+.db-tile .t-warning { color: var(--color-text-warning); }
+.db-tile .t-error { color: var(--color-text-error); }
+.db-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-md); }
+
+.db-svc-list { display: flex; flex-direction: column; gap: var(--spacing-xs); }
+.db-svc { display: flex; align-items: center; gap: var(--spacing-md); min-height: 40px; min-width: 0; }
+.db-svc__ic { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 28px; height: 28px; border-radius: var(--radius-md); background: var(--color-bg-secondary); color: var(--color-icon-secondary, var(--color-text-secondary)); }
+.db-svc__t { display: flex; flex-direction: column; min-width: 0; flex: 1; font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); }
+.db-svc__d { font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); }
+.db-svc .badge { flex: none; }
+.db-sys-foot { display: flex; flex-wrap: wrap; gap: var(--spacing-xs) var(--spacing-lg); margin-top: var(--spacing-base); padding-top: var(--spacing-base); border-top: 1px solid var(--color-border-secondary); font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); }
+.db-sys-foot b { font: 500 12px/16px var(--family-mono); color: var(--color-text-primary); font-variant-numeric: tabular-nums; margin-left: var(--spacing-xxs); }
+
+/* ---------- Trend ---------- */
+.db-tl-stats { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--spacing-md) var(--spacing-2xl); }
+.db-tl-stats > div { display: flex; flex-direction: column; }
+.db-tl-stats > div[hidden], .db-tl-div[hidden] { display: none; }
+.db-tl-div { width: 1px; background: var(--color-border-primary); margin: 2px 0; }
+.db-tl-stats b { font: 600 18px/26px var(--family-sans); font-variant-numeric: tabular-nums; color: var(--color-text-primary); white-space: nowrap; }
+.db-tl-stats b small { font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); }
+.db-tl-stats b.t-success { color: var(--color-text-success); }
+.db-tl-stats b.t-warning { color: var(--color-text-warning); }
+.db-tl-stats b.t-error { color: var(--color-text-error); }
+.db-tl-stats b.t-tertiary { color: var(--color-text-tertiary); }
+.db-tl { height: 174px; flex: none; }
+.db-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.db-svg text { font: 400 11px/14px var(--family-mono); font-variant-numeric: tabular-nums; }
+.db-svg .db-ax--strong { font-weight: 600; }
+.db-cols { flex: 1 1 auto; min-height: 180px; }
+.db-hr { flex: 1 1 auto; min-height: 220px; }
+.db-hm { flex: 1 1 auto; min-height: 0; }
+.db-hm .db-svg { height: auto; }
+.db-hm-legend { display: flex; align-items: center; gap: var(--spacing-sm); margin-top: auto; font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); flex-wrap: wrap; }
+.db-hm-legend i { width: 12px; height: 12px; border-radius: 3px; }
+.db-hm-legend span + i.db-hm-none { margin-left: var(--spacing-sm); }
+.db-hm-none { border: 1px dashed var(--color-border-primary); }
+
+#db-cmp { display: flex; flex-direction: column; }
+.db-cmp-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(64px, .9fr) minmax(64px, .9fr) 84px; gap: var(--spacing-md); align-items: center; min-height: 38px; padding: 0 var(--spacing-xs); border-bottom: 1px solid var(--color-border-secondary); font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); }
+.db-cmp-row:last-child { border-bottom: 0; }
+.db-cmp-head { min-height: 30px; background: var(--color-bg-secondary); border: 0; border-radius: var(--radius-md); font: 500 12px/16px var(--family-sans); color: var(--color-text-tertiary); }
+.db-chg { justify-self: end; display: inline-flex; align-items: center; height: 20px; padding: 0 var(--spacing-sm); border-radius: var(--radius-full); background: var(--color-bg-tertiary); color: var(--color-text-secondary); font: 500 11px/14px var(--family-sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.db-chg[data-good="true"] { background: var(--color-status-online-bg); color: var(--color-status-online-fg); }
+.db-chg[data-good="false"] { background: var(--color-status-offline-bg); color: var(--color-status-offline-fg); }
+
+/* ---------- Tahlil: hududlar reytingi ---------- */
+.db-rt { display: flex; flex-direction: column; min-width: 560px; }
+.db-rt-row {
+  display: grid; grid-template-columns: 20px minmax(120px, 1.6fr) 64px minmax(150px, 2fr) 60px 60px 64px; gap: var(--spacing-md); align-items: center;
+  width: 100%; text-align: left; min-height: 40px; padding: 0 var(--spacing-sm); border-bottom: 1px solid var(--color-border-secondary);
+  border-radius: var(--radius-sm); transition: background var(--dur-hover);
+}
+button.db-rt-row:hover { background: var(--color-bg-hover); }
+.db-rt-row > .db-num:not(:first-child) { text-align: right; }
+.db-rt-head { min-height: 30px; background: var(--color-bg-secondary); border: 0; border-radius: var(--radius-md); font: 500 12px/16px var(--family-sans); color: var(--color-text-tertiary); }
+.db-rt-head span:nth-child(n+5) { text-align: right; }
+.db-rt-n { font: 400 11px/14px var(--family-mono); color: var(--color-text-tertiary); text-align: right; }
+.db-rt-name { font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); }
+.db-rt-up { display: grid; grid-template-columns: minmax(0, 1fr) 48px; gap: var(--spacing-md); align-items: center; }
+.db-rt-up .db-num { text-align: right; }
+
+/* ---------- Tahlil: uptime taqsimoti ---------- */
+.db-dist { display: flex; flex-direction: column; gap: var(--spacing-md); }
+.db-dist-row { display: grid; grid-template-columns: 116px minmax(0, 1fr) 36px 34px; gap: var(--spacing-md); align-items: center; min-height: 32px; font: 400 13px/18px var(--family-sans); color: var(--color-text-secondary); }
+.db-dist-row .db-num { text-align: right; }
+.db-dist-bar { display: block; height: 14px; border-radius: var(--radius-xs); background: var(--color-bg-tertiary); overflow: hidden; }
+.db-dist-bar i { display: block; height: 100%; border-radius: var(--radius-xs); background: var(--color-status-unknown-icon); }
+.db-dist-bar i[data-tone="online"] { background: var(--color-status-online-icon); }
+.db-dist-bar i[data-tone="brand"] { background: var(--color-icon-brand); }
+.db-dist-bar i[data-tone="no-video"] { background: var(--color-status-no-video-icon); }
+.db-dist-bar i[data-tone="offline"] { background: var(--color-status-offline-icon); }
+
+/* ---------- Tahlil: kamera markalari ---------- */
+.db-vt { display: flex; flex-direction: column; min-width: 700px; }
+.db-vt-row {
+  display: grid; grid-template-columns: minmax(150px, 1.9fr) 52px minmax(92px, 1fr) 60px minmax(92px, 1fr) 56px 56px 60px; gap: var(--spacing-md); align-items: center;
+  width: 100%; text-align: left; padding: var(--spacing-base) var(--spacing-sm); border-bottom: 1px solid var(--color-border-secondary);
+  font: 400 12px/16px var(--family-mono); color: var(--color-text-primary); font-variant-numeric: tabular-nums;
+}
+button.db-vt-row { cursor: pointer; transition: background var(--dur-hover); }
+button.db-vt-row:hover { background: var(--color-bg-hover); }
+.db-vt-head { background: var(--color-bg-secondary); border-radius: var(--radius-md); border: 0; padding: var(--spacing-sm); font: 500 12px/16px var(--family-sans); color: var(--color-text-tertiary); }
+.db-vt-name { display: flex; flex-direction: column; min-width: 0; font-family: var(--family-sans); }
+.db-vt-name b { display: inline-flex; align-items: center; gap: var(--spacing-xxs); font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); }
+.db-vt-name i { font: 400 12px/16px var(--family-sans); font-style: normal; color: var(--color-text-tertiary); padding-left: 18px; }
+.db-vt-chev { display: inline-flex; color: var(--color-icon-tertiary); transition: transform var(--dur-hover); }
+.db-vt-row.is-open .db-vt-chev { transform: rotate(90deg); }
+.db-vt-sub { padding-top: var(--spacing-sm); padding-bottom: var(--spacing-sm); background: var(--color-bg-secondary); color: var(--color-text-secondary); }
+.db-vt-sub .db-vt-name { padding-left: var(--spacing-base); }
+.db-vt-sub .db-vt-name i { color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-vt-now, .db-vt-rate { display: flex; align-items: center; gap: var(--spacing-sm); min-width: 0; }
+.db-vt-now b, .db-vt-rate b { font-weight: 400; white-space: nowrap; }
+.db-vt-stack { display: flex; gap: 1px; flex: 1 1 auto; min-width: 24px; height: 6px; border-radius: var(--radius-full); overflow: hidden; background: var(--color-bg-tertiary); }
+.db-vt-stack i { display: block; height: 100%; background: var(--color-status-unknown-icon); }
+.db-vt-stack i[data-status="online"] { background: var(--color-status-online-icon); }
+.db-vt-stack i[data-status="no-video"] { background: var(--color-status-no-video-icon); }
+.db-vt-stack i[data-status="offline"] { background: var(--color-status-offline-icon); }
+.db-vt-rate .db-bar { flex: 1 1 auto; min-width: 24px; }
+
+/* ---------- Tahlil: ochilish, texnik kesim, holatlar, sifat ---------- */
+#db-open { display: flex; flex-direction: column; gap: var(--spacing-md); }
+.db-open-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 45%) 48px; gap: var(--spacing-base); align-items: center; font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); }
+.db-open-row .db-num { text-align: right; }
+
+.db-stack { display: flex; gap: 2px; height: 12px; border-radius: var(--radius-full); overflow: hidden; background: var(--color-bg-tertiary); }
+.db-stack i { display: block; height: 100%; min-width: 3px; }
+.db-k-brand { background: var(--color-icon-brand); }
+.db-k-brand2 { background: var(--color-icon-brand); opacity: .55; }
+.db-k-warn { background: var(--color-icon-warning); }
+.db-k-muted { background: var(--color-icon-tertiary); }
+.db-tech-rows, .db-states__legend { display: flex; flex-direction: column; gap: var(--spacing-base); margin-top: var(--spacing-xs); }
+.db-tech-row { display: flex; align-items: center; gap: var(--spacing-md); font: 400 13px/18px var(--family-sans); color: var(--color-text-secondary); min-height: 26px; }
+.db-key { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.db-tech-pct { font: 400 11px/14px var(--family-mono); color: var(--color-text-tertiary); width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.db-states { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--spacing-lg); flex: 1 1 auto; }
+.db-donut { width: 132px; height: 132px; flex: none; }
+.db-states__legend { flex: 1 1 150px; min-width: 150px; margin: 0; gap: var(--spacing-xs); }
+.db-states__legend .db-tech-row { border-radius: var(--radius-sm); padding: 0 var(--spacing-xs); cursor: default; }
+.db-states__legend .db-tech-row:hover { background: var(--color-bg-hover); }
+.db-svg .db-dn-v, .db-donut .db-dn-v { font: 600 22px/26px var(--family-sans); font-variant-numeric: tabular-nums; }
+.db-donut text.db-ax { font: 400 11px/14px var(--family-mono); }
+
+.db-q-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--spacing-lg); }
+.db-q-row { display: flex; align-items: center; gap: var(--spacing-md); min-height: 48px; padding: 0 var(--spacing-xs); border-bottom: 1px solid var(--color-border-secondary); border-radius: var(--radius-sm); min-width: 0; }
+.db-q-row.is-link { cursor: pointer; transition: background var(--dur-hover); }
+.db-q-row.is-link:hover { background: var(--color-bg-hover); }
+.db-q-row .infotip { margin-left: calc(-1 * var(--spacing-xs)); }
+.db-q-ic { display: inline-flex; flex: none; }
+.db-q-label { display: flex; flex-direction: column; font: 400 13px/18px var(--family-sans); color: var(--color-text-primary); min-width: 0; }
+.db-q-cause { font: 400 11px/14px var(--family-sans); color: var(--color-text-tertiary); }
+.db-q-chev { display: inline-flex; width: 16px; flex: none; color: var(--color-icon-tertiary); }
+.db-q-list { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--spacing-xs); padding: var(--spacing-md) var(--spacing-xs); border-bottom: 1px solid var(--color-border-secondary); }
+.db-q-cam { display: inline-flex; align-items: baseline; gap: var(--spacing-xs); height: 26px; padding: 0 var(--spacing-md); border-radius: var(--radius-full); background: var(--color-bg-secondary); border: 1px solid var(--color-border-primary); font: 500 12px/16px var(--family-sans); color: var(--color-text-primary); align-items: center; }
+.db-q-cam:hover { background: var(--color-bg-hover); }
+.db-q-cam i { font-style: normal; font-weight: 400; color: var(--color-text-tertiary); }
+.db-q-more { align-self: center; font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); padding: 0 var(--spacing-sm); }
+
+/* ---------- Grafik maslahati ---------- */
+.db-tip {
+  position: fixed; z-index: var(--z-tooltip); max-width: 240px; pointer-events: none; display: flex; flex-direction: column;
+  padding: var(--spacing-sm) var(--spacing-base); border-radius: var(--radius-md);
+  background: var(--color-bg-inverse); color: var(--color-text-inverse); box-shadow: var(--shadow-md);
+  font: 400 12px/16px var(--family-sans); font-variant-numeric: tabular-nums; opacity: 0; transition: opacity var(--dur-hover);
+}
+.db-tip.show { opacity: 1; }
+.db-tip b { font: 500 12px/16px var(--family-sans); }
+
+/* ---------- Kenglikka moslashish ---------- */
+/* Desktop: ro'yxatli kartalar bir xil balandlikda, ro'yxatlar ichida aylanadi. */
+@media (min-width: 901px) {
+  .db-grid3--hozir > .card { height: 372px; }
+  .db-grid3--trend > .card { height: 366px; }
+  .db-grid3--tahlil > .card { height: 420px; }
+  .db-g21--trend > .card { min-height: 330px; }
+}
+@media (max-width: 1199px) {
+  .db-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .db-head .spacer { display: none; }
+  .db-g21, .db-g12 { grid-template-columns: minmax(0, 1fr); }
+  .db-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+}
+@media (max-width: 900px) {
+  .db-grid3 { grid-template-columns: minmax(0, 1fr); }
+  .db-grid3 > .card { max-height: 440px; }
+  .db-cols { height: 220px; flex: none; }
+  .db-q-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .db-head { gap: var(--spacing-md); }
+  .db-tabs, .db-period { width: 100%; flex: 1 1 100%; }
+  .db-sysbar { flex: 1 1 100%; }
+  .db-sysbar .sysbar { width: 100%; }
+  .db-sysbar .sysbar__clock { margin-left: auto; }
+  .db-stats { grid-template-columns: minmax(0, 1fr); }
+  .db-stat { min-height: 0; }
+  .db-card__head { flex-wrap: wrap; }
+  .db-line .db-card__head .spacer, #db-hr-card .db-card__head .spacer { flex-basis: 100%; height: 0; }
+  .db-states { flex-direction: column; align-items: stretch; }
+  .db-donut { align-self: center; }
+  .db-tiles--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .db-svc-list { grid-template-columns: minmax(0, 1fr); }
+  .db-tl-div { display: none; }
+  .db-tl-stats { gap: var(--spacing-md) var(--spacing-lg); }
+  .db-ev__img { display: none; }
+  .db-cmp-row { grid-template-columns: minmax(0, 1.3fr) minmax(52px, 1fr) minmax(52px, 1fr) 72px; gap: var(--spacing-sm); }
+  .db-dist-row { grid-template-columns: 92px minmax(0, 1fr) 32px 32px; gap: var(--spacing-sm); }
+}

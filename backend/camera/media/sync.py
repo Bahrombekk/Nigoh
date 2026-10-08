@@ -448,7 +448,7 @@ APP_PORT = int(os.environ.get("PORT", "8010"))
 STREAM_AUTH_URL = os.environ.get(
     "STREAM_AUTH_URL", f"http://127.0.0.1:{APP_PORT}/api/auth/stream")
 
-HEADER = """# Nigoh tomonidan avtomatik yaratilgan — qo'lda tahrirlamang.
+HEADER = """# Nigoh tomonidan avtomatik yaratilgan — qoʻlda tahrirlamang.
 # Kameralarni saytdagi super-admin panelidan boshqaring; bu fayl
 # "MediaMTX" oynasidagi tugma bosilganda qayta yoziladi.
 """
@@ -1208,10 +1208,10 @@ def _foreign_message(api_base: str | None = None) -> str:
         conf = _api("GET", "/v3/config/global/get", api_base=api_base) or {}
     except (urllib.error.URLError, OSError, ValueError):
         conf = {}
-    return (f"{api_base or API_BASE} dagi MediaMTX boshqa o'rnatmaniki "
-            f"(ruxsatni {conf.get('authHTTPAddress') or '?'} dan so'rayapti, "
+    return (f"{api_base or API_BASE} dagi MediaMTX boshqa oʻrnatmaniki "
+            f"(ruxsatni {conf.get('authHTTPAddress') or '?'} dan soʻrayapti, "
             f"bizniki {STREAM_AUTH_URL}) — unga tegilmadi. Yo shu ikkinchi "
-            f"xizmatni to'xtating, yo bu o'rnatmaga o'z MediaMTX'ini bering "
+            f"xizmatni toʻxtating, yo bu oʻrnatmaga oʻz MediaMTXʼini bering "
             f"(MEDIAMTX_API va MEDIAMTX_RTSP_PORT/HLS_PORT/WEBRTC_PORT "
             f"boshqa portlarga)")
 
@@ -1416,7 +1416,7 @@ def push_to_api(cameras: list[dict], api_base: str | None = None,
     if existing is None:
         return {"ok": False, "added": 0, "updated": 0, "removed": 0,
                 "message": "MediaMTX ishlamayapti — fayl yangilandi, "
-                           "MediaMTX'ni ishga tushiring"}
+                           "MediaMTXʼni ishga tushiring"}
 
     # Ayni damda tomosha qilinayotgan yo'l o'chirilmasin. `_managed` odatda
     # buni qoplaydi, lekin backend qayta ishga tushsa u bo'sh bo'ladi —
@@ -1551,7 +1551,7 @@ def push_to_api(cameras: list[dict], api_base: str | None = None,
     if errors:
         return {"ok": False, "added": added, "updated": updated,
                 "removed": removed, "pending": pending,
-                "message": "Ba'zi yo'llar yuborilmadi: " + "; ".join(errors[:2]) + tail}
+                "message": "Baʼzi yoʻllar yuborilmadi: " + "; ".join(errors[:2]) + tail}
     return {"ok": True, "added": added, "updated": updated, "removed": removed,
             "pending": pending,
             "message": f"MediaMTX yangilandi (+{added} / ~{updated} / -{removed}){tail}"}

@@ -5,8 +5,9 @@ Admin foydalanuvchi yaratadi, rolini va operator hududlarini belgilaydi
 
   * parol kamida 6 belgi; yaratishda majburiy, tahrirda bo'sh — o'zgarmaydi;
     parol almashsa eski sessiyalar bekor bo'ladi;
-  * operator hududlari faqat ro'yxatdagi nomlardan (erkin matn yo'q) —
-    noma'lumi bo'lsa 400 va mavjudlari ro'yxati;
+  * rollar: admin, operator, viewer (Kuzatuvchi — o'z hududlarini faqat
+    ko'radi); operator va kuzatuvchi hududlari faqat ro'yxatdagi nomlardan
+    (erkin matn yo'q) — noma'lumi bo'lsa 400 va mavjudlari ro'yxati;
   * oxirgi admin operator qilinmaydi va o'chirilmaydi — bir vaqtdagi ikki
     so'rov tizimni adminsiz qoldirmasligi uchun tranzaksiya qulfi ostida;
   * admin o'z hisobini o'chira olmaydi;
@@ -18,8 +19,11 @@ Endpointlar (hammasi require_admin; prefiks /api/v1/admin, eski /api/admin):
     POST    /api/v1/admin/users              yangi foydalanuvchi (201); login band — 400
     PUT     /api/v1/admin/users/{user_id}    login, rol, parol va hududlarni yangilash
     DELETE  /api/v1/admin/users/{user_id}    o'chirish (204)
+    POST    /api/v1/admin/users/{user_id}/reset-password
+                                             vaqtinchalik parol {"password"} (12 belgi,
+                                             bir marta ko'rsatiladi); sessiyalar bekor, audit
     GET     /api/v1/admin/regions            hududlar ro'yxati — kamera formasi
-                                             va operator ruxsatlari uchun
+                                             va operator/kuzatuvchi ruxsatlari uchun
 
 Tarkibi:
     router      APIRouter(prefix="/admin", tags=["admin"])
@@ -29,6 +33,9 @@ Ishlatadi: database (users, areas, IntegrityError), core.security
 Kim ishlatadi: app/factory.py (key_guard bilan ulanadi),
     tests/test_roles.py, scripts/acceptance_test.py.
 """
+import secrets
+import string
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app import audit as audit_log
@@ -39,6 +46,7 @@ from database import (
     get_db,
     users,
 )
+from database.repositories.users import REGION_ROLES
 from users.access import require_admin
 from users.schemas import UserIn
 
@@ -53,7 +61,7 @@ def _user_view(db, row) -> dict:
         "full_name": row["full_name"] or "", "is_active": row["is_active"],
         "created_at": row["created_at"], "last_login_at": row["last_login_at"],
         "regions": (users.region_names(db, row["id"])
-                    if row["role"] == "operator" else []),
+                    if row["role"] in REGION_ROLES else []),
     }
 
 
@@ -61,15 +69,15 @@ def _check_password(password: str | None, required: bool) -> None:
     if required and not password:
         raise HTTPException(400, "Parol kiritilmagan")
     if password and len(password) < 6:
-        raise HTTPException(400, "Parol kamida 6 belgidan iborat bo'lsin")
+        raise HTTPException(400, "Parol kamida 6 belgidan iborat boʻlsin")
 
 
 def _set_regions(db, user_id: int, body: UserIn) -> None:
-    """Operator hududlari — faqat ro'yxatdagi nomlar (erkin matn yo'q)."""
-    unknown = users.set_regions(db, user_id, body.regions if body.role == "operator" else [])
+    """Operator/kuzatuvchi hududlari — faqat ro'yxatdagi nomlar (erkin matn yo'q)."""
+    unknown = users.set_regions(db, user_id, body.regions if body.role in REGION_ROLES else [])
     if unknown:
         known = ", ".join(r["name"] for r in areas.list_regions(db))
-        raise HTTPException(400, f"Noma'lum hudud: {', '.join(unknown)}. Mavjudlari: {known}")
+        raise HTTPException(400, f"Nomaʼlum hudud: {', '.join(unknown)}. Mavjudlari: {known}")
 
 
 def _keep_one_admin(db, user_id: int, new_role: str | None) -> None:
@@ -82,8 +90,8 @@ def _keep_one_admin(db, user_id: int, new_role: str | None) -> None:
     if old is None:
         raise HTTPException(404, "Foydalanuvchi topilmadi")
     if old["role"] == "admin" and new_role != "admin" and users.count(db, "admin") <= 1:
-        raise HTTPException(400, "Oxirgi adminni operator qilib bo'lmaydi"
-                            if new_role else "Oxirgi admin o'chirilmaydi")
+        raise HTTPException(400, "Oxirgi administratorni boshqa rolga oʻtkazib boʻlmaydi"
+                            if new_role else "Oxirgi administratorni oʻchirib boʻlmaydi")
 
 
 @router.get("/users")
@@ -126,10 +134,10 @@ def admin_user_update(user_id: int, body: UserIn, request: Request,
         if not body.is_active:
             # Tizim adminsiz qolmasin: o'zini va oxirgi faol adminni bloklab bo'lmaydi.
             if me["id"] == user_id:
-                raise HTTPException(400, "O'z hisobingizni bloklay olmaysiz")
+                raise HTTPException(400, "Oʻz hisobingizni bloklay olmaysiz")
             if before["role"] == "admin" and before["is_active"] \
                     and users.count_active_admins(db, exclude_id=user_id) == 0:
-                raise HTTPException(400, "Oxirgi faol adminni bloklab bo'lmaydi")
+                raise HTTPException(400, "Oxirgi faol administratorni bloklab boʻlmaydi")
         try:
             with db.savepoint():
                 users.update_identity(db, user_id, body.username.strip(), body.role,
@@ -142,7 +150,7 @@ def admin_user_update(user_id: int, body: UserIn, request: Request,
             users.set_password(db, user_id, pw_hash, salt)
         _set_regions(db, user_id, body)
         view = _user_view(db, users.get(db, user_id))
-        after = {**_audit_view(view), **({"password": "o'zgartirildi"} if body.password else {})}
+        after = {**_audit_view(view), **({"password": "oʻzgartirildi"} if body.password else {})}
         audit_log.record(db, request, "user.update", "user", entity_id=user_id,
                          before=_audit_view(before), after=after)
         return view
@@ -151,13 +159,34 @@ def admin_user_update(user_id: int, body: UserIn, request: Request,
 @router.delete("/users/{user_id}", status_code=204)
 def admin_user_delete(user_id: int, request: Request, me=Depends(require_admin)):
     if me["id"] == user_id:
-        raise HTTPException(400, "O'z hisobingizni o'chira olmaysiz")
+        raise HTTPException(400, "Oʻz hisobingizni oʻchira olmaysiz")
     with get_db() as db:
         _keep_one_admin(db, user_id, None)
         audit_log.record(db, request, "user.delete", "user", entity_id=user_id,
                          before=_audit_view(_user_view(db, users.get(db, user_id))))
         # Sessiyalar va hududlar FOREIGN KEY ... ON DELETE CASCADE bilan ketadi.
         users.delete(db, user_id)
+
+
+# Vaqtinchalik parol alifbosi: o'xshash belgilar (0/O, 1/l/I) yo'q — telefonda
+# aytib berishda adashilmasin.
+_TEMP_ALPHABET = "".join(c for c in string.ascii_letters + string.digits if c not in "0O1lI")
+TEMP_PASSWORD_LEN = 12
+
+
+@router.post("/users/{user_id}/reset-password")
+def admin_user_reset_password(user_id: int, request: Request):
+    """Vaqtinchalik parol (12 belgi) — javobda BIR MARTA ko'rsatiladi, bazada faqat
+    xeshi. Foydalanuvchining barcha sessiyalari bekor bo'ladi. Audit yoziladi."""
+    password = "".join(secrets.choice(_TEMP_ALPHABET) for _ in range(TEMP_PASSWORD_LEN))
+    with get_db() as db:
+        if users.get(db, user_id) is None:
+            raise HTTPException(404, "Foydalanuvchi topilmadi")
+        pw_hash, salt = security.hash_password(password)
+        users.set_password(db, user_id, pw_hash, salt)
+        audit_log.record(db, request, "user.password_reset", "user", entity_id=user_id,
+                         after={"password": "vaqtinchalik parol berildi"})
+    return {"password": password}
 
 
 @router.get("/regions")

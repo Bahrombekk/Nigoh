@@ -61,7 +61,7 @@ def test_begona_instansiyada_yollar_ochirilmaydi(monkeypatch):
     res = sync.push_to_api([{"slug": "k1", "ip": "10.0.0.1", "enabled": 1}])
     assert not res["ok"]
     assert res["removed"] == 0 and res["added"] == 0 and res["updated"] == 0
-    assert "boshqa o'rnatmaniki" in res["message"]
+    assert "boshqa oʻrnatmaniki" in res["message"]
 
 
 def test_reconciler_begona_tugunda_mediamtx_kotarmaydi(monkeypatch):

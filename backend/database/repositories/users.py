@@ -22,7 +22,14 @@ Tarkibi:
         .lock_admin_changes(db)  admin rolini o'zgartiruvchi tranzaksiyalar navbati
                                 (advisory lock): bir vaqtda ikki adminni tushirgan
                                 ikki so'rov tizimni adminsiz qoldirardi
-      operator hududlari:
+      profil (v3):
+        .prefs(db, user_id) / .merge_prefs(db, user_id, patch)  interfeys sozlamalari
+        .password_row(db, user_id)  joriy parolni tekshirish uchun xesh va tuz
+        .set_password_keep(db, user_id, hash, salt, keep_token_hash)  o'zi almashtirgan
+                                parol: joriy sessiyadan boshqalari bekor
+        .notif_read_before(db, user_id) / .set_notif_read_before(db, user_id, at)
+                                "hammasini o'qildi" belgisi (bildirishnomalar)
+      operator va kuzatuvchi hududlari (REGION_ROLES):
         .region_names(db, user_id)  biriktirilgan hudud nomlari
         .allowed_area_ids(db, user_id)  ko'ra oladigan hududlar (ichkilari bilan)
         .set_regions(db, user_id, names)  hududlarni almashtiradi; topilmagan nomlar
@@ -44,9 +51,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from psycopg.types.json import Jsonb
+
 from database.repositories import areas
 
 DEFAULT_ORGANIZATION_ID = 1
+# Hududga bog'langan rollar: operator va kuzatuvchi (viewer) faqat biriktirilgan
+# hududlarni ko'radi; admin — hammasini.
+REGION_ROLES = ("operator", "viewer")
 _PUBLIC = "id, username, role, full_name, is_active, organization_id, created_at, last_login_at"
 
 
@@ -125,6 +137,40 @@ class UserRepository:
     def mark_login(self, db, user_id: int) -> None:
         db.execute("UPDATE users SET last_login_at = now() WHERE id = %s", (user_id,))
 
+    def prefs(self, db, user_id: int) -> dict:
+        """Interfeys sozlamalari (users.prefs); foydalanuvchi yo'q bo'lsa {}."""
+        row = db.execute("SELECT prefs FROM users WHERE id = %s", (user_id,)).fetchone()
+        return dict(row[0] or {}) if row else {}
+
+    def merge_prefs(self, db, user_id: int, patch: dict) -> dict:
+        """Qisman obyektni mavjudiga birlashtiradi (yuqori daraja kalitlari, `||`);
+        qaytadi — to'liq prefs."""
+        row = db.execute("UPDATE users SET prefs = prefs || %s WHERE id = %s RETURNING prefs",
+                         (Jsonb(patch), user_id)).fetchone()
+        return dict(row[0] or {}) if row else {}
+
+    def password_row(self, db, user_id: int):
+        """Parolni almashtirishdan oldin joriysini tekshirish uchun: xesh va tuz."""
+        return db.execute("SELECT id, username, pw_hash, pw_salt FROM users WHERE id = %s",
+                          (user_id,)).fetchone()
+
+    def set_password_keep(self, db, user_id: int, pw_hash: str, pw_salt: str,
+                          keep_token_hash: str | None) -> None:
+        """Foydalanuvchi o'zi almashtirgan parol: boshqa sessiyalari bekor, joriysi qoladi."""
+        db.execute("UPDATE users SET pw_hash = %s, pw_salt = %s WHERE id = %s",
+                   (pw_hash, pw_salt, user_id))
+        db.execute("DELETE FROM sessions WHERE user_id = %s AND token IS DISTINCT FROM %s",
+                   (user_id, keep_token_hash))
+
+    def notif_read_before(self, db, user_id: int) -> datetime | None:
+        row = db.execute("SELECT notif_read_before FROM users WHERE id = %s", (user_id,)).fetchone()
+        return row[0] if row else None
+
+    def set_notif_read_before(self, db, user_id: int, at: datetime) -> None:
+        """"Hammasini o'qildi": shu vaqtgacha bo'lganlar o'qilgan; alohida belgilar keraksiz."""
+        db.execute("UPDATE users SET notif_read_before = %s WHERE id = %s", (at, user_id))
+        db.execute("DELETE FROM notification_reads WHERE user_id = %s", (user_id,))
+
     def region_names(self, db, user_id: int) -> list[str]:
         return [r[0] for r in db.execute(
             "SELECT a.name FROM user_admin_areas u JOIN admin_areas a ON a.id = u.admin_area_id "
@@ -156,7 +202,7 @@ class UserRepository:
 
     def session_user(self, db, token_hash: str):
         return db.execute(
-            "SELECT s.expires_at, u.id, u.username, u.role, u.organization_id "
+            "SELECT s.expires_at, u.id, u.username, u.role, u.organization_id, u.full_name "
             "FROM sessions s JOIN users u ON u.id = s.user_id "
             "WHERE s.token = %s AND u.is_active", (token_hash,)).fetchone()
 

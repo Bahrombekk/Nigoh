@@ -71,13 +71,13 @@ def key_guard(request: Request) -> bool:
         # shu bilan cheklovning o'zi DoS quroliga aylanardi.
         soniya = max(1, math.ceil(kutish))
         raise HTTPException(
-            429, f"Juda ko'p urinish — {soniya} soniyadan keyin qayta urining",
+            429, f"Juda koʻp urinish — {soniya} soniyadan keyin qayta urining",
             headers={"Retry-After": str(soniya)})
 
     _key_throttle.note_fail(ip)
     log("auth", "api_key_xato", level="warning", ip=ip,
         path=request.url.path)
-    raise HTTPException(401, "X-API-Key noto'g'ri")
+    raise HTTPException(401, "X-API-Key notoʻgʻri")
 
 
 def require_viewer(request: Request) -> None:

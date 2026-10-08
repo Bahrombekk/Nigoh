@@ -1,0 +1,188 @@
+/* ==========================================================================
+   css/shell.css — ilova qobig'i: Nav rail, orqa fon + sheet, profil menyusi,
+   bildirishnomalar, tizim paneli (Toolbar / Tizim), yordam oynasi.
+   --------------------------------------------------------------------------
+   Sahifa turlari:
+     .page--map    — xarita butun ekranda (rail uning ustida), panellar suzadi
+     .page--sheet  — statik xira xarita foni (#backdrop) ustida "sheet":
+                     88,16 dan, bg/sheet + blur 24, r16 (Dashboard, Devor,
+                     Boshqaruv, Sozlamalar)
+   body[data-tab] — joriy bo'lim (layout/tabs.js qo'yadi).
+   ========================================================================== */
+
+/* ---------- Yuklanish ---------- */
+#splash {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+  background: var(--color-bg-canvas); transition: opacity .3s;
+}
+html:not(.booting) #splash { opacity: 0; pointer-events: none; }
+#splash .logo-mark { animation: splash-breathe 1.4s ease-in-out infinite; }
+@keyframes splash-breathe { 50% { transform: scale(.92); opacity: .8; } }
+
+#app { position: fixed; inset: 0; overflow: hidden; }
+
+/* ---------- Orqa fon (Map/Backdrop) ---------- */
+#backdrop {
+  position: absolute; inset: 0; z-index: 0;
+  background-color: var(--map-base-water);
+  background-image: var(--backdrop-img, none);
+  background-size: cover; background-position: center;
+}
+[data-theme="white"] { --backdrop-img: url("/assets/backdrop-white.jpg"); }
+[data-theme="cream"] { --backdrop-img: url("/assets/backdrop-cream.jpg"); }
+[data-theme="dark"] { --backdrop-img: url("/assets/backdrop-dark.jpg"); }
+body[data-tab="map"] #backdrop { display: none; }
+
+/* ---------- Logo / Mark ---------- */
+.logo-mark {
+  display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px;
+  border-radius: var(--radius-lg); background: var(--color-bg-brand); color: var(--color-icon-on-brand);
+}
+.logo-mark .i { width: 22px; height: 22px; stroke-width: 2; }
+.logo-mark--lg { width: 56px; height: 56px; border-radius: var(--radius-xl); }
+.logo-mark--lg .i { width: 30px; height: 30px; }
+
+/* ---------- Nav rail ---------- */
+#rail {
+  position: absolute; left: 0; top: 0; bottom: 0; z-index: var(--z-panel); width: var(--size-layout-nav-rail);
+  display: flex; flex-direction: column; align-items: center; gap: var(--spacing-xs);
+  padding: var(--spacing-lg) var(--spacing-xs);
+  background: var(--color-bg-primary); border-right: 1px solid var(--color-border-primary);
+}
+body:not([data-tab="map"]) #rail {
+  background: var(--color-bg-sheet); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+}
+.rail__gap { height: 12px; flex: none; }
+.rail-item {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--spacing-xs);
+  width: 64px; height: 56px; padding: var(--spacing-sm) var(--spacing-xxs); flex: none;
+  color: var(--color-text-secondary);
+}
+.rail-item__ind {
+  display: flex; align-items: center; justify-content: center; width: 52px; height: 28px;
+  border-radius: var(--radius-full); color: var(--color-icon-primary); transition: background var(--dur-hover);
+}
+.rail-item__label { font: 500 11px/14px var(--family-sans); white-space: nowrap; }
+.rail-item:hover .rail-item__ind { background: var(--color-bg-hover); }
+.rail-item.is-on { color: var(--color-text-brand); }
+.rail-item.is-on .rail-item__ind { background: var(--color-bg-brand-subtle); color: var(--color-icon-brand); }
+.rail-item:focus-visible { outline: none; box-shadow: none; }
+.rail-item:focus-visible .rail-item__ind { outline: 2px solid var(--color-border-focus-ring); }
+body.anon .rail-item.auth-lock .rail-item__ind::after,
+body.anon .rail-item[data-tab="dash"] .rail-item__ind::after { content: ""; }
+body:not(.is-admin) .admin-only { display: none !important; }
+body:not(.authed) .auth-only { display: none !important; }
+
+.avatar {
+  display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px; margin-top: var(--spacing-xs);
+  border-radius: 50%; background: var(--color-bg-brand-subtle); color: var(--color-text-brand);
+  font: 500 12px/16px var(--family-sans);
+}
+.avatar--lg { width: 40px; height: 40px; margin: 0; font-size: 14px; }
+.avatar:hover { box-shadow: 0 0 0 3px var(--color-bg-brand-subtle-hover); }
+
+/* ---------- Sahifalar ---------- */
+#pages { position: absolute; inset: 0; z-index: 1; }
+.page { position: absolute; inset: 0; }
+.page--map { left: 0; }
+.page--sheet { left: 88px; top: 16px; right: 16px; bottom: 16px; }
+.sheet {
+  height: 100%; display: flex; flex-direction: column; gap: var(--spacing-base);
+  padding: var(--spacing-lg) var(--spacing-2xl); overflow: auto;
+  background: var(--color-bg-sheet); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  border: 1px solid var(--color-border-secondary); border-radius: var(--radius-xl); box-shadow: var(--shadow-float);
+}
+.page-head { display: flex; align-items: center; gap: var(--spacing-base); min-height: 46px; flex: none; flex-wrap: wrap; }
+.page-head__title { font: 600 24px/32px var(--family-sans); letter-spacing: var(--letter-spacing-tight); }
+
+/* ---------- Toolbar / Tizim (sysbar) ---------- */
+.sysbar {
+  display: inline-flex; align-items: center; gap: var(--spacing-base); flex: none;
+  padding: var(--spacing-xxs) var(--spacing-xxs) var(--spacing-xxs) var(--spacing-base);
+  background: var(--map-panel-bg); border: 1px solid var(--map-control-border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-float);
+}
+.sysbar--flat { box-shadow: none; }
+.sysbar__state { cursor: pointer; }
+.sysbar__state[data-status="online"] .dot { color: var(--color-status-online-icon); }
+.sysbar__div { width: 1px; height: 24px; background: var(--color-border-primary); }
+.sysbar__clock { display: flex; flex-direction: column; align-items: flex-end; }
+.sysbar__time { font: 400 12px/16px var(--family-mono); color: var(--color-text-primary); }
+.sysbar__date { font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); white-space: nowrap; }
+.bell { position: relative; }
+.bell__badge {
+  position: absolute; left: 22px; top: 2px; height: 16px; min-width: 16px; padding: 0 var(--spacing-xs);
+  display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-full);
+  background: var(--color-bg-error); color: var(--color-text-on-brand); border: 2px solid var(--map-panel-bg);
+  font: 500 11px/12px var(--family-sans); box-sizing: content-box;
+}
+
+/* ---------- Bildirishnomalar (07.01) ---------- */
+.popover--bare { background: transparent; border: 0; box-shadow: none; border-radius: var(--radius-xl); }
+.notif { border: 1px solid var(--map-control-border); width: 380px; max-height: min(560px, calc(100vh - 90px)); display: flex; flex-direction: column; border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); background: var(--map-panel-bg); }
+.notif__head { display: flex; flex-direction: column; gap: var(--spacing-md); padding: var(--spacing-lg); }
+.notif__title { display: flex; align-items: center; gap: var(--spacing-md); }
+.notif__list { flex: 1; overflow: auto; padding-bottom: var(--spacing-xs); }
+.notif__group { padding: var(--spacing-xs) var(--spacing-lg); }
+.notif__item { display: flex; align-items: flex-start; gap: var(--spacing-md); width: 100%; text-align: left; padding: var(--spacing-md) var(--spacing-lg); }
+.notif__item:hover { background: var(--color-bg-hover); }
+.notif__ic { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; }
+.notif__ic .i { width: 16px; height: 16px; }
+.notif__ic[data-sev="error"] { background: var(--color-status-offline-bg); color: var(--color-status-offline-icon); }
+.notif__ic[data-sev="success"] { background: var(--color-status-online-bg); color: var(--color-status-online-icon); }
+.notif__ic[data-sev="warning"] { background: var(--color-status-no-video-bg); color: var(--color-status-no-video-icon); }
+.notif__ic[data-sev="info"] { background: var(--color-bg-info-subtle); color: var(--color-icon-info); }
+.notif__txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.notif__t { font: 400 13px/18px var(--family-sans); color: var(--color-text-secondary); }
+.notif__item.is-unread .notif__t { font-weight: 500; color: var(--color-text-primary); }
+.notif__s { font: 400 12px/16px var(--family-sans); color: var(--color-text-tertiary); }
+.notif__meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.notif__time { font: 500 11px/14px var(--family-mono); color: var(--color-text-tertiary); }
+.notif__foot { border-top: 1px solid var(--color-border-secondary); padding: var(--spacing-md) var(--spacing-lg); text-align: center; }
+
+/* ---------- Profil menyusi (07.02) ---------- */
+.profile { width: 280px; box-shadow: var(--shadow-lg); }
+.profile__head { display: flex; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md); }
+.profile__seg { padding: 0 var(--spacing-md) var(--spacing-xs); }
+
+/* ---------- Preferences/Bar (kirish ekrani) ---------- */
+.prefbar {
+  display: inline-flex; align-items: center; gap: var(--spacing-sm); padding: var(--spacing-xs);
+  border-radius: var(--radius-full); border: 1px solid var(--color-border-secondary);
+  background: var(--color-bg-sheet); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  box-shadow: var(--shadow-float);
+}
+.prefbar__lang { display: inline-flex; align-items: center; gap: var(--spacing-sm); height: 32px; padding: 0 var(--spacing-base); border-radius: var(--radius-full); font: 500 13px/18px var(--family-sans); color: var(--color-text-primary); }
+.prefbar__lang:hover { background: var(--color-bg-hover); }
+.prefbar__sep { width: 1px; height: 20px; background: var(--color-border-primary); }
+.prefbar__themes { display: flex; gap: var(--spacing-xxs); }
+.prefbar__themes button { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: var(--color-icon-secondary); }
+.prefbar__themes button:hover { background: var(--color-bg-hover); }
+.prefbar__themes button[aria-checked="true"] { background: var(--color-bg-primary); color: var(--color-icon-primary); box-shadow: var(--shadow-xs); }
+
+/* ---------- Yordam ---------- */
+.help-keys { display: flex; flex-direction: column; }
+.help-keys > div { display: flex; align-items: center; gap: var(--spacing-xs); padding: var(--spacing-md) 0; border-bottom: 1px solid var(--color-border-secondary); font: 400 13px/18px var(--family-sans); color: var(--color-text-secondary); }
+.help-keys > div > span:last-child { margin-left: var(--spacing-md); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1023px) {
+  .page--sheet { left: 80px; top: 8px; right: 8px; bottom: 8px; }
+  .sheet { padding: var(--spacing-base) var(--spacing-lg); }
+}
+/* Telefon: rail pastki menyuga aylanadi */
+@media (max-width: 640px) {
+  #rail {
+    top: auto; right: 0; width: auto; height: 64px; flex-direction: row; justify-content: space-around;
+    padding: var(--spacing-xs) var(--spacing-xs) calc(var(--spacing-xs) + env(safe-area-inset-bottom));
+    border-right: 0; border-top: 1px solid var(--color-border-primary);
+  }
+  #rail .logo-mark, #rail .rail__gap, #rail .spacer, #rail-help { display: none; }
+  .rail-item { width: auto; flex: 1 1 0; height: 56px; }
+  .rail-item__ind { width: 44px; }
+  .avatar { margin: 0 var(--spacing-xs); }
+  .page--sheet { left: 0; top: 0; right: 0; bottom: 64px; }
+  .sheet { border-radius: 0; border: 0; padding: var(--spacing-base); }
+  .page--map { bottom: 64px; }
+  .notif { width: calc(100vw - 16px); }
+}

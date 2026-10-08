@@ -76,7 +76,7 @@ def between(date_from: date, date_to: date, now: datetime | None = None) -> Peri
     if start >= now:
         raise ValueError("davr kelajakda")
     if now - start > timedelta(days=MAX_DAYS, hours=1):
-        raise ValueError(f"ma'lumot {MAX_DAYS} kun saqlanadi")
+        raise ValueError(f"maʼlumot {MAX_DAYS} kun saqlanadi")
     return Period(start, end, rolling=False)
 
 

@@ -1,0 +1,404 @@
+/* ==========================================================================
+   css/tokens.css — dizayn tokenlari (Figma "Nigoh vision", v3)
+   --------------------------------------------------------------------------
+   Figma o'zgaruvchilari bilan bir xil nom: `color/bg/canvas` → --color-bg-canvas.
+   Mavzu: <html data-theme="white | cream | dark">. Primitivlar bevosita
+   ishlatilmaydi — faqat semantik tokenlar (Color, Map, Button, Input, Video).
+   ========================================================================== */
+
+:root,
+[data-theme="white"] {
+  color-scheme: light;
+
+  /* ---- Color ---- */
+  --color-bg-canvas: #f8fafc;
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f8fafc;
+  --color-bg-tertiary: #f1f4f8;
+  --color-bg-hover: #f1f4f8;
+  --color-bg-pressed: #e3e8ef;
+  --color-bg-disabled: #f1f4f8;
+  --color-bg-inverse: #121926;
+  --color-bg-overlay: #0b0f1a7a;
+  --color-bg-sheet: #f8fafcd6;
+  --color-bg-brand: #2556eb;
+  --color-bg-brand-hover: #1d44d8;
+  --color-bg-brand-pressed: #1e3aaf;
+  --color-bg-brand-subtle: #eef3ff;
+  --color-bg-brand-subtle-hover: #dce6fe;
+  --color-bg-error: #d92d20;
+  --color-bg-error-hover: #b42318;
+  --color-bg-error-subtle: #fef3f2;
+  --color-bg-warning: #f79009;
+  --color-bg-warning-subtle: #fffaeb;
+  --color-bg-success: #039855;
+  --color-bg-success-subtle: #ecfdf3;
+  --color-bg-info: #088ab2;
+  --color-bg-info-subtle: #ecfdff;
+
+  --color-text-primary: #121926;
+  --color-text-secondary: #4b5565;
+  --color-text-tertiary: #637083;
+  --color-text-placeholder: #9aa4b2;
+  --color-text-disabled: #9aa4b2;
+  --color-text-inverse: #ffffff;
+  --color-text-on-brand: #ffffff;
+  --color-text-brand: #2556eb;
+  --color-text-link: #2556eb;
+  --color-text-link-hover: #1d44d8;
+  --color-text-error: #d92d20;
+  --color-text-warning: #b54708;
+  --color-text-success: #027a48;
+  --color-text-info: #0e7090;
+
+  --color-border-primary: #e3e8ef;
+  --color-border-secondary: #f1f4f8;
+  --color-border-strong: #cdd5df;
+  --color-border-input: #7b8594;
+  --color-border-disabled: #e3e8ef;
+  --color-border-brand: #2556eb;
+  --color-border-error: #f04438;
+  --color-border-warning: #fdb022;
+  --color-border-success: #12b76a;
+  --color-border-info: #06aed4;
+  --color-border-focus-ring: #3b67f5;
+
+  --color-icon-primary: #364152;
+  --color-icon-secondary: #637083;
+  --color-icon-tertiary: #9aa4b2;
+  --color-icon-disabled: #cdd5df;
+  --color-icon-inverse: #ffffff;
+  --color-icon-on-brand: #ffffff;
+  --color-icon-brand: #2556eb;
+  --color-icon-error: #d92d20;
+  --color-icon-warning: #dc6803;
+  --color-icon-success: #039855;
+  --color-icon-info: #088ab2;
+
+  --color-status-online-bg: #ecfdf3;
+  --color-status-online-fg: #027a48;
+  --color-status-online-icon: #12b76a;
+  --color-status-no-video-bg: #fffaeb;
+  --color-status-no-video-fg: #b54708;
+  --color-status-no-video-icon: #f79009;
+  --color-status-offline-bg: #fef3f2;
+  --color-status-offline-fg: #b42318;
+  --color-status-offline-icon: #f04438;
+  --color-status-disabled-bg: #f1f4f8;
+  --color-status-disabled-fg: #4b5565;
+  --color-status-disabled-icon: #9aa4b2;
+  --color-status-unknown-bg: #f8fafc;
+  --color-status-unknown-fg: #637083;
+  --color-status-unknown-icon: #cdd5df;
+
+  /* ---- Map ---- */
+  --map-control-bg: #ffffff;
+  --map-control-bg-hover: #f8fafc;
+  --map-control-bg-active: #eef3ff;
+  --map-control-icon: #364152;
+  --map-control-icon-active: #2556eb;
+  --map-control-border: #e3e8ef;
+  --map-panel-bg: #ffffff;
+  --map-marker-online: #039855;
+  --map-marker-no-video: #dc6803;
+  --map-marker-offline: #f04438;
+  --map-marker-disabled: #637083;
+  --map-marker-selected: #2556eb;
+  --map-marker-ring: #ffffff;
+  --map-cluster-bg: #2556eb;
+  --map-cluster-fg: #ffffff;
+  --map-cluster-ring: #2556eb3d;
+  --map-cluster-alert-bg: #d92d20;
+  --map-line-rail: #2556eb;
+  --map-line-rail-casing: #ffffff;
+  --map-line-rail-tie: #ffffff;
+  --map-line-rail-inactive: #9aa4b2;
+  --map-line-offline-segment: #f04438;
+  --map-region-fill: #2556eb14;
+  --map-region-border: #3b67f5;
+  --map-label-fg: #202939;
+  --map-label-halo: #ffffff;
+  --map-mask: #2556eb14;
+  --map-base-water: #dce6fe;
+  --map-base-land: #f8fafc;
+  --map-base-land-focus: #f8fafc;
+  --map-base-border-country: #cdd5df;
+  --map-base-border-region: #cdd5df;
+  --map-base-river: #bfd1fe;
+  /* OSM plitkalarini mavzuga moslash (Figma'da vektor; bizda rastr) */
+  --map-tiles-filter: grayscale(1) brightness(1.06) contrast(.82) sepia(.18) hue-rotate(185deg) saturate(1.6);
+  --map-tiles-out-filter: grayscale(1) brightness(1.08) contrast(.7) sepia(.2) hue-rotate(185deg) saturate(2.2);
+}
+
+[data-theme="cream"] {
+  color-scheme: light;
+  --color-bg-canvas: #f5f0e6;
+  --color-bg-primary: #fbf8f2;
+  --color-bg-secondary: #f5f0e6;
+  --color-bg-tertiary: #ebe4d6;
+  --color-bg-hover: #f5f0e6;
+  --color-bg-pressed: #ebe4d6;
+  --color-bg-disabled: #ebe4d6;
+  --color-bg-sheet: #f5f0e6db;
+  --color-text-tertiary: #4b5565;
+  --color-border-primary: #ebe4d6;
+  --color-border-secondary: #f5f0e6;
+  --color-border-strong: #ddd3c0;
+  --color-border-disabled: #ebe4d6;
+  --color-status-disabled-bg: #ebe4d6;
+  --color-status-unknown-bg: #f5f0e6;
+
+  --map-control-bg: #fbf8f2;
+  --map-control-bg-hover: #f5f0e6;
+  --map-control-border: #ddd3c0;
+  --map-panel-bg: #fbf8f2;
+  --map-marker-ring: #fffdf9;
+  --map-line-rail-casing: #fffdf9;
+  --map-line-rail-tie: #fffdf9;
+  --map-label-halo: #fffdf9;
+  --map-mask: #0b0f1a14;
+  --map-base-water: #d7dee3;
+  --map-base-land: #f5f0e6;
+  --map-base-land-focus: #fbf8f2;
+  --map-base-border-country: #ddd3c0;
+  --map-base-border-region: #ddd3c0;
+  --map-base-river: #d7dee3;
+  --map-tiles-filter: grayscale(1) brightness(1.04) contrast(.8) sepia(.32);
+  --map-tiles-out-filter: grayscale(1) brightness(1.05) contrast(.68) sepia(.4);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg-canvas: #0b0f1a;
+  --color-bg-primary: #121926;
+  --color-bg-secondary: #202939;
+  --color-bg-tertiary: #364152;
+  --color-bg-hover: #202939;
+  --color-bg-pressed: #364152;
+  --color-bg-disabled: #202939;
+  --color-bg-inverse: #ffffff;
+  --color-bg-overlay: #0b0f1aa3;
+  --color-bg-sheet: #0b0f1ad6;
+  --color-bg-brand: #3b67f5;
+  --color-bg-brand-hover: #6089fa;
+  --color-bg-brand-pressed: #93b2fd;
+  --color-bg-brand-subtle: #172554;
+  --color-bg-brand-subtle-hover: #1e348a;
+  --color-bg-error: #f04438;
+  --color-bg-error-hover: #f97066;
+  --color-bg-error-subtle: #55160c;
+  --color-bg-warning: #fdb022;
+  --color-bg-warning-subtle: #4e1d09;
+  --color-bg-success: #12b76a;
+  --color-bg-success-subtle: #053321;
+  --color-bg-info: #06aed4;
+  --color-bg-info-subtle: #0d2d3a;
+
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #cdd5df;
+  --color-text-tertiary: #9aa4b2;
+  --color-text-placeholder: #637083;
+  --color-text-disabled: #4b5565;
+  --color-text-inverse: #121926;
+  --color-text-brand: #6089fa;
+  --color-text-link: #6089fa;
+  --color-text-link-hover: #93b2fd;
+  --color-text-error: #f97066;
+  --color-text-warning: #fdb022;
+  --color-text-success: #32d583;
+  --color-text-info: #22ccee;
+
+  --color-border-primary: #364152;
+  --color-border-secondary: #202939;
+  --color-border-strong: #4b5565;
+  --color-border-input: #637083;
+  --color-border-disabled: #202939;
+  --color-border-brand: #6089fa;
+  --color-border-error: #f97066;
+  --color-border-success: #32d583;
+  --color-border-info: #22ccee;
+  --color-border-focus-ring: #6089fa;
+
+  --color-icon-primary: #e3e8ef;
+  --color-icon-secondary: #9aa4b2;
+  --color-icon-tertiary: #637083;
+  --color-icon-disabled: #4b5565;
+  --color-icon-inverse: #121926;
+  --color-icon-brand: #6089fa;
+  --color-icon-error: #f97066;
+  --color-icon-warning: #fdb022;
+  --color-icon-success: #32d583;
+  --color-icon-info: #22ccee;
+
+  --color-status-online-bg: #053321;
+  --color-status-online-fg: #6ce9a6;
+  --color-status-online-icon: #32d583;
+  --color-status-no-video-bg: #4e1d09;
+  --color-status-no-video-fg: #fec84b;
+  --color-status-no-video-icon: #fdb022;
+  --color-status-offline-bg: #55160c;
+  --color-status-offline-fg: #fda29b;
+  --color-status-offline-icon: #f97066;
+  --color-status-disabled-bg: #202939;
+  --color-status-disabled-fg: #cdd5df;
+  --color-status-disabled-icon: #637083;
+  --color-status-unknown-bg: #121926;
+  --color-status-unknown-fg: #9aa4b2;
+  --color-status-unknown-icon: #4b5565;
+
+  --map-control-bg: #121926;
+  --map-control-bg-hover: #202939;
+  --map-control-bg-active: #172554;
+  --map-control-icon: #e3e8ef;
+  --map-control-icon-active: #6089fa;
+  --map-control-border: #364152;
+  --map-panel-bg: #121926;
+  --map-marker-online: #32d583;
+  --map-marker-no-video: #fdb022;
+  --map-marker-offline: #f97066;
+  --map-marker-selected: #6089fa;
+  --map-marker-ring: #0b0f1a;
+  --map-cluster-bg: #3b67f5;
+  --map-cluster-alert-bg: #f04438;
+  --map-line-rail: #6089fa;
+  --map-line-rail-casing: #0b0f1a;
+  --map-line-rail-tie: #0b0f1a;
+  --map-line-rail-inactive: #4b5565;
+  --map-line-offline-segment: #f97066;
+  --map-region-border: #6089fa;
+  --map-label-fg: #f1f4f8;
+  --map-label-halo: #0b0f1a;
+  --map-mask: #0b0f1a7a;
+  --map-base-water: #172554;
+  --map-base-land: #121926;
+  --map-base-land-focus: #121926;
+  --map-base-border-country: #4b5565;
+  --map-base-border-region: #364152;
+  --map-base-river: #1e348a;
+  --map-tiles-filter: invert(1) grayscale(1) brightness(.62) contrast(1.15) sepia(.35) hue-rotate(185deg) saturate(2.4);
+  --map-tiles-out-filter: invert(1) grayscale(1) brightness(.45) contrast(1.1) sepia(.4) hue-rotate(185deg) saturate(2.6);
+}
+
+/* ---- Mavzuga bog'liq bo'lmagan tokenlar ---- */
+:root {
+  /* Button (Color'ga taxallus) */
+  --button-primary-bg: var(--color-bg-brand);
+  --button-primary-bg-hover: var(--color-bg-brand-hover);
+  --button-primary-bg-pressed: var(--color-bg-brand-pressed);
+  --button-primary-bg-disabled: var(--color-bg-disabled);
+  --button-primary-fg: var(--color-text-on-brand);
+  --button-primary-fg-disabled: var(--color-text-disabled);
+  --button-secondary-bg: var(--color-bg-primary);
+  --button-secondary-bg-hover: var(--color-bg-hover);
+  --button-secondary-bg-pressed: var(--color-bg-pressed);
+  --button-secondary-fg: var(--color-text-primary);
+  --button-secondary-border: var(--color-border-primary);
+  --button-tertiary-bg-hover: var(--color-bg-hover);
+  --button-tertiary-bg-pressed: var(--color-bg-pressed);
+  --button-tertiary-fg: var(--color-text-secondary);
+  --button-destructive-bg: var(--color-bg-error);
+  --button-destructive-bg-hover: var(--color-bg-error-hover);
+  --button-focus-ring: var(--color-border-focus-ring);
+
+  /* Input */
+  --input-bg: var(--color-bg-primary);
+  --input-bg-disabled: var(--color-bg-disabled);
+  --input-bg-filled: var(--color-bg-secondary);
+  --input-border: var(--color-border-input);
+  --input-border-hover: var(--color-border-strong);
+  --input-border-focus: var(--color-border-brand);
+  --input-border-error: var(--color-border-error);
+  --input-fg: var(--color-text-primary);
+  --input-placeholder: var(--color-text-placeholder);
+  --input-hint: var(--color-text-tertiary);
+  --input-error: var(--color-text-error);
+  --input-icon: var(--color-icon-secondary);
+
+  /* Video (mavzudan mustaqil) */
+  --video-tile-bg: #0b0f1a;
+  --video-tile-border: #ffffff29;
+  --video-tile-border-selected: #3b67f5;
+  --video-overlay-scrim: #0b0f1a7a;
+  --video-overlay-fg: #ffffff;
+  --video-overlay-fg-muted: #ffffffb8;
+  --video-badge-live: #d92d20;
+  --video-badge-live-fg: #ffffff;
+
+  /* Hudud ranglari (kategoriya) */
+  --map-category-1: #7a5af8;
+  --map-category-2: #0e9384;
+  --map-category-3: #dd2590;
+  --map-category-4: #444ce7;
+  --map-category-5: #0086c9;
+  --map-category-6: #ba24d5;
+  --map-category-7: #4e5ba6;
+  --map-category-8: #4f7a21;
+
+  /* Spacing */
+  --spacing-none: 0;
+  --spacing-xxs: 2px;
+  --spacing-xs: 4px;
+  --spacing-sm: 6px;
+  --spacing-md: 8px;
+  --spacing-base: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+  --spacing-4xl: 40px;
+  --spacing-5xl: 48px;
+  --spacing-6xl: 64px;
+
+  /* Size */
+  --size-icon-xs: 12px;
+  --size-icon-sm: 16px;
+  --size-icon-md: 20px;
+  --size-icon-lg: 24px;
+  --size-control-sm: 32px;
+  --size-control-md: 40px;
+  --size-control-lg: 48px;
+  --size-layout-nav-rail: 72px;
+  --size-layout-panel: 360px;
+  --size-layout-detail-panel: 400px;
+
+  /* Radius */
+  --radius-none: 0;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 9999px;
+
+  /* Typography */
+  --family-sans: "Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --family-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --letter-spacing-tighter: -0.64px;
+  --letter-spacing-tight: -0.24px;
+  --letter-spacing-wide: 0.44px;
+
+  /* Effects */
+  --shadow-xs: 0 1px 2px 0 #1018280d;
+  --shadow-sm: 0 1px 3px 0 #1018281a, 0 1px 2px 0 #1018280f;
+  --shadow-md: 0 4px 8px -2px #1018281a, 0 2px 4px -2px #1018280f;
+  --shadow-float: 0 8px 24px -4px #1018281f, 0 2px 6px -2px #1018280f;
+  --shadow-lg: 0 20px 32px -8px #10182829, 0 4px 8px -4px #1018280f;
+  --focus-ring: 0 0 0 4px #2556eb3d;
+
+  /* Z-index (Dev handoff §3) */
+  --z-map: 0;
+  --z-marker: 10;
+  --z-panel: 20;
+  --z-drawer: 30;
+  --z-popover: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+  --z-tooltip: 70;
+
+  /* Motion */
+  --dur-hover: 150ms;
+  --dur-page: 200ms;
+  --dur-overlay: 300ms;
+  --ease: cubic-bezier(.2, .7, .3, 1);
+}

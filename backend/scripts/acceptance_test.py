@@ -206,7 +206,8 @@ check("11.1 eski /api/cameras ishlaydi", s == 200 and d["total"] == BOSHIDA + 2,
 # ---------- 12. Tozalash ----------
 s, _ = req(f"/api/v1/admin/cameras/{cam_id}", "DELETE", headers=KEY)
 s2, _ = req(f"/api/v1/admin/cameras/{begona['id']}", "DELETE", headers=KEY)
-check("12.1 sinov kameralari o'chirildi", s == 204 and s2 == 204, (s, s2))
+# v3: yumshoq o'chirish — 200 {id, restore_until} (savatda 30 kun).
+check("12.1 sinov kameralari o'chirildi", s == 200 and s2 == 200, (s, s2))
 s, d = req("/api/v1/cameras", headers=KEY)
 check("12.2 baza asl holiga qaytdi", d["total"] == BOSHIDA, (d["total"], BOSHIDA))
 

@@ -32,11 +32,14 @@ Tarkibi:
         .check_now(ip, port)        bitta manzilni darhol tekshiradi (yangi
                                     kamera 60 s kutib turmasin), o'tishni e'lon qiladi
         .online_for(ip, port)       necha soniyadan beri uzluksiz onlayn (None — emas)
-        .sweep_stats()              oxirgi sweep: checked, online, duration_ms, at
+        .sweep_stats()              oxirgi sweep: checked, online, duration_ms, at,
+                                    latency_ms (muvaffaqiyatli TCP ulanishning o'rtacha vaqti)
+        .add_hook(fn)               har sweep'dan keyin chaqiriladigan fon vazifasi
+                                    (tizim bildirishnomalari, savat tozalash)
         .set_streaming_probe(fn)    MediaMTX oqim olayotgan (ip, port) lar
                                     manbasi — app/bootstrap.py o'rnatadi
     service                         yagona nusxa; online, online_for, check_now, start,
-                                    sweep_stats, set_streaming_probe — aliaslar
+                                    sweep_stats, set_streaming_probe, add_hook — aliaslar
     CHECK_INTERVAL, TIMEOUT, RETRY_TIMEOUT, MAX_WORKERS   sozlamalar
 
 Ishlatadi: core (bus, log), database (cameras, events)
@@ -79,7 +82,14 @@ class HealthMonitor:
         # uzilishdan qaytgach eski surati bir necha daqiqa eski turadi —
         # camera/state.py shu vaqt ichida uni "tasvirsiz" demaydi.
         self._online_since: dict[tuple[str, int], float] = {}
-        self._stats = {"checked": 0, "online": 0, "duration_ms": 0, "at": ""}
+        self._stats = {"checked": 0, "online": 0, "duration_ms": 0, "at": "",
+                       "latency_ms": None}
+        # Muvaffaqiyatli TCP ulanish vaqtlari (ms) — joriy sweep davomida;
+        # o'rtachasi `latency_ms` (kamera tarmog'i qanchalik tez, /admin/status).
+        self._latencies: list[float] = []
+        # Har sweep'dan keyin chaqiriladigan fon vazifalari (tizim
+        # bildirishnomalari, savat tozalash) — `add_hook`, app/bootstrap.py.
+        self._hooks: list[Callable[[], None]] = []
         self._lock = threading.Lock()
         self._started = False
         # Oqim olayotgan manzillarni beradigan funksiya — ilova qatlami
@@ -91,10 +101,18 @@ class HealthMonitor:
     def set_streaming_probe(self, fn: Callable[[], set[tuple[str, int]]]) -> None:
         self._streaming_pairs = fn
 
+    def add_hook(self, fn: Callable[[], None]) -> None:
+        """Har sweep'dan keyin chaqiriladigan vazifa (xatosi kuzatuvni to'xtatmaydi)."""
+        self._hooks.append(fn)
+
     def _connect(self, pair: tuple[str, int], timeout: float) -> tuple[bool, str]:
         """(muvaffaqiyat, sabab). Sabab: "" | "timeout" | "refused"."""
         try:
+            started = time.monotonic()
             socket.create_connection(pair, timeout=timeout).close()
+            with self._lock:
+                if len(self._latencies) < 10_000:
+                    self._latencies.append((time.monotonic() - started) * 1000)
             return True, ""
         except TimeoutError:
             return False, "timeout"
@@ -152,6 +170,8 @@ class HealthMonitor:
 
     def _sweep(self) -> None:
         started = time.monotonic()
+        with self._lock:
+            self._latencies.clear()
         with get_db() as db:
             rows = cameras.list_rtsp(db, enabled_only=True)
         pairs = list(dict.fromkeys((row["ip"], row["port"] or 554) for row in rows))
@@ -229,7 +249,10 @@ class HealthMonitor:
                     self._online_since[pair] = now
             for pair in [p for p in self._online_since if p not in fresh]:
                 self._online_since.pop(pair)
+            latency = (round(sum(self._latencies) / len(self._latencies), 1)
+                       if self._latencies else self._stats.get("latency_ms"))
             self._stats.update(
+                latency_ms=latency,
                 checked=len(pairs), online=sum(1 for ok in fresh.values() if ok),
                 duration_ms=int((time.monotonic() - started) * 1000),
                 at=datetime.now(timezone.utc).isoformat(),
@@ -279,6 +302,12 @@ class HealthMonitor:
                 self._sweep()
             except Exception as exc:        # kuzatuv hech qachon yiqilmasin
                 log("health", "sweep_failed", level="error", error=str(exc))
+            for hook in list(self._hooks):
+                try:
+                    hook()
+                except Exception as exc:    # noqa: BLE001 — vazifa xatosi kuzatuvni to'xtatmasin
+                    log("health", "hook_failed", level="error",
+                        hook=getattr(hook, "__name__", "?"), error=str(exc))
             # Oraliq Sozlamalar sahifasidan (health_interval_s) — har tsiklda o'qiladi.
             time.sleep(site_settings.get("health_interval_s"))
 
@@ -353,3 +382,4 @@ start = service.start
 online = service.online
 check_now = service.check_now
 online_for = service.online_for
+add_hook = service.add_hook

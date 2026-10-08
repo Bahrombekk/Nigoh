@@ -61,7 +61,10 @@ def test_interfeys_va_login_ochiq(client):
     assert client.post("/api/v1/auth/login",
                        json={"username": "a", "password": "b"}).status_code == 401
     me = client.get("/api/v1/auth/me").json()
-    assert me == {"authenticated": False, "public_view": False, "site_name": "NIGOH"}
+    from core.version import VERSION
+    assert me == {"authenticated": False, "public_view": False, "site_name": "NIGOH",
+                  "full_name": "", "prefs": {}, "session_hours": 12, "poll_s": 30,
+                  "language": "uz", "version": VERSION}
 
 
 def test_xarita_geojson_fayllari(client):
@@ -102,8 +105,9 @@ def test_kamera_crud_va_external_id(client):
                              "external_id": "api-test-1"})
         assert r.status_code == 200 and r.json()["name"] == "Ext sinov 2"
     finally:
-        assert client.delete("/api/v1/admin/cameras/ext:api-test-1",
-                             headers=KEY).status_code == 204
+        # v3: yumshoq o'chirish — 200 {id, restore_until}.
+        r = client.delete("/api/v1/admin/cameras/ext:api-test-1", headers=KEY)
+        assert r.status_code == 200 and r.json()["restore_until"]
 
 
 def test_takror_ip_qoshilmaydi_lekin_201(client):

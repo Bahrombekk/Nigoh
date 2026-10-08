@@ -27,11 +27,12 @@ Tarkibi:
         .uptime_by_region(db, since)  hudud bo'yicha onlayn/jami
         .recent_changes(db, limit)  so'nggi holat o'zgarishlari
         .series(db, since, until, step, area_ids)  onlaynlik qatori: 5m (xom),
-                                hour/day (o'rtacha)
+                                hour/6h/day (o'rtacha)
+        .snapshot_near(db, at, area_ids)  `at` ga eng yaqin (oldingi) surat yig'indisi
         .changes(db, limit=, before_id=, kind=, camera_id=, area_ids=)  lenta,
                                 sahifalab (yangisi birinchi)
     KEEP_DAYS                   saqlash muddati (30 kun)
-    STEPS                       series qadamlari: "5m", "hour", "day"
+    STEPS                       series qadamlari: "5m", "hour", "6h", "day"
 
 Jadvallar: availability_snapshots, status_changes (+ admin_areas, camera_details)
 Ishlatadi: database.repositories.areas (UNASSIGNED)
@@ -48,7 +49,7 @@ KEEP_DAYS = 30
 
 # ---------- statistika API (reporting/) uchun ----------
 
-STEPS = {"5m": None, "hour": "hour", "day": "day"}
+STEPS = {"5m": None, "hour": "hour", "6h": "6 hours", "day": "day"}
 
 
 class StatsRepository:
@@ -146,10 +147,25 @@ class StatsRepository:
         unit = STEPS[step]
         if unit is None:
             return db.execute(raw + " ORDER BY ts", params).fetchall()
+        # 6 soat — date_trunc'da yo'q: date_bin, boshlanish mahalliy yarim tunda
+        # (vaqt zonasisiz literal ulanish zonasida — NIGOH_TZ — o'qiladi).
+        bucket = (f"date_bin('{unit}', ts, TIMESTAMPTZ '2000-01-01 00:00')" if " " in unit
+                  else f"date_trunc('{unit}', ts)")
         return db.execute(
-            f"SELECT date_trunc('{unit}', ts) AS ts, AVG(online)::float AS online, "
+            f"SELECT {bucket} AS ts, AVG(online)::float AS online, "
             f"AVG(total)::float AS total, COUNT(*) AS samples FROM ({raw}) t "
             "GROUP BY 1 ORDER BY 1", params).fetchall()
+
+    def snapshot_near(self, db, at: datetime, area_ids: list[int] | None,
+                      window_s: int = 3600):
+        """`at` dan oldingi eng yaqin surat (ko'pi bilan `window_s` oldin): jami/onlayn
+        yig'indisi — "oldingi davr" taqqoslashi uchun. Topilmasa None."""
+        flt = "" if area_ids is None else " AND admin_area_id = ANY(%(ids)s)"
+        return db.execute(
+            "SELECT ts, SUM(total) AS total, SUM(online) AS online FROM availability_snapshots "
+            "WHERE ts = (SELECT max(ts) FROM availability_snapshots "
+            f"  WHERE ts <= %(at)s AND ts > %(at)s - make_interval(secs => %(w)s){flt}){flt} "
+            "GROUP BY ts", {"at": at, "w": window_s, "ids": area_ids}).fetchone()
 
     def changes(self, db, *, limit: int, before_id: int | None = None, kind: str | None = None,
                 camera_id: int | None = None, area_ids: list[int] | None = None) -> list:

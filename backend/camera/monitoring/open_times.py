@@ -26,6 +26,7 @@ Tarkibi:
     summary()                   transport kesimida {n, <bosqich>: {p50, p95}}
     by_camera()                 kamera id -> {n, last_ms, median_ms, max_ms,
                                 transport, at} (oxirgi PER_CAMERA ochilish)
+    camera_opens(camera_id)     bitta kameraning oxirgi ochilishlari (xom)
     percentile(values, frac)    eng yaqin tartib statistikasi
     reset()                     hammasini tozalaydi (testlar)
     MAX_SAMPLES     512 — transport boshiga halqa hajmi
@@ -119,6 +120,12 @@ def by_camera() -> dict[int, dict]:
                     "median_ms": int(statistics.median(totals)), "max_ms": max(totals),
                     "transport": transport, "at": at}
     return out
+
+
+def camera_opens(camera_id: int) -> list[tuple[int, str, float]]:
+    """Bitta kameraning oxirgi PER_CAMERA ochilishi: [(total_ms, transport, at)], eskisi birinchi."""
+    with _lock:
+        return list(_cameras.get(camera_id, ()))
 
 
 def reset() -> None:

@@ -2,7 +2,7 @@
 
 Rol tekshiruvi ko'p endpointlarda kerak bo'lgani uchun shu yerda turadi
 (ilgari api/helpers.py ichida edi). Ikki daraja: admin (yoki API kaliti)
-— hammasi; operator — faqat biriktirilgan hududlar (admin_areas) va
+— hammasi; operator va kuzatuvchi (viewer) — faqat biriktirilgan hududlar (admin_areas) va
 ularning ichki bo'g'inlari (viloyat berilsa — tumanlari ham). Hudud
 cheklovi qaysi kamera so'ralganiga bog'liq, shuning uchun u dependency
 emas — endpoint ichida `allowed_areas` + `check_area`/`area_allowed`
@@ -19,7 +19,7 @@ Tarkibi:
     require_admin(request)     dependency: admin yoki kalit; kirmagan — 401,
                                operator — 403
     allowed_areas(request)     None — cheklovsiz (kalit, admin, PUBLIC_VIEW
-                               mehmoni); ro'yxat — operator hududlari;
+                               mehmoni); ro'yxat — operator/kuzatuvchi hududlari;
                                [] — hech narsa
     area_allowed(row, areas)   kamera shu hududlar ichidami
     check_area(row, areas)     ichida bo'lmasa 403
@@ -66,9 +66,9 @@ def require_admin(request: Request):
         return {"id": 0, "username": "api", "role": "admin"}
     user = current_user(request)
     if user is None:
-        raise HTTPException(401, "Avval super-admin sifatida kiring")
+        raise HTTPException(401, "Avval administrator sifatida kiring")
     if user["role"] != "admin":
-        raise HTTPException(403, "Bu bo'lim faqat admin uchun")
+        raise HTTPException(403, "Bu boʻlim faqat administrator uchun")
     return user
 
 
@@ -99,4 +99,4 @@ def area_allowed(row, areas: list[int] | None) -> bool:
 def check_area(row, areas: list[int] | None) -> None:
     """Operator cheklovi: kamera ruxsat etilgan hududda bo'lsin (aks holda 403)."""
     if not area_allowed(row, areas):
-        raise HTTPException(403, "Bu kamerani ko'rishga ruxsat yo'q")
+        raise HTTPException(403, "Bu kamerani koʻrishga ruxsat yoʻq")

@@ -89,7 +89,7 @@ class RailRepository:
             return None
         rows = db.execute(
             "SELECT admin_area_id FROM cameras WHERE rail_line_id = %s AND km IS NOT NULL "
-            "AND admin_area_id IS NOT NULL AND abs(km - %s) <= %s "
+            "AND admin_area_id IS NOT NULL AND deleted_at IS NULL AND abs(km - %s) <= %s "
             "ORDER BY abs(km - %s), id LIMIT 4", (line_id, km, max_km, km)).fetchall()
         found = {r[0] for r in rows}
         return found.pop() if len(found) == 1 else None

@@ -29,6 +29,7 @@ Tarkibi (qayta eksport):
     events                      EventRepository — kamera/oqim hodisalari
     geo                         GeoRepository — nuqta hudud ichidami
     nodes                       MediaNodeRepository — MediaMTX tugunlari
+    notifications               NotificationRepository — bildirishnomalar va o'qilganlik
     rail                        RailRepository — temir yo'l, km/piket
     reports                     ReportRepository — dashboard hisobotlari uchun xom qatorlar
     stats                       StatsRepository — dashboard tarixi
@@ -56,6 +57,7 @@ from database.repositories import (
     geo,
     groups,
     nodes,
+    notifications,
     rail,
     reports,
     settings,
@@ -77,7 +79,7 @@ from database.schema import init_db  # noqa: E402
 
 __all__ = [
     "IntegrityError", "UniqueViolation", "areas", "audit", "cameras", "cameras_by_slug",
-    "cameras_without_sub", "events", "geo", "get_db", "groups", "init_db", "nodes", "rail",
+    "cameras_without_sub", "events", "geo", "get_db", "groups", "init_db", "nodes", "notifications", "rail",
     "reports", "set_sub_bad", "settings", "set_sub_path", "single_connection", "slugify", "stats",
     "sub_bad_cameras", "unique_slug", "users", "walls",
 ]

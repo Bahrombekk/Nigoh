@@ -48,6 +48,7 @@ Tarkibi:
         .stalled_paths()            muzlagan yo'llar ("slug" yoki "slug@tugun")
         .stalled_count(node_id)     tugundagi muzlagan oqimlar soni
         .pending_count(node_id)     tugunda tozalanmagan ortiqcha yo'llar
+        .uptime_s(node_id)          tugun necha soniyadan beri uzluksiz javob beryapti
         .foreign_nodes()            begona MediaMTX'ga qarab turgan tugunlar soni
     stream_resolution(item)         MediaMTX yo'lidan video o'lchami (format
                                     bazaga shu bilan yoziladi)
@@ -233,6 +234,10 @@ class Reconciler:
         # shularni tekshiradi — o'lik tugunning timeout'i tsiklni cho'zmasin.
         self._reachable: set[int] = set()
         self._death_warned = [0.0]
+        # tugun -> qachondan beri uzluksiz javob beryapti (time.monotonic).
+        # MediaMTX o'z ishga tushgan vaqtini API'da bermaydi — shuning uchun
+        # "uptime" shu kuzatuvdan: backend ishga tushgandan beri ko'rilgani.
+        self._up_since: dict[int, float] = {}
 
     def stalled_paths(self) -> set[str]:
         """Ayni damda muzlagan (bayt kelmayotgan) faol yo'llar."""
@@ -243,6 +248,13 @@ class Reconciler:
         """Bitta tugundagi muzlagan oqimlar soni — tugun salomatligi uchun."""
         with self._lock:
             return sum(1 for key in self._stalled if key[0] == node_id)
+
+    def uptime_s(self, node_id: int = 1) -> int | None:
+        """Tugun necha soniyadan beri uzluksiz javob beryapti (None — hozir javob
+        bermayapti yoki hali tekshirilmagan). Backend qayta ishga tushsa noldan."""
+        with self._lock:
+            since = self._up_since.get(node_id)
+        return None if since is None else int(time.monotonic() - since)
 
     def pending_count(self, node_id: int) -> int:
         """Tugunda hali tozalanmagan ortiqcha yo'llar — 0 bo'lishi kerak."""
@@ -262,10 +274,10 @@ class Reconciler:
             self._bloat_warned[node["id"]] = now
         log("reconciler", "paths_bloated", level="warning", node=node["name"],
             pending=pending,
-            message="MediaMTX'da ortiqcha yo'llar ko'p — tozalanmoqda, shu "
-                    "davrda kamera sekinroq ochiladi. Tezroq yo'l: MediaMTX'ni "
-                    "qayta ishga tushiring (yo'llar faylga yozilmaydi, "
-                    "kerakligi ko'rilganda o'zi tiklanadi).")
+            message="MediaMTXʼda ortiqcha yoʻllar koʻp — tozalanmoqda, shu "
+                    "davrda kamera sekinroq ochiladi. Tezroq yoʻl: MediaMTXʼni "
+                    "qayta ishga tushiring (yoʻllar faylga yozilmaydi, "
+                    "kerakligi koʻrilganda oʻzi tiklanadi).")
 
     def _warn_foreign(self, node: dict, api: str) -> None:
         """Tugun begona MediaMTX'ga qarab turibdi — operatorni ogohlantiradi.
@@ -377,10 +389,10 @@ class Reconciler:
         log("reconciler", "mediamtx_kotarilmadi", level="error",
             code=self._process.returncode if self._process else None,
             error=sabab or f"sabab {LOG_PATH.name} da",
-            message="MediaMTX ishga tushmadi. Eng ko'p uchraydigan sabab — port "
-                    "band (shu mashinada ikkinchi o'rnatma). .env dagi "
+            message="MediaMTX ishga tushmadi. Eng koʻp uchraydigan sabab — port "
+                    "band (shu mashinada ikkinchi oʻrnatma). .env dagi "
                     "MEDIAMTX_API, MEDIAMTX_RTSP_PORT, HLS_PORT, WEBRTC_PORT "
-                    "va WEBRTC_UDP_PORT/WEBRTC_TCP_PORT ni bo'sh portlarga o'zgartiring")
+                    "va WEBRTC_UDP_PORT/WEBRTC_TCP_PORT ni boʻsh portlarga oʻzgartiring")
 
     def _sub_belgila(self, slugs: list[str], bad: bool) -> None:
         """`sub_bad` bayrog'ini bazaga yozadi va hodisa qoldiradi.
@@ -393,10 +405,10 @@ class Reconciler:
         for kamera in set_sub_bad(kameralar, bad):
             log("reconciler", "sub_yaroqsiz" if bad else "sub_tiklandi",
                 level="warning" if bad else "info", camera=kamera,
-                sabab=("sub oqim so'raldi-yu kelmadi, tekshiruvda ham kadr "
-                       "bermadi — registratorda ikkinchi oqim yo'q yoki "
-                       "o'chirilgan; endi asosiy oqim beriladi")
-                if bad else "sub oqim yana kadr beryapti — asosiyga o'tish bekor")
+                sabab=("sub oqim soʻraldi-yu kelmadi, tekshiruvda ham kadr "
+                       "bermadi — registratorda ikkinchi oqim yoʻq yoki "
+                       "oʻchirilgan; endi asosiy oqim beriladi")
+                if bad else "sub oqim yana kadr beryapti — asosiyga oʻtish bekor")
 
     def _check_sub_health(self, node: dict, active: dict[str, dict]) -> None:
         """Sub oqim so'ralgan-u kelmasa — kamerani `sub_bad` deb belgilaydi.
@@ -575,7 +587,7 @@ class Reconciler:
                     log("reconciler", "sub_yol_topildi", camera=c["slug"],
                         sub_path=nomzod,
                         sabab="kamerada ikkinchi oqim bor ekan — devor endi "
-                              "og'ir asosiy oqim o'rniga shuni ishlatadi")
+                              "ogʻir asosiy oqim oʻrniga shuni ishlatadi")
                 break
         if topildi:
             log("reconciler", "sub_yol_qidiruv", topildi=topildi,
@@ -799,14 +811,17 @@ class Reconciler:
                 self._warn_foreign(node, api)
                 with self._lock:
                     self._reachable.discard(node["id"])
+                    self._up_since.pop(node["id"], None)
                 continue
             if status != "ok":
                 if not (local and self._autostart_allowed() and self._spawn()):
                     with self._lock:
                         self._reachable.discard(node["id"])
+                        self._up_since.pop(node["id"], None)
                     continue
             with self._lock:
                 self._reachable.add(node["id"])
+                self._up_since.setdefault(node["id"], time.monotonic())
             node_cams = [c for c in cameras
                          if (c.get("node_id") or 1) == node["id"]]
             result = sync.push_to_api(node_cams, api_base=api)
@@ -899,4 +914,5 @@ stalled_paths = service.stalled_paths
 stalled_count = service.stalled_count
 pending_count = service.pending_count
 foreign_nodes = service.foreign_nodes
+uptime_s = service.uptime_s
 start = service.start

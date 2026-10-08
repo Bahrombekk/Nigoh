@@ -29,9 +29,11 @@ prefiks /api/v1/stats, eski /api/stats):
     GET  /api/v1/stats/timeline         onlaynlik grafigi, soatlik o'rtacha (7/30 kun)
     GET  /api/v1/stats/overview         uzoq davrli ishonchlilik (stats/overview.py)
     GET  /api/v1/stats/summary          hozirgi holat bo'yicha kameralar soni
+                                        (?compare=1 — previous: davr oldingi surat)
     GET  /api/v1/stats/availability     davrdagi onlaynlik va uptime taqsimoti
+                                        (?compare=1 — previous: oldingi teng davr)
     GET  /api/v1/stats/coverage         kuzatuv qamrovi va bo'shliqlari
-    GET  /api/v1/stats/series           onlaynlik qatori (step: 5m / hour / day)
+    GET  /api/v1/stats/series           onlaynlik qatori (step: 5m / hour / 6h / day)
     GET  /api/v1/stats/sla              `goal` foizga muvofiqlik va "qarz"
     GET  /api/v1/stats/outages/summary  uzilish turlari, MTTR, MTBF, eng uzuni
     GET  /api/v1/stats/outages          uzilishlar jurnali (sahifalab)
@@ -77,6 +79,7 @@ from stats.reporting.period import (
     between,
     last_days,
     local_day,
+    pct,
     today_local,
 )
 from users.access import allowed_areas, check_area
@@ -209,7 +212,7 @@ def scope_params(request: Request,
     if not area_id:
         return allowed
     if allowed is not None and not set(area_id) <= set(allowed):
-        raise HTTPException(403, "Bu hududni ko'rishga ruxsat yo'q")
+        raise HTTPException(403, "Bu hududni koʻrishga ruxsat yoʻq")
     with get_db() as db:
         wanted = areas.with_descendants(db, area_id)
     return wanted if allowed is None else [a for a in wanted if a in allowed]
@@ -229,18 +232,44 @@ def _scoped_rows(area_ids):
     return [r for r in rows if area_ids is None or r["admin_area_id"] in area_ids]
 
 
+def previous_period(period: Period) -> Period:
+    """Oldingi teng davr: [since - davomiylik, since)."""
+    length = period.until - period.since
+    return Period(period.since - length, period.since, rolling=False)
+
+
 @router.get("/summary")
-def stat_summary(area_ids: Scope):
-    """Hozirgi holat: nechta kamera onlayn / tasvirsiz / uzilgan / noma'lum / o'chirilgan."""
+def stat_summary(area_ids: Scope, period: Window,
+                 compare: bool = Query(default=False, description="previous — davr oldingi holat")):
+    """Hozirgi holat: nechta kamera onlayn / tasvirsiz / uzilgan / noma'lum / o'chirilgan.
+
+    `compare=1` — `previous`: davr uzunligi (days, standart 1 kun) oldingi
+    5 daqiqalik suratdan {at, measured, online, online_pct}; surat bo'lmasa null.
+    (Tarixda holatlar kesimi saqlanmaydi — faqat kuzatilgan/onlayn.)
+    """
     rows = _scoped_rows(area_ids)
-    return {"at": datetime.now(TZ), **metrics.summary_now(rows, states_of(rows))}
+    out = {"at": datetime.now(TZ), **metrics.summary_now(rows, states_of(rows))}
+    if compare:
+        at = datetime.now(timezone.utc) - (period.until - period.since)
+        with get_db() as db:
+            snap = stats_db.snapshot_near(db, at, area_ids)
+        out["previous"] = None if snap is None else {
+            "at": snap["ts"], "measured": int(snap["total"]), "online": int(snap["online"]),
+            "online_pct": pct(snap["online"], snap["total"])}
+    return out
 
 
 @router.get("/availability")
-def stat_availability(period: Window, area_ids: Scope):
+def stat_availability(period: Window, area_ids: Scope,
+                      compare: bool = Query(default=False, description="previous — oldingi teng davr")):
     """Davrdagi onlaynlik (kamera-soat bo'yicha, faqat kuzatilgan vaqtdan) va
-    kameralarning uptime oraliqlari bo'yicha taqsimoti."""
-    return metrics.availability(_snap(period, area_ids))
+    kameralarning uptime oraliqlari bo'yicha taqsimoti. `compare=1` —
+    `previous`: oldingi teng davr uchun xuddi shu hisob (hodisalar 30 kun
+    saqlanadi — undan eski qismi kuzatilmagan, coverage_pct shuni ko'rsatadi)."""
+    out = metrics.availability(_snap(period, area_ids))
+    if compare:
+        out["previous"] = metrics.availability(_snap(previous_period(period), area_ids))
+    return out
 
 
 @router.get("/coverage")
@@ -252,7 +281,7 @@ def stat_coverage(period: Window, area_ids: Scope,
 
 @router.get("/series")
 def stat_series(period: Window, area_ids: Scope,
-                step: Literal["5m", "hour", "day"] = "5m"):
+                step: Literal["5m", "hour", "6h", "day"] = "5m"):
     """Onlaynlik qatori: har nuqtada kuzatilgan va onlayn kameralar soni.
     Kuzatuv bo'lmagan oraliqlar qaytmaydi (bo'shliq)."""
     with get_db() as db:
@@ -306,7 +335,7 @@ def stat_hourly(area_ids: Scope, period: Window,
     va eng zich uch soatlik oyna."""
     if day is not None:
         if not timedelta(0) <= today_local() - day <= timedelta(days=MAX_DAYS - 1):
-            raise HTTPException(422, f"day oxirgi {MAX_DAYS} kun ichida bo'lsin")
+            raise HTTPException(422, f"day oxirgi {MAX_DAYS} kun ichida boʻlsin")
         period = local_day(day)
     return metrics.hourly(_snap(period, area_ids))
 
@@ -356,7 +385,7 @@ def stat_camera(camera_id: int, request: Request, period: Window):
     snap = _snap(period, None)
     cam = snap.camera(camera_id)
     if cam is None:
-        raise HTTPException(409, "Kamera kuzatilmaydi (o'chirilgan yoki RTSP emas)")
+        raise HTTPException(409, "Kamera kuzatilmaydi (oʻchirilgan yoki RTSP emas)")
     return metrics.camera_detail(snap, cam, camera_state(row))
 
 

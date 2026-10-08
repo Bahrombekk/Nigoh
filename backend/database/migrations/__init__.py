@@ -12,6 +12,8 @@ Mavjud migratsiyalar:
     0003_camera_probe.py        camera_status.probe_at / probe_error (pasport tekshiruvi)
     0004_camera_groups.py       foydalanuvchi kamera guruhlari (camera_groups, _members)
     0005_app_settings.py        sayt sozlamalari (app_settings); audit_log.user_id FK olib tashlandi
+    0006_v3.py                  v3: users.prefs, viewer roli, cameras.deleted_at (yumshoq
+                                o'chirish), system_alerts, notification_reads
 
 Tarkibi:
     load()                      `NNNN_[a-z0-9_]+` modullarini import qiladi, tekshiradi

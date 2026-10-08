@@ -218,14 +218,15 @@ jadvallar (sxema v2):
 | `organizations` | har asosiy yozuvning egasi (hozircha bitta) |
 | `admin_areas` | hududlar (viloyat/tuman) va chegaralari |
 | `rail_lines`, `rail_units` | temir yo'l liniyalari va bo'linmalari (km/piket) |
-| `users` | foydalanuvchilar: login, parol hash'i, rol (`admin`/`operator`) |
-| `user_admin_areas`, `user_rail_units` | operator qaysi hududlarni ko'radi |
+| `users` | foydalanuvchilar: login, parol hash'i, rol (`admin`/`operator`/`viewer`), interfeys sozlamalari (`prefs`) |
+| `user_admin_areas`, `user_rail_units` | operator/kuzatuvchi qaysi hududlarni ko'radi |
 | `sessions` | kirish sessiyalari (12 soat) |
 | `media_nodes` | MediaMTX tugunlari (bir nechta server bo'lsa) |
 | `camera_events` | hodisalar: oqim muzladi/tiklandi, onlayn/oflayn (uptime manbai) |
 | `status_changes`, `availability_snapshots` | dashboard tarixi: holat o'zgarishlari, 5 daqiqalik suratlar (30 kun) |
 | `video_walls` | server tomonidagi video devor tanlovlari |
 | `audit_log` | o'zgarmas o'zgarishlar jurnali |
+| `system_alerts`, `notification_reads` | tizim bildirishnomalari va foydalanuvchi o'qiganlari (v3) |
 
 Sxema migratsiyalar bilan yangilanadi: `backend/database/migrations/`
 dagi `NNNN_*.py` fayllar backend ishga tushganda tartib bilan, bir marta
@@ -242,8 +243,9 @@ o'zgarish yangi migratsiya fayli bilan kiritiladi. Batafsil:
 ishlatiladi; brauzerga **hech qachon** qaytmaydi (admin panelda ham `•••`).
 
 **2-qavat. Kirish.** Admin paroli qaytarilmas scrypt hash. Sessiya —
-12 soatlik httponly cookie. Rollar: `admin` hammasini boshqaradi,
-`operator` faqat biriktirilgan hududlarni ko'radi. `PUBLIC_VIEW=0`
+httponly cookie (sozlamadagi `session_hours`, "eslab qol" — 30 kun); 5 xato urinish —
+5 daqiqa blok. Rollar: `admin` hammasini boshqaradi, `operator` faqat
+biriktirilgan hududlarni ko'radi, `viewer` (Kuzatuvchi) — o'z hududlarini faqat ko'radi. `PUBLIC_VIEW=0`
 qilinsa anonim odam umuman hech narsa ko'rmaydi.
 
 **3-qavat. Oqim chiptalari.** Video portlari (8888/8889) ochiq bo'lsa ham

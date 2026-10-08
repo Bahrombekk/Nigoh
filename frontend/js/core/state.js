@@ -123,12 +123,11 @@ export const HEVC_OK = (() => {
   return document.createElement("video").canPlayType(type) === "probably";
 })();
 
-let toastTimer = null;
-export function toast(text, bad) {
-  const t = $("toast");
-  t.textContent = text;
-  t.classList.toggle("bad", Boolean(bad));
-  t.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), 3200);
+/* toast — haqiqiy ko'rinishi core/ui.js da (Toast komponenti). Bu fayl hech
+   narsa import qilmaydi, shuning uchun ui.js o'zini setToastImpl bilan ulaydi.
+   toast(text, bad) — eski chaqiruvlar; toast(text, { tone, action, onAction }) — yangi. */
+let toastImpl = null;
+export function setToastImpl(fn) { toastImpl = fn; }
+export function toast(text, opts) {
+  if (toastImpl) return toastImpl(text, typeof opts === "object" ? opts : { tone: opts ? "error" : "success" });
 }

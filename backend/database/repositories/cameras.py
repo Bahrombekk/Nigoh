@@ -32,7 +32,15 @@ Tarkibi:
         .create(db, data, password_enc=)  yangi kamera (+ qurilma, + holat qatori) -> id
         .update(db, id, data, password_enc=, keep_password=)  sozlama (slug o'zgarmaydi);
                                 sub_bad va rtsp_udp tushiriladi
-        .delete(db, id)         kamera; qurilmasi bo'shasa u ham
+        .delete(db, id)         butunlay o'chirish; qurilmasi bo'shasa u ham
+      yumshoq o'chirish (savat, 0006_v3.py — camera_details o'chirilganlarni ko'rsatmaydi):
+        .soft_delete(db, id)    deleted_at = now() -> vaqt yoki None
+        .get_deleted(db, id)    savatdagi kamera
+        .list_deleted(db)       savatdagilar
+        .restore(db, id, keep_days)  qaytarish (muddat ichida)
+        .purge_deleted(db, keep_days)  muddati o'tganlarni butunlay o'chiradi -> soni
+                                create/update shu manzil yoki external_id'li savatdagi
+                                kamerani o'zi butunlay o'chiradi (cheklovni band qilmasin)
         .set_enabled(db, id, enabled)
         .set_external_id(db, id, ext)
         .fix_record(db, id, ...)  ma'lumot tuzatish: faqat berilgan maydonlar, note'ga izoh
@@ -277,7 +285,8 @@ class CameraRepository:
         if not external_id:
             return False
         return db.execute(
-            "SELECT 1 FROM cameras WHERE external_id = %s AND id IS DISTINCT FROM %s",
+            "SELECT 1 FROM cameras WHERE external_id = %s AND id IS DISTINCT FROM %s "
+            "AND deleted_at IS NULL",
             (external_id, exclude_id)).fetchone() is not None
 
     def find_by_address(self, db, host: str, port: int, rtsp_path: str | None = None) -> list:
@@ -340,18 +349,47 @@ class CameraRepository:
             db.execute("UPDATE devices SET kind = %s WHERE id = %s AND kind <> %s",
                        ("nvr" if n > 1 else "camera", device_id, "nvr" if n > 1 else "camera"))
 
+    def _purge_deleted_conflicts(self, db, org: int, device_id: int | None, rtsp_path,
+                                 external_id, exclude_id: int | None = None) -> None:
+        """Yangi/tahrirlangan kamera bilan bir xil manzil yoki external_id'li
+        YUMSHOQ O'CHIRILGAN kamera butunlay o'chiriladi.
+
+        Aks holda savatdagi kamera (device_id, rtsp_path) va external_id
+        cheklovlarini band qilib turardi: o'chirilgan kamerani qayta qo'shib
+        bo'lmasdi (409). Qayta qo'shish — eski yozuvni tiklashdan ustun.
+        Qurilmasi bu yerda tozalanmaydi — uni yangi kamera ishlatadi.
+        """
+        conds, params = [], []
+        if device_id is not None and _none_if_empty(rtsp_path):
+            conds.append("(device_id = %s AND rtsp_path = %s)")
+            params += [device_id, _none_if_empty(rtsp_path)]
+        if _none_if_empty(external_id):
+            conds.append("(organization_id = %s AND external_id = %s)")
+            params += [org, _none_if_empty(external_id)]
+        if not conds:
+            return
+        rows = db.execute(
+            f"DELETE FROM cameras WHERE deleted_at IS NOT NULL AND id IS DISTINCT FROM %s "
+            f"AND ({' OR '.join(conds)}) RETURNING device_id", [exclude_id, *params]).fetchall()
+        for (dev,) in rows:
+            if dev != device_id:
+                self._refresh_device(db, dev)
+
     def create(self, db, data: dict, *, password_enc: str | None) -> int:
         """Yangi kamera. `data`: _CAMERA_FIELDS + slug, host, port, vendor,
         username + jonli holat (codec, sub_codec, resolution, fps, transcode).
 
         Takror manzil yoki band external_id — UniqueViolation (chaqiruvchi
-        savepoint ichida ushlaydi).
+        savepoint ichida ushlaydi). Shu manzil/ID'li o'chirilgan (savatdagi)
+        kamera bo'lsa, u butunlay o'chiriladi.
         """
         org = data.get("organization_id") or DEFAULT_ORGANIZATION_ID
         device_id = None
         if data["source_type"] == "rtsp":
             device_id = self._ensure_device(db, org, data["host"], data["port"], data.get("vendor"),
                                        data.get("username"), password_enc, keep_password=False)
+        self._purge_deleted_conflicts(db, org, device_id, data.get("rtsp_path"),
+                                      data.get("external_id"))
         fields = {f: _none_if_empty(data.get(f)) for f in _CAMERA_FIELDS}
         fields.update(organization_id=org, device_id=device_id, slug=data["slug"])
         cols = ", ".join(fields)
@@ -384,6 +422,8 @@ class CameraRepository:
         if data["source_type"] == "rtsp":
             device_id = self._ensure_device(db, org, data["host"], data["port"], data.get("vendor"),
                                        data.get("username"), password_enc, keep_password)
+        self._purge_deleted_conflicts(db, org, device_id, data.get("rtsp_path"),
+                                      data.get("external_id"), exclude_id=camera_id)
         fields = {f: _none_if_empty(data.get(f)) for f in _CAMERA_FIELDS}
         fields["device_id"] = device_id
         assignments = ", ".join(f"{f} = %s" for f in fields)
@@ -400,10 +440,51 @@ class CameraRepository:
         self._refresh_device(db, device_id)
 
     def delete(self, db, camera_id: int) -> None:
+        """Butunlay o'chirish (tarix, guruh a'zoligi bilan). API'dagi o'chirish —
+        `soft_delete`; buni purge vazifasi, testlar va skriptlar chaqiradi."""
         row = db.execute("DELETE FROM cameras WHERE id = %s RETURNING device_id",
                          (camera_id,)).fetchone()
         if row:
             self._refresh_device(db, row[0])
+
+    # ---------- yumshoq o'chirish (savat) ----------
+
+    def soft_delete(self, db, camera_id: int) -> datetime | None:
+        """Kamerani savatga o'tkazadi: `camera_details` dan (ya'ni ro'yxatlar,
+        statistika, MediaMTX, health'dan) chiqadi. Qaytadi: o'chirilgan vaqt
+        yoki None (topilmadi / allaqachon o'chirilgan)."""
+        row = db.execute("UPDATE cameras SET deleted_at = now() WHERE id = %s "
+                         "AND deleted_at IS NULL RETURNING deleted_at", (camera_id,)).fetchone()
+        return row[0] if row else None
+
+    def get_deleted(self, db, camera_id: int):
+        """Savatdagi kamera: id, name, slug, deleted_at (bo'lmasa None)."""
+        return db.execute("SELECT id, name, slug, deleted_at FROM cameras "
+                          "WHERE id = %s AND deleted_at IS NOT NULL", (camera_id,)).fetchone()
+
+    def list_deleted(self, db) -> list:
+        """Savatdagi kameralar, yangi o'chirilgani birinchi."""
+        return db.execute(
+            "SELECT c.id, c.name, c.slug, c.deleted_at, COALESCE(a.name, 'Belgilanmagan') AS region "
+            "FROM cameras c LEFT JOIN admin_areas a ON a.id = c.admin_area_id "
+            "WHERE c.deleted_at IS NOT NULL ORDER BY c.deleted_at DESC, c.id").fetchall()
+
+    def restore(self, db, camera_id: int, keep_days: int) -> bool:
+        """Savatdan qaytaradi (o'chirilganiga `keep_days` kun bo'lmagan bo'lsa)."""
+        return db.execute(
+            "UPDATE cameras SET deleted_at = NULL WHERE id = %s AND deleted_at IS NOT NULL "
+            "AND deleted_at > now() - make_interval(days => %s)",
+            (camera_id, keep_days)).rowcount > 0
+
+    def purge_deleted(self, db, keep_days: int) -> int:
+        """`keep_days` kundan oldin o'chirilganlarni butunlay o'chiradi. Qaytadi: soni."""
+        rows = db.execute(
+            "DELETE FROM cameras WHERE deleted_at IS NOT NULL "
+            "AND deleted_at <= now() - make_interval(days => %s) RETURNING device_id",
+            (keep_days,)).fetchall()
+        for dev in {r[0] for r in rows}:
+            self._refresh_device(db, dev)
+        return len(rows)
 
     def set_enabled(self, db, camera_id: int, enabled: bool) -> None:
         db.execute("UPDATE cameras SET enabled = %s WHERE id = %s", (bool(enabled), camera_id))

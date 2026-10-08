@@ -42,6 +42,8 @@ Tarkibi:
     create_session(db, user_id, ip, ua) yangi sessiya tokeni (12 soat)
     session_user(db, token)             yaroqli sessiya egasi yoki None
     delete_session(db, token)           chiqish
+    token_hash(token)                   tokenning bazadagi xeshi (joriy sessiyani
+                                        saqlab qolish uchun — /auth/password)
     purge_expired_sessions(db)          muddati o'tganlarni o'chiradi
     ensure_admin(db)                    birinchi ishga tushishda super-admin
                                         (ADMIN_LOGIN / ADMIN_PAROL; parol
@@ -295,6 +297,11 @@ def verify_password(password: str, pw_hash: str, salt: str) -> bool:
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def token_hash(token: str | None) -> str | None:
+    """Sessiya tokenining bazadagi ko'rinishi (None — token yo'q)."""
+    return _token_hash(token) if token else None
 
 
 def create_session(db, user_id: int, ip: str | None = None,

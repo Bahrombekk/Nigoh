@@ -21,6 +21,9 @@ Tarkibi:
         .transitions(db, camera_id, since)  kameraning online/offline o'tishlari
         .transitions_all(db, since)  barcha kameralarniki (camera_id, ts tartibida)
         .offline_times(db, since, camera_id)  uzilish vaqtlari
+        .last_transitions(db, camera_ids)  har kameraning oxirgi online/offline o'tishi
+        .window(db, camera_id, since)  davrdagi holat hodisalari + davr boshidagi holat
+                                (kamera paneli: 24 soatlik lenta)
         .for_camera(db, camera_id, start, end, limit)  kameraning barcha hodisalari, yangisi birinchi
         .recent(db, limit)      so'nggi hodisalar kamera manzili bilan (boshqaruv paneli)
     RETENTION_DAYS              saqlash muddati (30 kun)
@@ -83,6 +86,40 @@ class EventRepository:
             sql += " AND camera_id = %s"
             params.append(camera_id)
         return db.execute(sql, params).fetchall()
+
+    def last_transitions(self, db, camera_ids: list[int] | None = None) -> dict[int, tuple]:
+        """Har kameraning oxirgi online/offline o'tishi: {camera_id: (ts, kind)}.
+
+        `online_since` (joriy onlayn seriya boshi) shundan: oxirgisi `online`
+        bo'lsa — uning vaqti.
+        """
+        if camera_ids is None:
+            camera_ids = [r[0] for r in db.execute(
+                "SELECT DISTINCT camera_id FROM camera_events WHERE camera_id IS NOT NULL")]
+        # Har kameraga bitta indeks so'rovi (camera_id, ts) — 30 kunlik jurnalni
+        # to'liq aylanib chiqmaydi: /cameras ro'yxati har 30 s so'raladi.
+        return {r["camera_id"]: (r["ts"], r["kind"]) for r in db.execute(
+            "SELECT c.id AS camera_id, e.ts, e.kind FROM unnest(%s::int[]) AS c(id) "
+            "CROSS JOIN LATERAL (SELECT ts, kind FROM camera_events "
+            "  WHERE camera_id = c.id AND kind IN ('online', 'offline') "
+            "  ORDER BY ts DESC, id DESC LIMIT 1) e", (list(camera_ids),))}
+
+    def window(self, db, camera_id: int, since: datetime) -> tuple[list, dict]:
+        """Kameraning `since` dan keyingi holat hodisalari (online/offline/stalled/
+        resumed, yo'li bilan) va davr boshidagi oxirgi holat: ({"net": kind | None,
+        "stall": kind | None})."""
+        rows = db.execute(
+            "SELECT ts, kind, path FROM camera_events WHERE camera_id = %s AND ts >= %s "
+            "AND kind IN ('online', 'offline', 'stalled', 'resumed') ORDER BY ts, id",
+            (camera_id, since)).fetchall()
+        before = {}
+        for key, kinds in (("net", ("online", "offline")), ("stall", ("stalled", "resumed"))):
+            row = db.execute(
+                "SELECT kind FROM camera_events WHERE camera_id = %s AND ts < %s "
+                "AND kind = ANY(%s) ORDER BY ts DESC, id DESC LIMIT 1",
+                (camera_id, since, list(kinds))).fetchone()
+            before[key] = row[0] if row else None
+        return rows, before
 
     def for_camera(self, db, camera_id: int, start: datetime, end: datetime, limit: int = 200) -> list:
         """Kameraning barcha hodisalari (har uchala yo'l) — oxirgisi birinchi."""

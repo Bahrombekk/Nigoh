@@ -92,7 +92,7 @@ def test_operator_begona_kameraga_403(client, hududlar):
     assert op.get(f"/api/v1/cameras/{oz}/stream").status_code == 200
 
     javob = op.post("/api/v1/streams", json={"ids": [begona, oz]}).json()
-    assert javob["streams"][str(begona)] == {"error": "ruxsat yo'q"}
+    assert javob["streams"][str(begona)] == {"error": "ruxsat yoʻq"}
     assert "error" not in javob["streams"][str(oz)]
 
 

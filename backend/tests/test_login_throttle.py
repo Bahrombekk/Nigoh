@@ -6,7 +6,9 @@ Ikkita xossani qulflaydi:
     proksidan hisobga olinadi, aks holda hujumchi har so'rovda soxta
     sarlavha yuborib har safar yangi hisob ochib olardi;
   * cheklov SERVERNI TO'XTATMAYDI — kutish mijozga aytiladi (429 +
-    Retry-After), so'rov ichida uxlanmaydi. Ilgari bu yerda 30 s gacha
+    Retry-After / retry_after), so'rov ichida uxlanmaydi;
+  * v3 siyosati: (login, ip) bo'yicha 5 xato -> 5 daqiqa blok, 401 da
+    `remaining`. Ilgari bu yerda 30 s gacha
     `time.sleep` bor edi va 40 ta parallel urinish Starlette'ning
     threadpool'ini to'ldirib butun API'ni javobsiz qoldirardi.
 """
@@ -58,48 +60,69 @@ def test_ishonchli_proksi_toifalari():
     assert not auth._ishonchli_proksi("testclient")   # ip emas
 
 
-# ---------- kutish egri chizig'i ----------
+# ---------- v3 siyosati: 5 xato -> 5 daqiqa blok ----------
 
-def test_dastlabki_urinishlar_jazosiz():
-    for _ in range(auth._FAIL_FREE):
-        assert auth._retry_after("ip1") == 0.0
-        auth._note_fail("ip1")
-    assert auth._retry_after("ip1") > 0.0
+KALIT = ("odam", "ip1")
 
 
-def test_kutish_ikki_baravar_osadi_va_chegaralanadi():
-    for _ in range(auth._FAIL_FREE):
-        auth._note_fail("ip2")
-    auth._note_fail("ip2")                     # 6-xato -> ~2 s
-    ikki = auth._retry_after("ip2")
-    for _ in range(20):                        # ko'p xato -> shift
-        auth._note_fail("ip2")
-    assert ikki <= auth._retry_after("ip2") <= auth._FAIL_MAX_DELAY
+def test_besh_xatogacha_blok_yoq_keyin_blok():
+    for qolgan in range(auth._FAIL_MAX - 1, -1, -1):
+        assert auth._retry_after(KALIT) == 0.0
+        assert auth._note_fail(KALIT) == qolgan          # blokgacha qolgan urinishlar
+    kutish = auth._retry_after(KALIT)
+    assert auth._BLOCK_S - 5 < kutish <= auth._BLOCK_S   # 5 daqiqa
+
+
+def test_blok_login_va_ip_boyicha():
+    """Bitta ip'dan boshqa loginga urinish begona hisobni qulflamaydi."""
+    for _ in range(auth._FAIL_MAX):
+        auth._note_fail(("a", "ip9"))
+    assert auth._retry_after(("a", "ip9")) > 0
+    assert auth._retry_after(("b", "ip9")) == 0.0
+    assert auth._retry_after(("a", "ip8")) == 0.0
+    assert auth._login_key(" Admin ", "ip9") == ("admin", "ip9")
 
 
 def test_togri_parol_hisobni_tozalaydi():
-    for _ in range(auth._FAIL_FREE + 2):
-        auth._note_fail("ip3")
-    assert auth._retry_after("ip3") > 0.0
-    auth._clear_fails("ip3")
-    assert auth._retry_after("ip3") == 0.0
+    for _ in range(auth._FAIL_MAX - 1):
+        auth._note_fail(("c", "ip3"))
+    auth._clear_fails(("c", "ip3"))
+    assert auth._note_fail(("c", "ip3")) == auth._FAIL_MAX - 1
+
+
+def test_blok_tugagach_hisob_noldan(monkeypatch):
+    for _ in range(auth._FAIL_MAX):
+        auth._note_fail(("d", "ip4"))
+    assert auth._retry_after(("d", "ip4")) > 0
+    t = time.monotonic() + auth._BLOCK_S + 1
+    monkeypatch.setattr("core.throttle.time.monotonic", lambda: t)
+    assert auth._retry_after(("d", "ip4")) == 0.0
+    assert auth._note_fail(("d", "ip4")) == auth._FAIL_MAX - 1
 
 
 # ---------- endpoint xatti-harakati ----------
 
-def test_kop_urinishdan_keyin_429_va_retry_after(ui_client):
+def test_401_remaining_va_429_retry_after(ui_client):
     xato = {"username": "yoq-bunday-odam", "password": "xato"}
-    for _ in range(auth._FAIL_FREE):
-        assert ui_client.post("/api/v1/auth/login", json=xato).status_code == 401
+    for qolgan in range(auth._FAIL_MAX - 1, -1, -1):
+        r = ui_client.post("/api/v1/auth/login", json=xato)
+        assert r.status_code == 401
+        assert r.json() == {"detail": "Login yoki parol notoʻgʻri", "remaining": qolgan}
 
     boshlandi = time.monotonic()
     r = ui_client.post("/api/v1/auth/login", json=xato)
     ketgan = time.monotonic() - boshlandi
 
     assert r.status_code == 429
-    assert int(r.headers["Retry-After"]) >= 1
+    body = r.json()
+    assert body["detail"] == "5 daqiqadan keyin qayta urinib koʻring"
+    assert 290 <= body["retry_after"] <= 300
+    assert int(r.headers["Retry-After"]) == body["retry_after"]
     # Eng muhimi: javob DARHOL keldi — so'rov ichida uxlanmadi.
     assert ketgan < 1.0, f"so'rov {ketgan:.1f} s ushlab turildi — uxlash qaytibdi"
+    # Boshqa login shu ip'dan kira oladi (blok login+ip bo'yicha).
+    assert ui_client.post("/api/v1/auth/login",
+                          json={"username": "boshqa-odam", "password": "x"}).status_code == 401
 
 
 def test_togri_parol_bilan_kirish_ishlaydi(ui_client):
@@ -128,13 +151,14 @@ def test_togri_parol_bilan_kirish_ishlaydi(ui_client):
 
 
 def test_cheklangan_urinish_hisobni_oshirmaydi(ui_client):
-    """Aks holda tinmay urinayotgan hujumchi shu ip'ni cheksiz qulflardi —
-    haqiqiy foydalanuvchi hech qachon kira olmasdi."""
+    """Blok davomidagi urinish hisobni oshirmaydi va blokni uzaytirmaydi —
+    aks holda tinmay urinayotgan hujumchi blokni cheksiz cho'zardi."""
     xato = {"username": "yoq-bunday-odam", "password": "xato"}
-    for _ in range(auth._FAIL_FREE):
+    for _ in range(auth._FAIL_MAX):
         ui_client.post("/api/v1/auth/login", json=xato)
 
-    birinchi = auth._retry_after("testclient")
+    kalit = auth._login_key("yoq-bunday-odam", "testclient")
+    birinchi = auth._retry_after(kalit)
     for _ in range(10):                        # 429 oladigan urinishlar
         assert ui_client.post("/api/v1/auth/login", json=xato).status_code == 429
-    assert auth._retry_after("testclient") <= birinchi
+    assert auth._retry_after(kalit) <= birinchi

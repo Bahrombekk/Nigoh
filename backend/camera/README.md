@@ -14,13 +14,17 @@ camera/
 ├── state.py             camera_state() — yagona holat; resolve_ref() — id yoki ext:...
 ├── streaming.py         stream_urls() — WebRTC/HLS manzillari + chipta; node_info()
 ├── views.py             public_camera(), admin_camera(), mask_config()
+├── trash.py             savat: yumshoq o'chirilganlar 30 kundan keyin butunlay o'chadi (health ilgagi)
 ├── api/                 HTTP endpointlar (/api/v1 va /api ostida)
-│   ├── cameras.py       /cameras — xarita ro'yxati, status, stream, snapshot, sub-bad
+│   ├── cameras.py       /cameras — xarita ro'yxati (fps, online_since), status, stream, snapshot,
+│   │                    sub-bad, details (timeline_24h, availability_24h)
 │   ├── streams.py       /streams — devor uchun batch oqim chiptalari
 │   ├── events.py        /events — holat o'zgarishlari SSE
-│   ├── metrics.py       /metrics/open — pleyer ochilish vaqti
+│   ├── metrics.py       /metrics/open — pleyer ochilish vaqti (?camera_id= — bitta kamera)
 │   ├── devices.py       /devices — fon skani (job + SSE), qurilma pasporti
-│   ├── admin.py         /admin/cameras CRUD, NVR import, scan, probe, detect-sub, enabled, uptime, keyframe
+│   ├── admin.py         /admin/cameras CRUD (filtr/saralash/counts/facets serverda; o'chirish
+│   │                    yumshoq + restore, deleted, bulk, export), NVR import, scan, probe,
+│   │                    detect-sub, enabled, uptime, keyframe
 │   ├── nodes.py         /admin/nodes — MediaMTX tugunlari, tugun konfiguratsiyasi
 │   └── mediamtx.py      /admin/events, /admin/mediamtx/sync, /admin/mediamtx/config
 ├── media/               MediaMTX qatlami
@@ -31,7 +35,7 @@ camera/
 │   ├── fast_start.py    ONVIF/ISAPI keyframe so'rovi, HTTP/RTSP surat, kanal raqami
 │   └── mapping.py       baza qatori -> MediaMTX lug'ati (camera_for_mediamtx)
 ├── monitoring/          fon xizmatlari (klass + yagona `service` + aliaslar)
-│   ├── health.py        HealthMonitor — TCP tiriklik har 60 s, SSE `state`
+│   ├── health.py        HealthMonitor — TCP tiriklik har 60 s, SSE `state`, latency_ms, ilgaklar
 │   ├── snapshots.py     SnapshotService — diskdagi suratlar, issiq/sovuq yangilash, SSE `snapshot`
 │   ├── passport.py      PassportChecker — bo'sh kodek/model'ni fonda to'ldirish
 │   └── open_times.py    ochilish vaqti namunalari, p50/p95 (/health)

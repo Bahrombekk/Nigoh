@@ -17,7 +17,12 @@ database/
 │  ├─ __init__.py                  load() — NNNN_*.py ni topadi, raqamlar uzluksizligini tekshiradi
 │  ├─ 0001_initial.py              SQLite'dan 1:1 ko'chirilgan boshlang'ich sxema
 │  ├─ 0002_schema_v2.py            sxema v2: tashkilotlar, hududlar, qurilmalar, audit, camera_details
-│  └─ 0003_camera_probe.py         camera_status.probe_at / probe_error (pasport tekshiruvi)
+│  ├─ 0003_camera_probe.py         camera_status.probe_at / probe_error (pasport tekshiruvi)
+│  ├─ 0004_camera_groups.py        foydalanuvchi kamera guruhlari
+│  ├─ 0005_app_settings.py         sayt sozlamalari (app_settings), audit_log FK
+│  └─ 0006_v3.py                   users.prefs, viewer roli, cameras.deleted_at (savat;
+│                                  camera_details o'chirilganlarni ko'rsatmaydi),
+│                                  system_alerts, notification_reads
 ├─ repositories/
 │  ├─ __init__.py                  har klassning bitta nusxasi (areas, cameras, ...)
 │  ├─ areas.py                     AreaRepository — admin_areas, chegaralar keshi
@@ -25,6 +30,7 @@ database/
 │  ├─ events.py                    EventRepository — camera_events (uptime manbai)
 │  ├─ geo.py                       GeoRepository — nuqta GeoJSON ko'pburchak ichidami
 │  ├─ nodes.py                     MediaNodeRepository — media_nodes (MediaMTX tugunlari)
+│  ├─ notifications.py             NotificationRepository — system_alerts, notification_reads, lenta
 │  ├─ rail.py                      RailRepository — rail_lines / rail_units, km/piket
 │  ├─ reports.py                   ReportRepository — dashboard hisobotlari uchun xom qatorlar
 │  ├─ stats.py                     StatsRepository — availability_snapshots, status_changes

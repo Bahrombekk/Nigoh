@@ -11,7 +11,8 @@ operator faqat o'ziga biriktirilgan hududlarni.
 
 Endpointlar (require_viewer; hudud cheklovi endpoint ichida):
     GET  /api/v1/cameras                xarita ro'yxati; ?bbox=minLat,minLng,
-                                        maxLat,maxLng, ?limit; total/shown
+                                        maxLat,maxLng, ?limit; total/shown;
+                                        har kamerada fps va online_since (v3)
     GET  /api/v1/cameras/status         boshlang'ich holat SSE'dan oldin:
                                         ?ids=1,2,ext:... (<=1024) yoki ?all=1
     GET  /api/v1/cameras/{ref}/stream   oqim manzili; yo'lni ensure_path qiladi,
@@ -26,8 +27,10 @@ Endpointlar (require_viewer; hudud cheklovi endpoint ichida):
     POST /api/v1/cameras/{ref}/sub-bad  sub oqim brauzerda ochilmadi — saqlanadi,
                                         devor keyingi safar asosiydan ochadi
     GET  /api/v1/cameras/{ref}/details  kamera paneli: texnik pasport, davr
-                                        ishonchliligi (?days=7) va hodisalar
-                                        tarixi (?history=30); IP/parol yo'q
+                                        ishonchliligi (?days=7), hodisalar
+                                        tarixi (?history=30), timeline_24h (48 ta
+                                        30 daqiqalik blok), availability_24h,
+                                        online_since; IP/parol yo'q
 
 Snapshot'da holat va yosh tekshiruvi ETag/304 dan OLDIN turadi — aks
 holda keshi bor mijoz offline kamerada ham 304 olib eski kadrni
@@ -97,6 +100,7 @@ def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
     with get_db() as db:
         total, rows = cameras.list_visible(db, bbox=box, area_ids=areas,
                                            limit=max(1, min(limit, 50000)))
+        since = online_since_map(db, rows)
     return {
         "total": total,
         "shown": len(rows),
@@ -121,6 +125,9 @@ def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
             "always_on": bool(r["always_on"]),
             # Temir yo'l bo'yicha joy — dashboard liniya sxemasi uchun.
             "km": r["km"], "picket": r["picket"],
+            # v3: kadr tezligi (pasportdan) va joriy onlayn seriya boshi.
+            "fps": float(r["fps"]) if r["fps"] else None,
+            "online_since": since.get(r["id"]),
         } for r in rows],
     }
 
@@ -139,7 +146,7 @@ def cameras_status(request: Request, ids: str = "", all: int = 0):
         elif ids.strip():
             refs = [p.strip() for p in ids.split(",") if p.strip()]
             if len(refs) > 1024:
-                raise HTTPException(400, "Bitta so'rovda 1024 tagacha id")
+                raise HTTPException(400, "Bitta soʻrovda 1024 tagacha id")
             rows = [r for r in (resolve_ref(db, ref) for ref in refs)
                     if r is not None]
         else:
@@ -238,14 +245,14 @@ def camera_snapshot(ref: str, request: Request, stale: int = 0, cached: int = 0)
     # ko'rsatishda davom etadi va butun to'siq behuda ketadi.
     blocked = camera_state(row) in ("offline", "disabled")
     if blocked and not stale:
-        raise HTTPException(404, "Kamera offline — surat berilmaydi "
+        raise HTTPException(404, "Kamera uzilgan — surat berilmaydi "
                                  "(oxirgi kadr: ?stale=1)")
 
     # Offline'da jonli olishga urinilmaydi — semafor slotini band qilib
     # FFmpeg'ni timeout'gacha kuttirishning ma'nosi yo'q.
     data, etag, at_epoch = snapshots.read(row, live=not blocked and not cached)
     if not data:
-        raise HTTPException(404, "Kameradan surat olib bo'lmadi")
+        raise HTTPException(404, "Kameradan surat olib boʻlmadi")
 
     # Yosh bo'yicha zaxira chegara: holat online desa-yu surat olish
     # muntazam yiqilayotgan bo'lsa, eskirgan kadr baribir to'siladi.
@@ -307,6 +314,122 @@ def mark_sub_bad(ref: str, request: Request):
     return Response(status_code=204)
 
 
+def online_since_map(db, rows) -> dict[int, str]:
+    """Joriy onlayn seriya boshi (ISO) — tarmoqda tirik kameralar uchun.
+
+    Manba — oxirgi online/offline o'tishi (camera_events): oxirgisi `online`
+    bo'lsa uning vaqti. Hodisa yo'q (30 kunlik jurnaldan uzoq onlayn) yoki
+    hodisa hali yozilmagan bo'lsa — health'ning xotiradagi hisobi (server
+    ishga tushgandan beri); u ham bo'lmasa kalit qaytmaydi (null).
+    """
+    alive = [r for r in rows if r["enabled"] and health.online(r["ip"], r["port"]) is True]
+    if not alive:
+        return {}
+    last = events.last_transitions(db, [r["id"] for r in alive])
+    now = datetime.now(timezone.utc)
+    out = {}
+    for r in alive:
+        ts, kind = last.get(r["id"], (None, None))
+        if kind == "online":
+            out[r["id"]] = _iso(ts)
+            continue
+        secs = health.online_for(r["ip"], r["port"])
+        if secs is not None:
+            out[r["id"]] = (now - timedelta(seconds=secs)).isoformat(timespec="seconds")
+    return out
+
+
+# Holatlar "yomonligi" — 30 daqiqalik blokda eng yomoni ko'rsatiladi.
+_RANK = {"unknown": 0, "online": 1, "stalled": 2, "offline": 3}
+BLOCK = timedelta(minutes=30)
+BLOCKS = 48
+
+
+def _state_of(net_state, is_stalled) -> str:
+    if net_state is None:
+        return "unknown"
+    if net_state == "offline":
+        return "offline"
+    return "stalled" if is_stalled else "online"
+
+
+def timeline_24h(db, row, now: datetime | None = None) -> tuple[list[dict], float | None]:
+    """Oxirgi 24 soat: 48 ta 30 daqiqalik blok (blokdagi eng yomon holat) va
+    mavjudlik foizi (kuzatilgan vaqtning offline bo'lmagan qismi, 1 kasr).
+
+    Manba — camera_events: online/offline (health) va stalled/resumed
+    (reconciler; faqat asosiy va _h264 yo'llar — sub oqim kamera holatiga
+    ta'sir qilmaydi, camera/state.py bilan bir xil). Davr boshidagi holat —
+    undan oldingi oxirgi hodisa; hodisa umuman bo'lmasa — hozirgi tarmoq
+    holati. Kamera qo'shilgunga qadar, IP'siz kamera va noma'lum davr —
+    "unknown" (foizga kirmaydi). Oxirgi blok hozirgi vaqtni o'z ichiga oladi.
+    """
+    now = now or datetime.now(timezone.utc)
+    epoch = now.timestamp()
+    step = BLOCK.total_seconds()
+    first = datetime.fromtimestamp(epoch - epoch % step, timezone.utc) - BLOCK * (BLOCKS - 1)
+    blocks = [first + BLOCK * i for i in range(BLOCKS)]
+    if not row["ip"]:
+        return [{"t": b.isoformat(), "state": "unknown"} for b in blocks], None
+
+    rows, before = events.window(db, row["id"], first)
+    net = before["net"]
+    if net is None:
+        net_rows = [r for r in rows if r["kind"] in ("online", "offline")]
+        if net_rows:
+            net = "offline" if net_rows[0]["kind"] == "online" else "online"
+        else:
+            alive = health.online(row["ip"], row["port"])
+            net = None if alive is None else ("online" if alive else "offline")
+    slug = row["slug"] or ""
+    watched = {slug, slug + mediamtx_sync.TRANSCODE_SUFFIX}
+    stalled: set[str] = {slug} if before["stall"] == "stalled" else set()
+
+    # Holat o'zgarish nuqtalari: [(vaqt, tarmoq holati, tasvir to'xtaganmi)].
+    points = [(first, net, bool(stalled))]
+    for r in rows:
+        path = r["path"] or slug
+        if r["kind"] in ("online", "offline"):
+            net = r["kind"]
+        elif path in watched:
+            if r["kind"] == "stalled":
+                stalled.add(path)
+            else:
+                stalled.discard(path)
+        else:
+            continue
+        points.append((max(r["ts"], first), net, bool(stalled)))
+    # Kamera qachondan bor: qo'shilgan vaqt, lekin undan oldingi hodisa bo'lsa
+    # (import qilingan tarix) — hodisaga ishoniladi.
+    created = row["created_at"] or first
+    if before["net"] or before["stall"]:
+        created = first
+    elif rows:
+        created = min(created, rows[0]["ts"])
+
+    known = offline = 0.0
+    out = []
+    for b in blocks:
+        b_end = min(b + BLOCK, now)
+        worst = "unknown"
+        for i, (t0, net_state, is_stalled) in enumerate(points):
+            t1 = points[i + 1][0] if i + 1 < len(points) else now
+            lo, hi = max(t0, b, created), min(t1, b_end)
+            if hi <= lo:
+                continue
+            st = _state_of(net_state, is_stalled)
+            if _RANK[st] > _RANK[worst]:
+                worst = st
+            if st != "unknown":
+                secs = (hi - lo).total_seconds()
+                known += secs
+                if st == "offline":
+                    offline += secs
+        out.append({"t": b.isoformat(), "state": worst})
+    availability = round(100 * (known - offline) / known, 1) if known > 0 else None
+    return out, availability
+
+
 # Pasport xatosidagi manzil ("10.30.11.75:554 javob bermadi") — IP faqat
 # admin ko'radi, boshqa hech qayerda tashqariga chiqmaydi.
 _IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b")
@@ -341,6 +464,8 @@ def camera_details(ref: str, request: Request,
         line = rail_db.line_names(db).get(row["rail_line_id"]) if row["rail_line_id"] else None
         now = datetime.now(timezone.utc)
         rows = events.for_camera(db, row["id"], now - timedelta(days=30), now, history)
+        timeline, availability = timeline_24h(db, row, now)
+        since = online_since_map(db, [row]).get(row["id"])
 
     user = current_user(request)
     admin = api_key_ok(request) or (user is not None and user["role"] == "admin")
@@ -390,4 +515,7 @@ def camera_details(ref: str, request: Request,
         "reliability": reliability,
         "history": [{"ts": r["ts"], "kind": r["kind"], "detail": r["detail"] or ""}
                     for r in rows],
+        "timeline_24h": timeline,
+        "availability_24h": availability,
+        "online_since": since,
     }

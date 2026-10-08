@@ -11,14 +11,20 @@ yozilganda darhol tozalanadi). Baza javob bermasa — standart qiymat.
 
 Sozlamalar:
     site_name                 sayt nomi (yon menyu, sarlavha, kirish oynasi)
+    timezone                  interfeys vaqt zonasi (IANA, standart Asia/Tashkent)
+    language                  standart til: uz | uz-cyrl | ru | en
+    ui_poll_s                 xarita va ro'yxat yangilanishi, 10–300 s (/auth/me poll_s)
+    notify_outage             kamera uzilish/qaytish bildirishnomalari ko'rsatiladimi
     public_view               mehmon (kirmagan) xarita va oqimlarni ko'radimi
+                              (interfeysda "guest_view" — /public/info)
     session_hours             sessiya muddati — yangi kirishlarga
     health_interval_s         kameralar holati qanchalik tez-tez tekshiriladi
     stall_after_s             ochiq oqim muzlagan deb hisoblanadigan sukunat
     transport_check_after_s   oqim ochilmasa TCP/UDP tekshiruvi boshlanadigan vaqt
 
 Tarkibi:
-    Setting                     bitta sozlama ta'rifi (dataclass)
+    Setting                     bitta sozlama ta'rifi (dataclass); kind: str | bool | int |
+                                choice (choices ro'yxatidan)
     SETTINGS                    kalit -> Setting (tartib — sahifadagi tartib)
     SiteSettings                xizmat: get(key), view(db), update(db, changes, actor)
     site_settings               yagona nusxa
@@ -36,6 +42,7 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from database import get_db
 from database import settings as settings_db
@@ -49,31 +56,39 @@ class Setting:
     group: str
     label: str
     help: str
-    kind: str                         # str | bool | int
+    kind: str                         # str | bool | int | choice
     default: Callable[[], Any]
     minimum: int | None = None
     maximum: int | None = None
     unit: str = ""
+    choices: tuple[str, ...] = ()     # kind == "choice" — ruxsat etilgan qiymatlar
+    check: Callable[[str], bool] | None = None   # str uchun qo'shimcha tekshiruv
 
     def clean(self, value):
         """Qiymatni tekshiradi va turiga keltiradi; xato bo'lsa ValueError."""
+        if self.kind == "choice":
+            if value not in self.choices:
+                raise ValueError(f"{self.label}: {' | '.join(self.choices)} dan biri boʻlsin")
+            return value
         if self.kind == "bool":
             if not isinstance(value, bool):
-                raise ValueError(f"{self.label}: ha/yo'q bo'lishi kerak")
+                raise ValueError(f"{self.label}: ha/yoʻq boʻlishi kerak")
             return value
         if self.kind == "int":
             if isinstance(value, bool) or not isinstance(value, (int, float)) or int(value) != value:
-                raise ValueError(f"{self.label}: butun son bo'lishi kerak")
+                raise ValueError(f"{self.label}: butun son boʻlishi kerak")
             value = int(value)
             if self.minimum is not None and value < self.minimum or \
                     self.maximum is not None and value > self.maximum:
-                raise ValueError(f"{self.label}: {self.minimum}–{self.maximum} oralig'ida bo'lsin")
+                raise ValueError(f"{self.label}: {self.minimum}–{self.maximum} oraligʻida boʻlsin")
             return value
         if not isinstance(value, str):
-            raise ValueError(f"{self.label}: matn bo'lishi kerak")
+            raise ValueError(f"{self.label}: matn boʻlishi kerak")
         value = value.strip()
         if not value or (self.maximum and len(value) > self.maximum):
             raise ValueError(f"{self.label}: 1–{self.maximum} belgi")
+        if self.check is not None and not self.check(value):
+            raise ValueError(f"{self.label}: notoʻgʻri qiymat ({value})")
         return value
 
 
@@ -82,6 +97,15 @@ def _env_int(name: str, fallback: int) -> int:
         return int(float(os.environ.get(name, fallback)))
     except ValueError:
         return fallback
+
+
+def _valid_tz(name: str) -> bool:
+    """IANA vaqt zonasi nomi (Asia/Tashkent) — zoneinfo taniydimi."""
+    try:
+        ZoneInfo(name)
+        return True
+    except (ZoneInfoNotFoundError, ValueError):
+        return False
 
 
 def _public_view() -> bool:
@@ -93,24 +117,37 @@ SETTINGS: dict[str, Setting] = {s.key: s for s in (
     Setting("site_name", "Sayt", "Sayt nomi",
             "Yon menyu, brauzer sarlavhasi va kirish oynasidagi nom.",
             "str", lambda: "NIGOH", maximum=40),
-    Setting("public_view", "Kirish", "Mehmon ko'rishi",
-            "Kirmagan foydalanuvchi xarita va jonli oqimlarni ko'ra oladi (faqat ko'rish; "
+    Setting("timezone", "Sayt", "Vaqt zonasi",
+            "Interfeysda vaqtlar shu zonada koʻrsatiladi (IANA nomi, masalan Asia/Tashkent). "
+            "Statistikadagi sana/soat guruhlash serverning NIGOH_TZ zonasida qoladi.",
+            "str", lambda: "Asia/Tashkent", maximum=64, check=_valid_tz),
+    Setting("language", "Sayt", "Til",
+            "Interfeysning standart tili (foydalanuvchi oʻz profilida boshqasini tanlashi mumkin).",
+            "choice", lambda: "uz", choices=("uz", "uz-cyrl", "ru", "en")),
+    Setting("ui_poll_s", "Sayt", "Xarita va roʻyxat yangilanishi",
+            "Xarita va kameralar roʻyxati shuncha soniyada bir yangilanadi.",
+            "int", lambda: 30, minimum=10, maximum=300, unit="s"),
+    Setting("notify_outage", "Kuzatuv", "Uzilish haqida bildirishnoma",
+            "Kamera uzilgani va qayta ulangani bildirishnomalar roʻyxatida koʻrsatiladi.",
+            "bool", lambda: True),
+    Setting("public_view", "Kirish", "Mehmon koʻrishi",
+            "Kirmagan foydalanuvchi xarita va jonli oqimlarni koʻra oladi (faqat koʻrish; "
             "dashboard, guruhlar va boshqaruv yopiq).",
             "bool", _public_view),
-    Setting("session_hours", "Kirish", "Sessiya muddati",
-            "Shuncha vaqtdan keyin qaytadan kirish kerak. Yangi kirishlarga qo'llanadi.",
+    Setting("session_hours", "Kirish", "Seans muddati",
+            "Shuncha vaqtdan keyin qaytadan kirish kerak. Yangi kirishlarga qoʻllanadi.",
             "int", lambda: 12, minimum=1, maximum=168, unit="soat"),
-    Setting("health_interval_s", "Kuzatuv", "Holat tekshiruvi oralig'i",
+    Setting("health_interval_s", "Kuzatuv", "Holat tekshiruvi oraligʻi",
             "Kameralar (RTSP porti) qanchalik tez-tez tekshiriladi. Kichik qiymat — uzilish "
-            "tezroq bilinadi, lekin tarmoqqa (VPN tunnelga) yuk ko'proq.",
+            "tezroq bilinadi, lekin tarmoqqa (VPN tunnelga) yuk koʻproq.",
             "int", lambda: 60, minimum=30, maximum=600, unit="s"),
-    Setting("stall_after_s", "Kuzatuv", "Muzlash chegarasi",
-            "Ochiq oqimda shuncha vaqt bitta bayt kelmasa — \"tasvir to'xtadi\". Uzun GOP'li "
-            "kameralarda juda kichik qiymat soxta ogohlantirish beradi.",
+    Setting("stall_after_s", "Kuzatuv", "Tasvir toʻxtashi chegarasi",
+            "Ochiq oqimda shuncha vaqt bitta bayt ham kelmasa — tasvir toʻxtagan hisoblanadi. "
+            "Kalit kadrlar oraligʻi uzun kameralarda juda kichik qiymat soxta ogohlantirish beradi.",
             "int", lambda: _env_int("STALL_AFTER", 20), minimum=10, maximum=300, unit="s"),
-    Setting("transport_check_after_s", "Kuzatuv", "Transport tekshiruvi",
-            "Oqim shuncha vaqt ochilmasa (yoki buzuq kadr bersa) TCP/UDP tekshiruvi "
-            "boshlanadi va yaxshisi tanlanadi.",
+    Setting("transport_check_after_s", "Kuzatuv", "Uzatish usulini tekshirish",
+            "Oqim shuncha vaqt ochilmasa (yoki buzuq kadr bersa) TCP va UDP sinab koʻriladi "
+            "va yaxshisi tanlanadi.",
             "int", lambda: _env_int("TRANSPORT_CHECK_AFTER", 45), minimum=20, maximum=600, unit="s"),
 )}
 
@@ -161,6 +198,7 @@ class SiteSettings:
             at, by = meta.get(s.key, (None, ""))
             out.append({"key": s.key, "group": s.group, "label": s.label, "help": s.help,
                         "kind": s.kind, "min": s.minimum, "max": s.maximum, "unit": s.unit,
+                        "choices": list(s.choices) or None,
                         "value": value, "default": default, "changed": s.key in stored,
                         "updated_at": at, "updated_by": by})
         return out
@@ -174,7 +212,7 @@ class SiteSettings:
         """
         unknown = [k for k in changes if k not in SETTINGS]
         if unknown:
-            raise ValueError(f"Noma'lum sozlama: {', '.join(unknown)}")
+            raise ValueError(f"Nomaʼlum sozlama: {', '.join(unknown)}")
         cleaned = {k: (None if v is None else SETTINGS[k].clean(v)) for k, v in changes.items()}
         before, after = {}, {}
         for key, value in cleaned.items():

@@ -95,12 +95,12 @@ def admin_node_update(node_id: int, body: NodeIn):
 @router.delete("/nodes/{node_id}", status_code=204)
 def admin_node_delete(node_id: int):
     if node_id == 1:
-        raise HTTPException(400, "Asosiy tugunni o'chirib bo'lmaydi")
+        raise HTTPException(400, "Asosiy tugunni oʻchirib boʻlmaydi")
     with get_db() as db:
         used = nodes_db.camera_count(db, node_id)
         if used:
             raise HTTPException(400, f"Tugunda {used} ta kamera bor — avval "
-                                     f"ularni boshqa tugunga o'tkazing")
+                                     f"ularni boshqa tugunga oʻtkazing")
         if not nodes_db.delete(db, node_id):
             raise HTTPException(404, "Tugun topilmadi")
     clear_node_cache()

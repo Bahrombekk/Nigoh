@@ -46,6 +46,8 @@ backend/
 │  ├─ network.py         ishonchli proksi, mijoz IP manzili
 │  ├─ health.py          /health
 │  ├─ system_api.py      /admin/runtime, /admin/status
+│  ├─ system_state.py    tizim holati (api, db, mediamtx, health, disk, network)
+│  ├─ public_api.py      /public/info (kirishsiz), /system/state
 │  ├─ logs_api.py        /admin/logs — qidiruv, xulosa, fayllar
 │  ├─ settings.py        sayt sozlamalari (app_settings) — jonli qo'llanadi
 │  ├─ settings_api.py    /admin/settings, /admin/audit
@@ -53,7 +55,7 @@ backend/
 ├─ database/             BAZA — bazaga tegishli hamma narsa (database/README.md)
 │  ├─ connection.py      ulanishlar hovuzi, get_db() (tranzaksiya), qator turi
 │  ├─ schema.py          migratsiyalarni qo'llash, versiya, jadval statistikasi
-│  ├─ migrations/        0001_initial, 0002_schema_v2, 0003_camera_probe
+│  ├─ migrations/        0001_initial ... 0006_v3 (prefs, viewer, savat, bildirishnomalar)
 │  ├─ repositories/      har jadval guruhi — klass: CameraRepository, UserRepository, ...
 │  ├─ api.py             /admin/db — baza holati, versiya, hajm
 │  ├─ sql/               setup-roles.sql (rollar va ruxsatlar)
@@ -67,7 +69,7 @@ backend/
 │  ├─ media/             MediaMTX: sync, Reconciler, launcher, transport, fast_start, mapping
 │  ├─ monitoring/        fon xizmatlari: HealthMonitor, SnapshotService, PassportChecker, open_times
 │  ├─ probe/             RTSP tekshiruv, ONVIF/ISAPI pasport, saqlashda kodek/sub aniqlash
-│  └─ schemas.py state.py streaming.py views.py
+│  └─ schemas.py state.py streaming.py views.py trash.py (savat: 30 kundan keyin o'chirish)
 ├─ stats/                STATISTIKA (stats/README.md)
 │  ├─ api.py             /stats/* — har ko'rsatkich alohida (docs/STATS_API.md)
 │  ├─ overview.py        /stats/overview (dashboard yig'masi)
@@ -75,9 +77,10 @@ backend/
 │  ├─ recorder.py        StatsRecorder — 5 daqiqalik suratlar, holat o'zgarishlari
 │  └─ reporting/         sof hisob: period, engine (uzilishlar), metrics
 ├─ users/                FOYDALANUVCHILAR: api (/auth/*), admin_api (/admin/users),
-│                        access (rollar, operator hududlari), schemas
+│                        access (rollar, operator/kuzatuvchi hududlari), schemas
 ├─ walls/                VIDEO DEVOR: api (/walls), registry, mosaic
 ├─ groups/               KAMERA GURUHLARI: api (/groups) — shaxsiy/umumiy guruhlar
+├─ notifications/        BILDIRISHNOMALAR: api (/notifications), service (lenta), alerts (tizim)
 ├─ core/                 umumiy: env, paths, bus, throttle, watchdog, security, alerts, version
 │  ├─ log.py             log(service, event, ...) — yagona kirish nuqtasi
 │  └─ logs/              log tizimi: toifalar, kunlik fayllar, request_id, maxfiylik (docs/LOGGING.md)
@@ -99,12 +102,14 @@ Qoidalar:
 
 | Yo'l | Kim | Qanday |
 |---|---|---|
-| Cookie sessiya | sayt foydalanuvchisi | `POST /api/v1/auth/login` -> `nigoh_session` cookie (12 soat) |
+| Cookie sessiya | sayt foydalanuvchisi | `POST /api/v1/auth/login` -> `nigoh_session` cookie (session_hours, `remember` — 30 kun); 5 xato -> 5 daqiqa blok |
 | `X-API-Key` | tashqi backend | `.env` dagi `NIGOH_API_KEY`; admin darajasida |
 | Mehmon | hamma | faqat `PUBLIC_VIEW=1` bo'lsa, faqat ko'rish yo'llari |
 
 Rollar: `admin` — hammasi; `operator` — faqat o'ziga biriktirilgan
-hududlardagi kameralar (ro'yxat, oqim, surat, devor, SSE shu cheklov bilan).
+hududlardagi kameralar (ro'yxat, oqim, surat, devor, SSE shu cheklov bilan);
+`viewer` (Kuzatuvchi) — operator kabi o'z hududlari, lekin faqat ko'radi:
+guruh yarata/o'zgartira olmaydi, boshqaruv va sozlamalar yopiq.
 
 ## API
 
@@ -114,13 +119,16 @@ Hamma yo'l `/api/v1/...` da; `/api/...` — o'sha yo'llarning eski nomi
 
 | Bo'lim | Yo'llar | Kirish |
 |---|---|---|
-| auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` | ochiq |
+| auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /public/info` | ochiq |
+| profil | `PATCH /auth/me/prefs`, `POST /auth/password` | kirgan |
+| tizim | `GET /system/state` | kirgan / kalit / mehmon |
+| bildirishnomalar | `GET /notifications`, `POST /notifications/read` | kirgan / kalit |
 | | `POST /auth/stream`, `GET /auth/hls` — MediaMTX/nginx chaqiradi | ochiq (chipta) |
 | ko'rish | `GET /cameras`, `GET /cameras/status`, `GET /cameras/{ref}/stream`, `GET /cameras/{ref}/snapshot`, `GET /cameras/{ref}/details` (pasport, 7 kunlik ishonchlilik, tarix), `POST /streams`, `POST /walls`, `GET /events` (SSE), `POST /metrics/open`, `GET /metrics/open` (kamera kesimida ochilish vaqti), `GET /vendors` | kirgan / kalit / mehmon |
 | dashboard | `GET /stats/dashboard`, `/stats/timeline`, `/stats/overview` | kirgan / kalit |
 | statistika | `GET /stats/summary`, `/availability`, `/coverage`, `/series`, `/sla`, `/outages`, `/outages/summary`, `/daily`, `/hourly`, `/heatmap`, `/regions`, `/vendors`, `/ranking`, `/cameras/{id}`, `/rail`, `/quality`, `/feed` | kirgan / kalit |
 | guruhlar | `GET /groups`, `POST /groups`, `PATCH /groups/{id}`, `DELETE /groups/{id}`, `POST /groups/{id}/cameras` (add / remove / set) — shaxsiy; `shared` bo'lsa boshqalar ham ko'radi | kirgan / kalit |
-| boshqaruv | `/admin/cameras` (CRUD, enabled, uptime, keyframe, detect-sub), `/admin/users`, `/admin/nvr/import`, `/admin/scan`, `/admin/probe`, `/admin/nodes`, `/admin/status`, `/admin/events`, `/admin/mediamtx/*`, `/admin/uptime`, `/admin/outages/hourly`, `/admin/settings` (sayt sozlamalari, GET/PUT), `/admin/audit` (o'zgarishlar jurnali), `/devices/*` | admin / kalit |
+| boshqaruv | `/admin/cameras` (CRUD — o'chirish yumshoq, restore, bulk, export, deleted, enabled, uptime, keyframe, detect-sub; filtr/saralash serverda), `/admin/users` (+ reset-password), `/admin/nvr/import`, `/admin/scan`, `/admin/probe`, `/admin/nodes`, `/admin/status`, `/admin/events`, `/admin/mediamtx/*`, `/admin/uptime`, `/admin/outages/hourly`, `/admin/settings` (sayt sozlamalari, GET/PUT), `/admin/audit` (o'zgarishlar jurnali), `/devices/*` | admin / kalit |
 | salomatlik | `GET /health` (prefikssiz) | ochiq |
 
 `{ref}` — kamera id (`123`) yoki tashqi id (`ext:cam-014`).
@@ -128,7 +136,7 @@ Hamma yo'l `/api/v1/...` da; `/api/...` — o'sha yo'llarning eski nomi
 To'liq qo'llanma: [docs/STATS_API.md](../docs/STATS_API.md).
 Statistika endpointlarining umumiy parametrlari: `days=1..30` (oxirgi N kun,
 standart 1) yoki `from=YYYY-MM-DD&to=YYYY-MM-DD` (mahalliy sanalar), va
-`area_id` (takrorlanadi, tumanlari bilan). Operator faqat o'z hududlarini
+`area_id` (takrorlanadi, tumanlari bilan). Operator va kuzatuvchi faqat o'z hududlarini
 ko'radi — begona `area_id` 403. Kuzatuv bo'shlig'i (server ishlamagan vaqt)
 uptime'ga kirmaydi; 2 daqiqadan qisqa tugagan uzilish — "sakrash" (`blip`).
 

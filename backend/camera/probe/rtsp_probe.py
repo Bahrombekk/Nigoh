@@ -381,7 +381,7 @@ def probe(ip: str, port: int, path: str, username: str = "",
                 "resolution": "", "fps": 0.0, "audio": False}
 
     if not ip:
-        return fail("tarmoq", "IP manzil ko'rsatilmagan")
+        return fail("tarmoq", "IP manzil koʻrsatilmagan")
 
     # 1-bosqich: TCP ulanish
     try:
@@ -389,11 +389,11 @@ def probe(ip: str, port: int, path: str, username: str = "",
     except socket.gaierror:
         return fail("tarmoq", f"{ip} manzili topilmadi (DNS xatosi)")
     except socket.timeout:
-        return fail("tarmoq", f"{ip}:{port} javob bermadi — kamera o'chiq yoki "
+        return fail("tarmoq", f"{ip}:{port} javob bermadi — kamera oʻchiq yoki "
                               f"boshqa tarmoqda")
     except OSError as exc:
         return fail("tarmoq",
-                    f"{ip}:{port} ga ulanib bo'lmadi ({exc.strerror or exc})")
+                    f"{ip}:{port} ga ulanib boʻlmadi ({exc.strerror or exc})")
 
     uri = build_rtsp_url(ip, port, path)
     try:
@@ -415,7 +415,7 @@ def probe(ip: str, port: int, path: str, username: str = "",
         challenge = ""
         if code == 401:
             if not username:
-                return fail("parol", "Kamera login/parol so'rayapti — ularni kiriting")
+                return fail("parol", "Kamera login/parol soʻrayapti — ularni kiriting")
             for line in describe.split("\r\n"):
                 if line.lower().startswith("www-authenticate:"):
                     challenge = line.split(":", 1)[1].strip()
@@ -431,10 +431,10 @@ def probe(ip: str, port: int, path: str, username: str = "",
             code = _status(describe)
 
             if code == 401:
-                return fail("parol", "Login yoki parol noto'g'ri")
+                return fail("parol", "Login yoki parol notoʻgʻri")
 
         if code == 404:
-            return fail("rtsp", f"RTSP yo'li topilmadi: {path} — ishlab chiqaruvchi "
+            return fail("rtsp", f"RTSP yoʻli topilmadi: {path} — ishlab chiqaruvchi "
                                 f"shablonini tekshiring")
         if code and code >= 400:
             return fail("rtsp", f"Kamera {code} kodi bilan rad etdi")
@@ -451,8 +451,8 @@ def probe(ip: str, port: int, path: str, username: str = "",
         # qaytaradi, lekin videosiz bo'sh SDP beradi — bu ishlaydigan oqim
         # emas, xato deb qaytaramiz, aks holda skaner soxta kanallar topadi.
         if "m=video" not in describe:
-            return fail("oqim", "Kamera javob berdi, lekin bu yo'lda video "
-                                "oqim yo'q — RTSP yo'lini tekshiring")
+            return fail("oqim", "Kamera javob berdi, lekin bu yoʻlda video "
+                                "oqim yoʻq — RTSP yoʻlini tekshiring")
 
         # 4-bosqich: SETUP — kamera oqimni haqiqatan beradimi. DESCRIBE'ga
         # javob berib, SETUP'da rad etadigan kameralar uchraydi (masalan,
@@ -472,7 +472,7 @@ def probe(ip: str, port: int, path: str, username: str = "",
             try:
                 setup = _request(sock, "SETUP", setup_uri, 4, setup_auth, transport)
             except (socket.timeout, OSError):
-                return fail("oqim", "Kamera SETUP so'roviga javob bermadi")
+                return fail("oqim", "Kamera SETUP soʻroviga javob bermadi")
             setup_code = _status(setup)
             if setup_code == 461:
                 # TCP transportni bilmaydi — UDP bilan qayta urinamiz.
@@ -485,12 +485,12 @@ def probe(ip: str, port: int, path: str, username: str = "",
             if setup_code and setup_code >= 400:
                 return fail("oqim",
                             f"Kamera javob beradi, lekin oqimni bermayapti "
-                            f"(SETUP {setup_code}) — bu oqim/kanal o'chiq yoki "
-                            f"band bo'lishi mumkin, boshqa yo'lni sinang")
+                            f"(SETUP {setup_code}) — bu oqim/kanal oʻchiq yoki "
+                            f"band boʻlishi mumkin, boshqa yoʻlni sinang")
 
         if needs_transcode:
             message = (f"Ulanish muvaffaqiyatli · kodek {codec} — brauzer buni "
-                       f"o'qiy olmaydi, H.264 ga o'girib beriladi")
+                       f"oʻqiy olmaydi, H.264 ga oʻgirib beriladi")
         elif codec:
             message = f"Ulanish muvaffaqiyatli · kodek {codec}"
         else:
@@ -509,9 +509,9 @@ def probe(ip: str, port: int, path: str, username: str = "",
         # Ba'zi NVR'lar mavjud bo'lmagan kanal/oqim so'ralganda ulanishni
         # majburan uzadi (ConnectionReset) — bu tizim xatosi emas,
         # "bunday oqim yo'q" degani.
-        return fail("rtsp", f"Kamera ulanishni uzib qo'ydi "
-                            f"({exc.__class__.__name__}) — bu yo'l/kanal "
-                            f"mavjud emas bo'lishi mumkin")
+        return fail("rtsp", f"Kamera ulanishni uzib qoʻydi "
+                            f"({exc.__class__.__name__}) — bu yoʻl/kanal "
+                            f"mavjud emas boʻlishi mumkin")
     finally:
         try:
             sock.close()

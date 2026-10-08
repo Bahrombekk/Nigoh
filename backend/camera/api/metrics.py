@@ -17,20 +17,22 @@ Endpointlar (require_viewer):
     POST /api/v1/metrics/open     o'lchovni yozadi, javob 204
     GET  /api/v1/metrics/open     kamera kesimi: eng sekin ochiladiganlar
                                   (median bo'yicha), umumiy p50/p95; operator —
-                                  faqat o'z hududlari
+                                  faqat o'z hududlari; ?camera_id= — bitta
+                                  kamera: oxirgi 10 ochilish + median
 
 Ishlatadi: camera.monitoring.open_times, database (cameras), users.access
 Kim ishlatadi: app/factory.py (router); frontend pleyeri (POST),
     dashboard "Ochilish vaqti" kartasi (GET)
 """
+import statistics
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from camera.monitoring import open_times as metrics
 from database import cameras, get_db
-from users.access import allowed_areas
+from users.access import allowed_areas, check_area
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(prefix="/metrics", tags=["metrics"])
@@ -64,10 +66,33 @@ def report_open(body: OpenIn):
     return Response(status_code=204)
 
 
+def _one_camera(request: Request, camera_id: int) -> dict:
+    """Bitta kamera: oxirgi ochilishlar (yangisi birinchi) va median."""
+    with get_db() as db:
+        row = cameras.get(db, camera_id)
+    if row is None:
+        raise HTTPException(404, "Kamera topilmadi")
+    check_area(row, allowed_areas(request))
+    opens = metrics.camera_opens(camera_id)
+    totals = [ms for ms, _, _ in opens]
+    return {"camera_id": camera_id, "name": row["name"], "region": row["region"],
+            "n": len(opens),
+            "median_ms": int(statistics.median(totals)) if totals else None,
+            "opens": [{"total_ms": ms, "transport": tr,
+                       "at": datetime.fromtimestamp(at, timezone.utc)}
+                      for ms, tr, at in reversed(opens)]}
+
+
 @router.get("/open")
-def open_times(request: Request, limit: int = Query(default=8, ge=1, le=200)):
+def open_times(request: Request, limit: int = Query(default=8, ge=1, le=200),
+               camera_id: int | None = None):
     """Kamera kesimida ochilish vaqti — barcha foydalanuvchilar va devorlar
-    bo'yicha, server ishga tushganidan beri. Sekinlari (median) birinchi."""
+    bo'yicha, server ishga tushganidan beri. Sekinlari (median) birinchi.
+
+    `camera_id` berilsa — faqat shu kamera: oxirgi 10 ochilish va median
+    ({camera_id, name, region, n, median_ms, opens: [{total_ms, transport, at}]})."""
+    if camera_id is not None:
+        return _one_camera(request, camera_id)
     data = metrics.by_camera()
     allowed = allowed_areas(request)
     with get_db() as db:

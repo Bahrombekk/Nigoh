@@ -41,7 +41,8 @@ class MediaNodeRepository:
 
     def list_with_counts(self, db) -> list:
         return db.execute(
-            "SELECT n.*, (SELECT COUNT(*) FROM cameras c WHERE c.media_node_id = n.id) "
+            "SELECT n.*, (SELECT COUNT(*) FROM cameras c WHERE c.media_node_id = n.id "
+            "AND c.deleted_at IS NULL) "
             "AS cameras FROM media_nodes n ORDER BY n.id").fetchall()
 
     def names(self, db) -> dict[int, str]:

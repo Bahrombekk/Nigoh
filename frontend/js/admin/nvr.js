@@ -1,70 +1,77 @@
 /* ==========================================================================
-   admin/nvr.js — registrator (NVR) kanallarini ommaviy qo'shish
+   admin/nvr.js — "NVR ochish": registrator kanallarini ommaviy qo'shish
    --------------------------------------------------------------------------
    Vazifasi:
-     "NVR dan qo'shish" oynasi: registrator manzili va kanallari, avtomatik
-     aniqlash (skaner), avval tekshirish (dry run — jadvalda har kanal holati),
-     keyin qo'shish. Nuqta xaritadan tanlanadi, kameralar shu nuqta atrofiga
-     tarqatiladi.
+     Boshqaruv "⋯ Koʻproq → NVR ochish" oynasi (v3 dialog): registrator manzili
+     va kanallari, avtomatik aniqlash (skaner), avval tekshirish (dry run —
+     jadvalda har kanal holati), keyin qo'shish. Joy oyna ichidagi mini xaritada
+     tanlanadi (hudud ham avtomatik), kameralar shu nuqta atrofiga tarqatiladi.
 
    Eksport:
-     NvrImport   — klass: openDialog, startPicking, run(dryRun), scan, renderTable ...
-     nvrImport   — yagona nusxa
-     (boshqa modullar bu fayldan hech narsa import qilmaydi — main.js uni
-      faqat yon ta'siri, ya'ni tugmalarni ulash uchun yuklaydi)
+     NvrImport, nvrImport — klass/nusxa (boshqa modullar import qilmaydi:
+     admin.js "admin:nvr" hodisasini yuboradi, main.js faylni yon ta'sir uchun yuklaydi)
 
    Bog'liqliklar:
-     import: ../core/state.js, ../core/api.js, ../core/data.js (loadCameras),
-             ../layout/notifications.js (addEvent), ../layout/tabs.js (showTab),
-             ../core/modals.js, ./admin.js (loadAdminCameras)
-
-   DOM: #nvr-btn, #nvr-modal, #nvr-err, #n-out, #n-table, #n-save, #n-check,
-        #n-scan, #n-pick, #n-vendor, #n-ip, #n-port, #n-user, #n-pass,
-        #n-channels, #n-region, #n-prefix, #n-lat, #n-lng, #n-spread, #n-stream,
-        #f-vendor (shablonlar ro'yxati shu yerdan nusxalanadi), body.picking
+     import: ../core/state.js, ../core/api.js, ../core/icons.js, ../core/modals.js,
+             ../core/data.js (loadCameras), ./admin.js (loadAdminCameras),
+             ./camera-form.js (MiniMap, loadVendors, loadRegions, fillRegionSelect,
+             autoRegion, setFieldError, validators, showAlert)
+   DOM: #nvr-modal, #nvr-err, #n-out, #n-table, #n-save, #n-check, #n-scan, #n-map,
+        #n-vendor, #n-ip, #n-port, #n-user, #n-pass, #n-channels, #n-region, #n-prefix,
+        #n-lat, #n-lng, #n-spread, #n-stream
    Backend: POST /api/admin/nvr/import (dry_run: true — tekshirish, false — qo'shish),
             POST /api/admin/scan
 
    Qoidalar / tuzoqlar:
-     - "Qo'shish" tugmasi tekshiruvda kamida bitta kanal javob bersa yoki
-       skaner kanal topsa ochiladi.
-     - Xaritadan joy tanlash camera-form.js dagi umumiy mexanizm orqali
-       (state.picking = "nvr"; viloyat ham avtomatik to'ldiriladi).
+     - "Qoʻshish" tekshiruvda kamida bitta kanal javob bersa yoki skaner kanal topsa ochiladi.
+     - Mini xarita oyna ko'ringandan keyin invalidateSize qilinadi (MiniMap.show).
    ========================================================================== */
 import { $, esc, state, toast } from "../core/state.js";
 import { api } from "../core/api.js";
-import { loadCameras } from "../core/data.js";
-import { addEvent } from "../layout/notifications.js";
-import { showTab } from "../layout/tabs.js";
+import { hydrateIcons } from "../core/icons.js";
 import { closeModal, openModal } from "../core/modals.js";
+import { loadCameras } from "../core/data.js";
 import { loadAdminCameras } from "./admin.js";
+import { MiniMap, loadVendors, loadRegions, fillRegionSelect, autoRegion, setFieldError, validators, showAlert } from "./camera-form.js";
 
-/* ---------- NVR dan ommaviy qo'shish ---------- */
+const num = (v) => { const n = Number(String(v).replace(",", ".").trim()); return String(v).trim() && Number.isFinite(n) ? n : null; };
+
 export class NvrImport {
   constructor() {
-    $("nvr-btn").addEventListener("click", () => this.openDialog());
-    $("n-pick").addEventListener("click", () => this.startPicking());
+    hydrateIcons($("nvr-modal"));
+    this.mm = new MiniMap($("n-map"), (lat, lng) => {
+      $("n-lat").value = lat.toFixed(5); $("n-lng").value = lng.toFixed(5);
+      setFieldError($("n-lat"), ""); setFieldError($("n-lng"), "");
+      autoRegion($("n-region"), lat, lng);
+    });
+    ["n-lat", "n-lng"].forEach((id) => $(id).addEventListener("change", () => {
+      const lat = num($("n-lat").value), lng = num($("n-lng").value);
+      if (lat != null && lng != null) { this.mm.set(lat, lng, false); autoRegion($("n-region"), lat, lng); }
+    }));
+    $("n-ip").addEventListener("blur", () => setFieldError($("n-ip"), validators.ip($("n-ip").value)));
+    $("n-port").addEventListener("blur", () => setFieldError($("n-port"), validators.port($("n-port").value)));
+    $("n-lat").addEventListener("blur", () => setFieldError($("n-lat"), validators.lat($("n-lat").value, false)));
+    $("n-lng").addEventListener("blur", () => setFieldError($("n-lng"), validators.lng($("n-lng").value, false)));
+
+    document.addEventListener("admin:nvr", () => this.openDialog());
     $("n-scan").addEventListener("click", () => this.scan());
     $("n-check").addEventListener("click", () => this.run(true));
     $("n-save").addEventListener("click", () => this.run(false));
   }
 
-  openDialog() {
-    $("nvr-err").classList.remove("show");
-    $("n-out").className = "probe-out";
+  async openDialog() {
+    if (!state.vendors.length) await loadVendors().catch(() => {});
+    await loadRegions();
+    showAlert($("nvr-err"), null);
+    showAlert($("n-out"), null);
     $("n-table").innerHTML = "";
     $("n-save").disabled = true;
-    $("n-vendor").innerHTML = $("f-vendor").innerHTML;
+    $("n-vendor").innerHTML = (state.vendors || []).map((v) => '<option value="' + esc(v.id) + '">' + esc(v.name) + "</option>").join("");
     $("n-vendor").value = "hikvision";
+    fillRegionSelect($("n-region"), $("n-region").value, "Koordinatadan aniqlansin");
+    ["n-ip", "n-port", "n-lat", "n-lng"].forEach((id) => setFieldError($(id), ""));
     openModal("nvr-modal");
-  }
-
-  startPicking() {
-    $("nvr-modal").classList.remove("open");
-    state.picking = "nvr";
-    document.body.classList.add("picking");
-    showTab("map");
-    toast("Xaritada registrator joylashgan nuqtani bosing");
+    this.mm.show(num($("n-lat").value), num($("n-lng").value));
   }
 
   body(dryRun) {
@@ -75,62 +82,49 @@ export class NvrImport {
       password: $("n-pass").value,
       vendor: $("n-vendor").value,
       channels: $("n-channels").value.trim(),
-      region: $("n-region").value.trim(),
+      region: $("n-region").value,
       name_prefix: $("n-prefix").value.trim(),
-      lat: parseFloat($("n-lat").value),
-      lng: parseFloat($("n-lng").value),
+      lat: num($("n-lat").value),
+      lng: num($("n-lng").value),
       spread_m: Number($("n-spread").value) || 0,
       stream: $("n-stream").value,
       probe: true,
-      dry_run: dryRun
+      dry_run: dryRun,
     };
   }
 
-  validate(body) {
-    const err = $("nvr-err");
-    const fail = (m) => { err.textContent = m; err.classList.add("show"); return false; };
-    err.classList.remove("show");
-    if (!body.ip) return fail("NVR manzilini kiriting");
-    if (!body.region) return fail("Hududni kiriting");
-    if (Number.isNaN(body.lat) || Number.isNaN(body.lng))
-      return fail("Koordinatani xaritadan tanlang yoki qo'lda kiriting");
-    return true;
-  }
-
-  showOut(kind, tx) {
-    const el = $("n-out");
-    el.className = "probe-out show " + kind;
-    el.textContent = tx;
+  validate(b) {
+    let ok = setFieldError($("n-ip"), validators.ip($("n-ip").value));
+    ok = setFieldError($("n-port"), validators.port($("n-port").value)) && ok;
+    ok = setFieldError($("n-lat"), validators.lat($("n-lat").value, true)) && ok;
+    ok = setFieldError($("n-lng"), validators.lng($("n-lng").value, true)) && ok;
+    if (!ok) showAlert($("nvr-err"), "error", "Maydonlarni tekshiring", b.lat == null ? "Registrator joyini xaritada tanlang" : "");
+    else showAlert($("nvr-err"), null);
+    return ok;
   }
 
   async run(dryRun) {
     const body = this.body(dryRun);
     if (!this.validate(body)) return;
-
     const btn = dryRun ? $("n-check") : $("n-save");
     btn.disabled = true;
-    this.showOut("wait", "Kanallar tekshirilmoqda — biroz kuting…");
+    showAlert($("n-out"), "wait", "Kanallar tekshirilmoqda…", "Biroz kuting");
     try {
-      const res = await api("/api/admin/nvr/import", {
-        method: "POST", body: JSON.stringify(body)
-      });
+      const res = await api("/api/admin/nvr/import", { method: "POST", body: JSON.stringify(body) });
       this.renderTable(res.planned);
       const ok = res.reachable;
       if (dryRun) {
-        this.showOut(ok ? "ok" : "bad",
-          res.planned.length + " ta kanaldan " + ok + " tasi javob berdi" +
-          (ok ? " — «Qo'shish» tugmasini bosing" : ""));
+        showAlert($("n-out"), ok ? "success" : "error", res.planned.length + " ta kanaldan " + ok + " tasi javob berdi",
+                  ok ? "«Qoʻshish» tugmasini bosing" : "Manzil, login va parolni tekshiring");
         $("n-save").disabled = ok === 0;
       } else {
-        this.showOut("ok", res.created + " ta kamera qo'shildi");
         closeModal("nvr-modal");
-        await loadCameras();
-        if (state.tab === "admin") await loadAdminCameras(0);
-        addEvent(body.region + " — NVR'dan " + res.created + " ta kamera qo'shildi", "ok");
-        toast(res.created + " ta kamera qo'shildi — darhol ishlatsa bo'ladi");
+        await loadCameras().catch(() => {});
+        if (state.tab === "admin") await loadAdminCameras(0).catch(() => {});
+        toast(res.created + " ta kamera qoʻshildi");
       }
     } catch (e) {
-      this.showOut("bad", e.message);
+      showAlert($("n-out"), "error", "Bajarilmadi", e.message);
     }
     btn.disabled = false;
   }
@@ -138,42 +132,34 @@ export class NvrImport {
   renderTable(planned) {
     if (!planned || !planned.length) { $("n-table").innerHTML = ""; return; }
     const rows = planned.map((p) => {
-      const mark = p.ok === null ? "·" : p.ok ? "✓" : "✕";
-      const cls = p.ok === null ? "" : p.ok ? "ok" : "bad";
-      return '<tr class="' + cls + '"><td>' + p.channel + "</td>" +
-             "<td>" + mark + "</td>" +
-             "<td>" + esc(p.codec || "—") + (p.transcode ? " →H264" : "") + "</td>" +
-             '<td title="' + esc(p.message) + '">' + esc(p.message.slice(0, 44)) + "</td></tr>";
+      const st = p.ok === null ? "unknown" : p.ok ? "online" : "offline";
+      const tx = p.ok === null ? "—" : p.ok ? "Javob berdi" : "Javobsiz";
+      return '<tr><td class="mono-xs">' + p.channel + "-kanal</td>" +
+        '<td><span class="badge" data-status="' + st + '"><span class="dot" data-status="' + st + '"></span>' + tx + "</span></td>" +
+        '<td><span class="codec-tag">' + esc((p.codec || "—") + (p.transcode ? " → H.264" : "")) + "</span></td>" +
+        '<td><span class="ellipsis" title="' + esc(p.message) + '">' + esc(p.message || "") + "</span></td></tr>";
     }).join("");
-    $("n-table").innerHTML =
-      '<table class="nvr-table"><thead><tr><th>Kanal</th><th></th><th>Kodek</th>' +
-      "<th>Holat</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    $("n-table").innerHTML = '<div class="ad-ntable"><table class="tbl"><thead><tr><th>Kanal</th><th>Holat</th><th>Kodek</th><th>Izoh</th></tr></thead><tbody>' +
+      rows + "</tbody></table></div>";
   }
 
   async scan() {
-    const ip = $("n-ip").value.trim();
-    if (!ip) { this.showOut("bad", "Avval NVR manzilini kiriting"); return; }
+    if (!setFieldError($("n-ip"), validators.ip($("n-ip").value))) return;
     $("n-scan").disabled = true;
-    this.showOut("wait", "Qurilma aniqlanmoqda — kanallar sanalmoqda…");
+    showAlert($("n-out"), "wait", "Qurilma aniqlanmoqda…", "Kanallar sanalmoqda (10–30 s)");
     try {
-      const res = await api("/api/admin/scan", {
-        method: "POST",
-        body: JSON.stringify({
-          ip,
-          port: Number($("n-port").value) || 554,
-          username: $("n-user").value.trim(),
-          password: $("n-pass").value || ""
-        })
-      });
-      if (!res.found) { this.showOut("bad", res.message); }
+      const res = await api("/api/admin/scan", { method: "POST", body: JSON.stringify({
+        ip: $("n-ip").value.trim(), port: Number($("n-port").value) || 554,
+        username: $("n-user").value.trim(), password: $("n-pass").value || "" }) });
+      if (!res.found) showAlert($("n-out"), "error", "Aniqlab boʻlmadi", res.message);
       else {
-        $("n-vendor").value = res.vendor;
+        if ([...$("n-vendor").options].some((o) => o.value === res.vendor)) $("n-vendor").value = res.vendor;
         $("n-channels").value = res.channels.map((c) => c.channel).join(",");
-        this.showOut("ok", res.vendor_name + " — " + res.channels.length +
-          " ta jonli kanal topildi; hudud va nuqtani belgilab «Qo'shish»ni bosing");
+        showAlert($("n-out"), "success", "Qurilma aniqlandi: " + res.vendor_name,
+                  res.channels.length + " ta jonli kanal · hudud va nuqtani belgilab «Qoʻshish»ni bosing");
         $("n-save").disabled = false;
       }
-    } catch (e) { this.showOut("bad", e.message); }
+    } catch (e) { showAlert($("n-out"), "error", "Aniqlab boʻlmadi", e.message); }
     $("n-scan").disabled = false;
   }
 }

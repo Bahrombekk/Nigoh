@@ -66,7 +66,7 @@ def batch_streams(body: StreamsIn, request: Request):
     ko'rilsa serverdan chiqadigan taxminiy trafik.
     """
     if body.quality not in ("", "sub"):
-        raise HTTPException(400, "quality faqat '' yoki 'sub' bo'lishi mumkin")
+        raise HTTPException(400, "quality faqat '' yoki 'sub' boʻlishi mumkin")
 
     with get_db() as db:
         rows = {str(ref): resolve_ref(db, str(ref)) for ref in body.ids}
@@ -77,7 +77,7 @@ def batch_streams(body: StreamsIn, request: Request):
         if row is None:
             return key, {"error": "topilmadi"}, 0.0
         if not area_allowed(row, areas):
-            return key, {"error": "ruxsat yo'q"}, 0.0
+            return key, {"error": "ruxsat yoʻq"}, 0.0
         state = camera_state(row)
         if state in ("disabled", "offline"):
             return key, {"error": state}, 0.0

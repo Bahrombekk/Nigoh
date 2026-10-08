@@ -287,8 +287,8 @@ def _remember(row, udp: bool) -> None:
     with get_db() as db:
         cameras.set_rtsp_udp(db, row["id"], udp)
         events.add(db, "transport", camera_id=row["id"], path=row["slug"],
-                   detail=f"RTSP transporti {'UDP' if udp else 'TCP'} ga "
-                          f"o'tkazildi (avtomatik o'lchov)")
+                   detail=f"Uzatish usuli {'UDP' if udp else 'TCP'} ga "
+                          f"oʻtkazildi (avtomatik tekshiruv)")
     log("transport", "rtsp_transport_switched", slug=row["slug"],
         transport="udp" if udp else "tcp", at=at)
 

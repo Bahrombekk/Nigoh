@@ -71,7 +71,7 @@ class CameraIn(BaseModel):
     @classmethod
     def _check_source(cls, v: str) -> str:
         if v not in ("rtsp", "manual"):
-            raise ValueError("source_type faqat 'rtsp' yoki 'manual' bo'lishi mumkin")
+            raise ValueError("source_type faqat 'rtsp' yoki 'manual' boʻlishi mumkin")
         return v
 
     @field_validator("external_id")
@@ -81,7 +81,7 @@ class CameraIn(BaseModel):
         # URL yo'lida ishlatiladi — faqat xavfsiz belgilar.
         if v and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", v):
             raise ValueError("external_id faqat harf, raqam, nuqta, chiziqcha "
-                             "va pastki chiziqdan iborat bo'lishi mumkin")
+                             "va pastki chiziqdan iborat boʻlishi mumkin")
         return v
 
     @field_validator("ip")
@@ -91,7 +91,7 @@ class CameraIn(BaseModel):
         # IP yoki DNS nomi (DDNS orqali ulanadigan registratorlar). Bazadagi
         # CHECK bilan bir xil qoida — xato bu yerda tushunarli matn bilan chiqsin.
         if v and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.:-]*", v):
-            raise ValueError("IP manzil yoki host nomi noto'g'ri")
+            raise ValueError("IP manzil yoki host nomi notoʻgʻri")
         return v
 
     def validate_complete(self) -> None:

@@ -43,7 +43,7 @@ def test_onlayn_va_uzilgan(env):
 
 def test_tasvirsiz_sabablari(env):
     assert state.camera_state_reason(row(probe_error="parol: Login yoki parol noto'g'ri")) == \
-        ("stalled", "parol noto'g'ri")
+        ("stalled", "parol notoʻgʻri")
     st, why = state.camera_state_reason(row(snapshot_at=NOW - timedelta(minutes=50)))
     assert st == "stalled" and "50 daqiqa" in why
     assert state.camera_state_reason(row(snapshot_at=None))[0] == "stalled"

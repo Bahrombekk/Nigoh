@@ -125,11 +125,23 @@ urls = requests.get(f"{NIGOH}/cameras/{cam['id']}/stream", headers=H).json()
 
 ## Autentifikatsiya modeli
 
-- Sessiya **httponly cookie** (`nigoh_session`), 12 soat. Login:
-  `POST /api/v1/auth/login {"username", "password"}`.
-- Ikki rol: `admin` (hammasi) va `operator` (faqat biriktirilgan
-  hududlardagi kameralar — ro'yxat, oqim, surat avtomatik filtrlanadi).
-- Operatorlar `POST /api/v1/admin/users` bilan yaratiladi:
+- Sessiya **httponly cookie** (`nigoh_session`), `session_hours` (standart
+  12 soat) yoki `remember: true` bilan 30 kun. Login:
+  `POST /api/v1/auth/login {"username", "password", "remember"?}`.
+  5 ta noto'g'ri urinish (login + IP bo'yicha) — 5 daqiqa blok: 401 javobda
+  `remaining`, blok davomida 429 `{"detail", "retry_after"}`.
+- Uch rol: `admin` (hammasi), `operator` (faqat biriktirilgan hududlardagi
+  kameralar — ro'yxat, oqim, surat avtomatik filtrlanadi; guruhlar) va
+  `viewer` — "Kuzatuvchi" (v3): o'z hududlarini faqat ko'radi (xarita,
+  dashboard, devor), guruh yarata/o'zgartira olmaydi, boshqaruv va
+  sozlamalar yopiq.
+- Profil: `GET /api/v1/auth/me` (rol, hududlar, `full_name`, `prefs`,
+  `session_hours`, `poll_s`, `version`), `PATCH /api/v1/auth/me/prefs`,
+  `POST /api/v1/auth/password {"current", "new"}`; admin vaqtinchalik parol
+  beradi: `POST /api/v1/admin/users/{id}/reset-password`. To'liq v3
+  shartnomasi: `docs/V3_API.md`.
+- Operatorlar va kuzatuvchilar `POST /api/v1/admin/users` bilan yaratiladi
+  (`"role": "viewer"` — kuzatuvchi):
   ```json
   {"username": "op1", "password": "...", "role": "operator",
    "regions": ["Toshkent", "Buxoro"]}
@@ -167,7 +179,9 @@ beryaptimi, parol to'g'rimi, kodek/o'lcham/FPS qanday.
 
 | Endpoint | Nima beradi |
 |---|---|
-| `GET /api/v1/admin/status` | bir qarashda: MediaMTX tirikmi, health sweep, muzlagan oqimlar, tugunlar holati |
+| `GET /api/v1/admin/status` | bir qarashda: MediaMTX tirikmi (+ `mediamtx_uptime_s`), health sweep, `network.latency_ms`, disk (`used_pct`), muzlagan oqimlar, tugunlar holati |
+| `GET /api/v1/system/state` | ko'ruvchi har kimga: `ok / degraded / down` va xizmatlar (api, db, mediamtx, health, disk, network) — ichki manzilsiz |
+| `GET /api/v1/notifications` | kamera uzilishlari va tizim bildirishnomalari (disk ≥ 80 %, MediaMTX ishlamayapti, baza sekin), o'qilganlik foydalanuvchi bo'yicha |
 | `GET /api/v1/admin/nodes` | har tugun: `status` (`online/degraded/offline`), tayyor oqimlar, tomoshabinlar, trafik |
 | `GET /api/v1/admin/events` | media hodisalari: oqim muzladi/tiklandi, MediaMTX qayta ko'tarildi |
 | har kamerada `state` | `online / offline / stalled / unknown / disabled` |

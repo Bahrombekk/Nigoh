@@ -10,8 +10,11 @@
      kamerani oldindan uyg'otish (prewarm).
 
    Eksport:
-     Player                    — klass: open(cam, useHevc, quality), stop(), setMsg(text, kind);
-                                 maydonlar: video, onOpen(ms, mode), mode
+     Player                    — klass: open(cam, useHevc, quality), stop(), retry(), setMsg(text, kind);
+                                 maydonlar: video, onOpen(ms, mode), mode,
+                                 onState(kind, text) — ixtiyoriy: har xabar o'zgarishida
+                                 ("wait" | "fail" | "" — tozalandi); devor plitkasi o'z
+                                 ko'rinishini shu bilan chizadi
      createPlayer(video, msgEl) — new Player(...) (eski nom)
      WebRtcHealth              — klass: isDead(), note(ok) — WebRTC jim qolishini sanaydi
      webrtcHealth              — yagona nusxa
@@ -94,7 +97,7 @@ export class WebRtcHealth {
     if (this.webrtcJim === WEBRTC_JIM_CHEGARA) {
       console.warn("Nigoh: WebRTC kadr bermayapti — bu seansda faqat HLS " +
                    "ishlatiladi. Serverda webrtcAdditionalHosts sozlanmagan " +
-                   "yoki ICE porti yopiq bo'lishi mumkin.");
+                   "yoki ICE porti yopiq boʻlishi mumkin.");
     }
   }
 }
@@ -107,7 +110,7 @@ export function noteWebRtc(ok) { webrtcHealth.note(ok); }
 /* ---------- Video pleyer (WebRTC -> HLS) ----------
    Har bir pleyer o'z holatini olib yuradi — devorda bir nechta birga ishlaydi. */
 
-const FAIL_MSG = "Oqim ochilmadi — MediaMTX ishlayaptimi va kamera ulanganmi tekshiring";
+const FAIL_MSG = "Oqim ochilmadi — MediaMTX ishlayotganini va kamera ulanganini tekshiring";
 
 export class Player {
   constructor(video, msgEl) {
@@ -119,6 +122,7 @@ export class Player {
     this.onOpen = null;
     this.last = null;
     this.onCleanup = null;
+    this.onState = null;
     msgEl.classList.add("pmsg");
     msgEl.addEventListener("click", (e) => {
       if (!msgEl.classList.contains("fail") || !this.last) return;
@@ -133,6 +137,12 @@ export class Player {
     msgEl.textContent = text;
     msgEl.classList.toggle("wait", kind === "wait");
     msgEl.classList.toggle("fail", kind === "fail");
+    if (this.onState) this.onState(text ? (kind || "") : "", text);
+  }
+
+  /* Oxirgi open() ni qayta chaqirish ("Qayta ulash"). */
+  retry() {
+    if (this.last) this.open(...this.last);
   }
 
   stop() {
@@ -206,7 +216,7 @@ export class Player {
           else this.setMsg("Kamera oqim bermayapti — kamera yoki registratorni tekshiring", "fail");
           return;
         }
-        this.setMsg("Zaxira yo'l orqali ulanmoqda…", "wait");
+        this.setMsg("Zaxira yoʻl orqali ulanmoqda…", "wait");
         this.playHls(urls.stream_url, staleFn, onFail);
       });
       return;
@@ -322,9 +332,9 @@ export class Player {
       // nosozlik emas, kamerani uyg'otish narxi. Buni aytib turish
       // "ishlamayapti" degan xulosaning oldini oladi.
       const bosqichlar = [
-        [6000, "Kamera uyg'otilmoqda…"],
-        [15000, "Kamera uyg'onmoqda — birinchi ochilish sekinroq…"],
-        [30000, "Hali ham kutilmoqda (uzoq keyframe oralig'i)…"]
+        [6000, "Kamera uygʻotilmoqda…"],
+        [15000, "Kamera uygʻonmoqda — birinchi ochilish sekinroq…"],
+        [30000, "Hali ham kutilmoqda (kalit kadrlar oraligʻi uzun)…"]
       ];
       const kutishTimerlari = bosqichlar.map(([ms, matn]) =>
         setTimeout(() => { if (!staleFn()) this.setMsg(matn, "wait"); }, ms));

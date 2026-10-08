@@ -77,7 +77,7 @@ VENDORS = [
     {"id": "reolink", "name": "Reolink", "path": "/h264Preview_01_main", "port": 554},
     {"id": "amcrest", "name": "Amcrest", "path": "/cam/realmonitor?channel=1&subtype=0", "port": 554},
     {"id": "holowits", "name": "Holowits / Huawei", "path": "/LiveMedia/ch1/Media1", "port": 554},
-    {"id": "boshqa", "name": "Boshqa (qo'lda)", "path": "/stream1", "port": 554},
+    {"id": "boshqa", "name": "Boshqa (qoʻlda)", "path": "/stream1", "port": 554},
 ]
 
 # Kanal raqami bilan ishlaydigan (NVR bo'la oladigan) ishlab chiqaruvchilar —

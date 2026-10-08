@@ -18,12 +18,13 @@ API ikki prefiksda tinglaydi:
 Kirish darajalari (`mount()` da beriladi):
 
     kirishsiz        users/api.py — /auth/stream ni MediaMTX, /auth/hls ni
-                     nginx chaqiradi (o'z chipta tekshiruvi bor), login/me
-    require_viewer   camera/api: cameras, streams, events, metrics; walls —
-                     kalit, sessiya yoki (PUBLIC_VIEW=1) mehmon; operator
-                     hududi endpoint ichida tekshiriladi
+                     nginx chaqiradi (o'z chipta tekshiruvi bor), login/me;
+                     app/public_api.py — /public/info
+    require_viewer   camera/api: cameras, streams, events, metrics; walls;
+                     /system/state — kalit, sessiya yoki (PUBLIC_VIEW=1) mehmon;
+                     operator/kuzatuvchi hududi endpoint ichida tekshiriladi
     require_user     stats/api.py — dashboard; groups/api.py — kamera guruhlari;
-                     mehmonga yopiq
+                     notifications/api.py — bildirishnomalar; mehmonga yopiq
     key_guard        boshqaruv: camera/api/admin, users/admin_api,
                      app/system_api, camera/api/mediamtx, database/api,
                      camera/api/nodes, stats/admin_api — routerning o'zida
@@ -68,6 +69,7 @@ from app.deps import key_guard, require_user, require_viewer
 from app.health import router as health_router
 from app.logs_api import router as logs_router
 from app.network import client_ip
+from app.public_api import public_router, state_router
 from app.settings_api import router as settings_router
 from app.system_api import router as system_router
 from camera.api.admin import router as camera_admin_router
@@ -85,6 +87,7 @@ from core.logs import context as log_context
 from core.version import VERSION
 from database.api import router as database_router
 from groups.api import router as groups_router
+from notifications.api import router as notifications_router
 from stats.admin_api import router as analytics_router
 from stats.api import router as stats_router
 from users.access import require_admin
@@ -105,7 +108,8 @@ Kirish uch yo'l bilan:
 
 Rollar: `admin` hammasini ko'radi va boshqaradi; `operator` faqat o'ziga
 biriktirilgan hududlardagi kameralarni ko'radi (ro'yxat, oqim, surat,
-devor, SSE — hammasi shu cheklov bilan).
+devor, SSE — hammasi shu cheklov bilan); `viewer` (Kuzatuvchi) — operator
+kabi o'z hududlari, lekin faqat ko'radi (guruh yarata olmaydi).
 
 Bo'limlar:
 
@@ -163,7 +167,7 @@ class _NoCacheStatic(StaticFiles):
 # Ro'yxat shu yerda — yangi CDN qo'shilsa, sahifa jimgina buzilmasin.
 _CSP = (
     "default-src 'self'; "
-    "img-src 'self' data: blob: https://*.tile.openstreetmap.org "
+    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://server.arcgisonline.com "
     "https://tile.openstreetmap.org https://unpkg.com; "
     "media-src 'self' blob: http: https:; "
     "connect-src 'self' http: https: ws: wss:; "
@@ -296,6 +300,10 @@ def create_app() -> FastAPI:
     # auth — kirishsiz: /auth/stream ni MediaMTX, /auth/hls ni nginx
     # chaqiradi (o'z chipta tekshiruvi bor), login/me — sayt kirishi.
     mount(auth_router)
+    # v3: kirish oynasi uchun sayt nomi/versiya — kirishsiz.
+    mount(public_router)
+    # Tizim holati chipi — ko'ra oladigan har kimga (mehmon ham, public_view bo'lsa).
+    mount(state_router, require_viewer)
     # Ko'rish: kalit, sessiya yoki mehmon; operator hududi endpoint ichida.
     for router in (cameras_router, streams_router, events_router,
                    walls_router, metrics_router):
@@ -304,6 +312,8 @@ def create_app() -> FastAPI:
     mount(stats_router, require_user)
     # Kamera guruhlari — shaxsiy, mehmonga yopiq; egalik endpoint ichida.
     mount(groups_router, require_user)
+    # Bildirishnomalar — kirganlar; operator/kuzatuvchi hududi endpoint ichida.
+    mount(notifications_router, require_user)
     # Boshqaruv: admin/nodes/analytics routerlarining o'zida require_admin
     # bor; key_guard xato kalitni sekinlashtiradi. devices'da yo'q edi.
     for router in (camera_admin_router, users_admin_router, system_router, mediamtx_router,

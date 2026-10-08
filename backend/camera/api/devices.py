@@ -75,7 +75,7 @@ def _get_job(job_id: str) -> dict:
     with _jobs_lock:
         job = _jobs.get(job_id)
     if job is None:
-        raise HTTPException(404, "Skan topilmadi yoki muddati o'tgan")
+        raise HTTPException(404, "Skan topilmadi yoki muddati oʻtgan")
     return job
 
 
@@ -220,7 +220,7 @@ def device_information(ip: str = "", username: str = "", password: str = "",
     info = devinfo.device_info(ip, username, password)
     if info is None:
         raise HTTPException(502, "Qurilma pasport bermadi — ONVIF/ISAPI "
-                                 "o'chiq yoki login noto'g'ri")
+                                 "oʻchiq yoki login notoʻgʻri")
     if camera_id is not None and (info["model"] or info["firmware"]):
         with get_db() as db:
             cameras.set_passport(db, [camera_id], info["model"], info["firmware"])

@@ -145,7 +145,7 @@ class ReportRepository:
         for r in rows:
             parsed = rail.parse_km_picket(r["name"])
             if parsed is None and rail.looks_like_km(r["name"]):
-                out["km_name_mismatch"].append(item(r, "nomdagi km/piket o'qilmadi"))
+                out["km_name_mismatch"].append(item(r, "nomdagi km/piket oʻqilmadi"))
             elif parsed and r["km"] is not None and parsed != (r["km"], r["picket"]):
                 out["km_name_mismatch"].append(
                     item(r, f"nomda {parsed[0]}/{parsed[1]}, bazada {r['km']}/{r['picket']}"))

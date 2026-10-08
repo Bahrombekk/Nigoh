@@ -47,9 +47,10 @@ ko'rsatkichlarning yig'indisi, yangi integratsiyada yuqoridagilarni ishlating.
   * brauzer: cookie sessiya (`POST /api/v1/auth/login`);
   * tashqi tizim: `X-API-Key: <NIGOH_API_KEY>` sarlavhasi.
 * Kirmagan so'rov — `401`.
-* **Operator** faqat o'ziga biriktirilgan hududlarni ko'radi: barcha
-  javoblar avtomatik shu hududlar bilan cheklanadi. Begona `area_id`
-  so'rasa — `403`. Admin va kalit — hamma hudud.
+* **Operator** va **kuzatuvchi** (`viewer`, v3) faqat o'ziga biriktirilgan
+  hududlarni ko'radi: barcha javoblar avtomatik shu hududlar bilan
+  cheklanadi. Begona `area_id` so'rasa — `403`. Admin va kalit — hamma hudud.
+* Yumshoq o'chirilgan (savatdagi) kameralar hech bir ko'rsatkichga kirmaydi.
 
 ```bash
 curl -H "X-API-Key: $NIGOH_API_KEY" "http://192.168.1.155:8010/api/v1/stats/summary"
@@ -110,7 +111,7 @@ so'rasa ham baza bir marta o'qiladi. 157 kamerada 30 kunlik hisob
 | Kod | Qachon |
 |---|---|
 | `401` | Kirilmagan / kalit yo'q |
-| `403` | Operator begona hududni yoki kamerani so'radi |
+| `403` | Operator/kuzatuvchi begona hududni yoki kamerani so'radi |
 | `404` | Kamera topilmadi |
 | `409` | Kamera kuzatilmaydi (o'chirilgan yoki RTSP emas) — `cameras/{id}` |
 | `422` | Parametr noto'g'ri: `days` > 30, noto'g'ri sana, noma'lum `by`/`mode` |
@@ -122,10 +123,13 @@ so'rasa ham baza bir marta o'qiladi. 157 kamerada 30 kunlik hisob
 
 **Savol:** hozir nechta kamera ishlayapti?
 
-Parametrlar: `area_id`. Davr yo'q — joriy lahza.
+Parametrlar: `area_id`; `compare=1` (v3) — `previous` qo'shiladi. Davr yo'q —
+joriy lahza (`days` faqat `compare` uchun: qancha oldingi holat bilan
+solishtirish, standart 1 kun).
 
 ```bash
 curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/summary"
+curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/summary?compare=1&days=1"
 ```
 
 ```json
@@ -147,8 +151,10 @@ curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/summary"
 | `measured` | Holati o'lchanadiganlar (`online + stalled + offline`) |
 | `online_pct` | `online / measured`, % |
 | `with_location`, `with_km` | Koordinatasi / km'i bor kameralar |
+| `previous` | Faqat `compare=1`: `days` oldingi eng yaqin 5 daqiqalik surat (1 soat ichida) — `{"at", "measured", "online", "online_pct"}`; surat bo'lmasa `null`. Tarixda holatlar kesimi (`by_state`) saqlanmaydi — faqat kuzatilgan va onlayn soni |
 
-**Qayerda ishlatiladi:** KPI kartalari, sarlavhadagi "141 / 157 onlayn".
+**Qayerda ishlatiladi:** KPI kartalari, sarlavhadagi "141 / 157 onlayn",
+v3 dashboard'dagi "kechagiga nisbatan" o'zgarish.
 
 ---
 
@@ -157,10 +163,12 @@ curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/summary"
 
 **Savol:** kameralar davr davomida qancha vaqt ishladi?
 
-Parametrlar: davr, `area_id`.
+Parametrlar: davr, `area_id`; `compare=1` (v3) — `previous`: oldingi teng
+davr (`[from − davomiylik, from)`) uchun xuddi shu shakldagi hisob.
 
 ```bash
 curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/availability?days=7"
+curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/availability?days=7&compare=1"
 ```
 
 ```json
@@ -189,6 +197,7 @@ curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/availability?days=7"
 | `camera_hours_*` | Kuzatilgan va o'chiq kamera-soatlar |
 | `never_down` | Davrda bir marta ham uzilmagan kameralar |
 | `distribution` | Kameralar uptime oraliqlari bo'yicha — "nechta kamera 99% dan yuqori?" |
+| `previous` | Faqat `compare=1`: oldingi teng davr (o'sha maydonlar, o'z `from`/`to` bilan). Hodisalar 30 kun saqlanadi — 30 kunlik davrning oldingisi deyarli kuzatilmagan bo'ladi, `previous.coverage_pct` shuni ko'rsatadi |
 
 ---
 
@@ -233,6 +242,7 @@ Parametrlar: davr, `area_id`, `step`:
 |---|---|---|
 | `5m` | Har 5 daqiqalik o'lchov (xom) | 1 kun |
 | `hour` | Soatlik o'rtacha | 7 kun |
+| `6h` | 6 soatlik o'rtacha (mahalliy 00/06/12/18 dan; v3) | 30 kun |
 | `day` | Kunlik o'rtacha (mahalliy sana) | 30 kun |
 
 ```bash
@@ -250,7 +260,7 @@ curl -H "X-API-Key: $KEY" "$HOST/api/v1/stats/series?days=1&step=hour"
 ```
 
 Kuzatuv bo'lmagan oraliq **qaytmaydi** — grafikda chiziqni uzing va
-bo'shliqni ko'rsating, nolga tushirmang. `hour`/`day` da `online`/`total`
+bo'shliqni ko'rsating, nolga tushirmang. `hour`/`6h`/`day` da `online`/`total`
 o'rtacha bo'lgani uchun kasr bo'lishi mumkin.
 
 ---

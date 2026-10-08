@@ -10,6 +10,10 @@ app/
 ├─ network.py     ishonchli proksilar (TRUSTED_PROXIES) va client_ip
 ├─ health.py      GET /health — kalitsiz, Docker HEALTHCHECK
 ├─ system_api.py  GET /admin/runtime, /admin/status — faqat admin
+├─ system_state.py  tizim holati hisobi (api, db, mediamtx, health, disk, network), 5 s kesh
+├─ public_api.py  GET /public/info (kirishsiz), GET /system/state (require_viewer, ichki manzilsiz)
+├─ settings.py settings_api.py audit.py  sayt sozlamalari (v3: timezone, language, ui_poll_s,
+│                 notify_outage), /admin/settings, /admin/audit, audit yozuvi
 └─ logs_api.py    GET /admin/logs, /admin/logs/summary, /admin/logs/files — faqat admin (docs/LOGGING.md)
 ```
 

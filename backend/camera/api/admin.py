@@ -19,12 +19,19 @@ kanallarga tegilmaydi (Hikvision 5 xato urinishdan keyin IP'ni bloklaydi).
 
 Endpointlar (admin; router darajasida require_admin, ulashda key_guard):
   Kameralar
-    GET    /api/v1/admin/cameras                 qidiruv + sahifalash (q, limit<=500, offset)
+    GET    /api/v1/admin/cameras                 filtr + saralash + sahifalash butun bazada
+                                                 (q, status, region, codec, mode, sort,
+                                                 limit<=500, offset); counts, facets
+    GET    /api/v1/admin/cameras/export          ?format=csv|xlsx (+ o'sha filtrlar) -> fayl
+    GET    /api/v1/admin/cameras/deleted         savat: o'chirilganlar, restore_until
+    POST   /api/v1/admin/cameras/bulk            {action: test|delete|enable|disable,
+                                                 ids<=500} -> {results: [{id, ok, detail}]}
     POST   /api/v1/admin/cameras                 qo'shish: kodek/sub aniqlanadi, holat
                                                  darhol, pasport fonda; takror — 201 o'sha
     PUT    /api/v1/admin/cameras/{ref}           tahrirlash; bo'sh parol — eskisi qoladi,
                                                  kamera javob bermasa eski kodek qoladi
-    DELETE /api/v1/admin/cameras/{ref}           o'chirish (204)
+    DELETE /api/v1/admin/cameras/{ref}           yumshoq o'chirish -> {id, restore_until}
+    POST   /api/v1/admin/cameras/{id}/restore    savatdan qaytarish (30 kun ichida)
     POST   /api/v1/admin/cameras/{ref}/enabled   yoqish/o'chirish bir bosishda
     GET    /api/v1/admin/cameras/{ref}/uptime    ish vaqti tarixi (?hours, <=30 kun):
                                                  segmentlar, uptime %, uzilishlar
@@ -39,6 +46,9 @@ Endpointlar (admin; router darajasida require_admin, ulashda key_guard):
     POST   /api/v1/admin/probe                   bitta RTSP yo'l va login'ni tekshirish
 
 Tarkibi (ochiq yordamchilar):
+    filter_cameras(q, status, region, codec, mode, sort)  ro'yxat/eksport filtri:
+                                  {"rows": [(qator, holat)], "counts", "facets"}
+    codec_family(row), mode_of(row)   filtr qiymatlari (h264|h265|...; always|ondemand)
     parse_channels(spec, limit)   "1-16" / "1,3,5-8" -> raqamlar ro'yxati
     spread_point(lat, lng, i, m)  NVR kanallarini oltin burchak spiralida
                                   tarqatadi — markerlar ustma-ust tushmasin
@@ -54,14 +64,20 @@ areas, rail, events), users.access
 Kim ishlatadi: app/factory.py (router); frontend admin paneli, tashqi
 backend (X-API-Key); tests/test_channels.py (parse_channels, spread_point)
 """
+import csv
+import io
 import math
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field
 
+from app import audit as audit_log
 from app.config import CHANNEL_VENDORS, VENDORS
+from camera import trash
 from camera.media import fast_start
 from camera.media.fast_start import channel_from_path, channel_marked
 from camera.monitoring import health
@@ -69,7 +85,7 @@ from camera.probe import device_info as devinfo
 from camera.probe.detect import channel_path, detect_codec, detect_sub_path
 from camera.probe.rtsp_probe import probe
 from camera.schemas import CameraIn, EnabledIn, NvrIn, ProbeIn, ScanIn
-from camera.state import resolve_ref
+from camera.state import camera_state, resolve_ref
 from camera.views import admin_camera
 from core import security
 from core.log import log
@@ -241,7 +257,7 @@ def _camera_data(db, cam: CameraIn, *, sub_path: str, sub_codec: str, codec: str
             km, picket = parsed
         elif rail.looks_like_km(cam.name):
             raise HTTPException(
-                422, f"Nomdagi km/piket o'qilmadi: '{cam.name.strip()}'. To'g'ri ko'rinish — "
+                422, f"Nomdagi km/piket oʻqilmadi: '{cam.name.strip()}'. Toʻgʻri koʻrinish — "
                      "'3428/1 km' (km/piket, piket 1–10) yoki km va piketni alohida yuboring.")
     if km is not None and line_id is None:
         line_id = rail.default_line_id(db)
@@ -271,21 +287,250 @@ def _camera_data(db, cam: CameraIn, *, sub_path: str, sub_codec: str, codec: str
     }
 
 
+# ---------- ro'yxat: server tomonda filtr, saralash, sanoq ----------
+
+STATES = ("online", "stalled", "offline", "unknown", "disabled")
+# Saralashda holat tartibi: ishlayotgani birinchi.
+_STATE_ORDER = {st: i for i, st in enumerate(STATES)}
+SORTS = ("name", "-name", "region", "-region", "state", "-state", "codec", "-codec")
+
+
+def codec_family(row) -> str:
+    """Kodek oilasi (filtr va facet uchun): h264 | h265 | boshqasi kichik harfda | unknown."""
+    codec = (row["codec"] or "").strip().lower()
+    if not codec:
+        return "unknown"
+    if "265" in codec or "hevc" in codec:
+        return "h265"
+    if "264" in codec or "avc" in codec:
+        return "h264"
+    return codec
+
+
+def mode_of(row) -> str:
+    """Rejim: always (doim tayyor) | ondemand (so'rov bo'yicha)."""
+    return "always" if row["always_on"] else "ondemand"
+
+
+def _csv_param(value: str) -> set[str]:
+    return {v.strip() for v in (value or "").split(",") if v.strip()}
+
+
+def _km_text(row) -> str:
+    if row["km"] is None:
+        return ""
+    return f"{row['km']}/{row['picket']} km" if row["picket"] is not None else f"{row['km']} km"
+
+
+def _matches(row, needle: str) -> bool:
+    """`q` — nom, IP, URL (RTSP yo'l yoki tayyor oqim), km, hudud, slug, izoh, external_id."""
+    hay = (row["name"], row["ip"], row["stream_url"], row["rtsp_path"], _km_text(row),
+           row["region"], row["slug"], row["note"], row["external_id"])
+    return any(needle in (h or "").lower() for h in hay)
+
+
+def filter_cameras(q: str = "", status: str = "", region: str = "", codec: str = "",
+                   mode: str = "", sort: str = "") -> dict:
+    """Butun bazada filtr va saralash (sahifada emas).
+
+    Qaytadi: {"rows": [(qator, holat)], "counts": {...}, "facets": {...}}.
+    `counts` — holatdan tashqari barcha shartlar bilan (chiplardagi sonlar);
+    `facets` — filtr tanlovlari, butun ro'yxatdan (filtrsiz).
+    Holat xotiradagi kuzatuvdan hisoblanadi (camera_state) — shuning uchun
+    filtr SQL'da emas, Python'da; 5000 kamerada ham bir necha o'n ms.
+    """
+    with get_db() as db:
+        rows = cameras.list_all(db)
+    facets = {
+        "regions": sorted({r["region"] for r in rows}),
+        "codecs": sorted({codec_family(r) for r in rows}),
+        "modes": sorted({mode_of(r) for r in rows}),
+    }
+    needle = q.strip().lower()
+    regions, codecs, modes, states = (_csv_param(region), _csv_param(codec),
+                                      _csv_param(mode), _csv_param(status))
+    base = []
+    for r in rows:
+        if needle and not _matches(r, needle):
+            continue
+        if regions and r["region"] not in regions:
+            continue
+        if codecs and codec_family(r) not in codecs:
+            continue
+        if modes and mode_of(r) not in modes:
+            continue
+        base.append((r, camera_state(r)))
+    counts = {"all": len(base), **{st: 0 for st in STATES}}
+    for _, st in base:
+        counts[st] += 1
+    picked = [(r, st) for r, st in base if not states or st in states]
+
+    key = sort.lstrip("-")
+    if key in ("name", "region", "state", "codec"):
+        def sort_key(item):
+            r, st = item
+            primary = {"name": (r["name"] or "").lower(),
+                       "region": (r["region"] or "").lower(),
+                       "state": _STATE_ORDER.get(st, 9),
+                       "codec": codec_family(r)}[key]
+            return (primary, (r["name"] or "").lower(), r["id"])
+        picked.sort(key=sort_key, reverse=sort.startswith("-"))
+    else:                                   # standart — hudud, nom (v2 dagidek)
+        picked.sort(key=lambda it: ((it[0]["region"] or ""), (it[0]["name"] or ""), it[0]["id"]))
+    return {"rows": picked, "counts": counts, "facets": facets}
+
+
 @router.get("/cameras")
-def admin_list(request: Request, q: str = "", limit: int = 100, offset: int = 0):
-    """Boshqaruv ro'yxati — qidiruv va sahifalash bilan.
+def admin_list(request: Request, q: str = "", limit: int = 100, offset: int = 0,
+               status: str = Query(default="", description="online,offline,stalled,disabled,unknown"),
+               region: str = Query(default="", description="hudud nomlari, vergul bilan"),
+               codec: str = Query(default="", description="h264,h265,unknown,..."),
+               mode: str = Query(default="", description="always,ondemand"),
+               sort: str = Query(default="", description=" | ".join(SORTS))):
+    """Boshqaruv ro'yxati — filtr, saralash va sahifalash serverda, butun bazada.
 
     Kamera ko'p bo'lganda hammasini birdan yuborish ham tarmoqni, ham
-    brauzerni bo'g'adi, shuning uchun bo'lib beriladi.
+    brauzerni bo'g'adi, shuning uchun bo'lib beriladi. `total` — filtrga mos
+    kameralar; `counts` — holat chiplari (holat filtrisiz); `facets` —
+    tanlovlar (hudud, kodek, rejim).
     """
+    if sort and sort not in SORTS:
+        raise HTTPException(422, f"sort: {' | '.join(SORTS)}")
     limit = max(1, min(limit, 500))
-    with get_db() as db:
-        total, rows = cameras.search(db, q.strip(), limit, max(0, offset))
+    offset = max(0, offset)
+    data = filter_cameras(q, status, region, codec, mode, sort)
+    page = data["rows"][offset:offset + limit]
     return {
-        "total": total,
+        "total": len(data["rows"]),
         "offset": offset,
-        "cameras": [admin_camera(r, request) for r in rows],
+        "limit": limit,
+        "counts": data["counts"],
+        "facets": data["facets"],
+        "cameras": [admin_camera(r, request) for r, _ in page],
     }
+
+
+_EXPORT_COLUMNS = (
+    ("id", "ID"), ("name", "Nomi"), ("region", "Hudud"), ("state", "Holat"),
+    ("km", "Km"), ("picket", "Piket"), ("lat", "Kenglik"), ("lng", "Uzunlik"),
+    ("source_type", "Manba"), ("ip", "IP"), ("port", "Port"), ("rtsp_path", "RTSP yoʻli"),
+    ("stream_url", "Oqim manzili"), ("vendor", "Ishlab chiqaruvchi"), ("model", "Model"),
+    ("codec", "Kodek"), ("resolution", "Format"), ("fps", "FPS"), ("mode", "Rejim"),
+    ("enabled", "Yoqilgan"), ("external_id", "Tashqi ID"), ("last_seen", "Oxirgi onlayn"),
+    ("note", "Izoh"),
+)
+
+
+def _export_value(row, state: str, key: str):
+    if key == "state":
+        return state
+    if key == "mode":
+        return mode_of(row)
+    value = row[key]
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).isoformat(timespec="seconds")
+    if isinstance(value, bool):
+        return "ha" if value else "yoʻq"
+    return "" if value is None else value
+
+
+@router.get("/cameras/export")
+def admin_export(format: Literal["csv", "xlsx"] = "csv", q: str = "", status: str = "",
+                 region: str = "", codec: str = "", mode: str = "", sort: str = ""):
+    """Ro'yxat fayl sifatida (filtrlar bilan) — csv (UTF-8 BOM, Excel ochadi) yoki
+    xlsx (openpyxl o'rnatilgan bo'lsa; aks holda 400). Parol hech qachon yo'q."""
+    if sort and sort not in SORTS:
+        raise HTTPException(422, f"sort: {' | '.join(SORTS)}")
+    rows = filter_cameras(q, status, region, codec, mode, sort)["rows"]
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    header = [label for _, label in _EXPORT_COLUMNS]
+    table = [[_export_value(r, st, key) for key, _ in _EXPORT_COLUMNS] for r, st in rows]
+    if format == "xlsx":
+        try:
+            from openpyxl import Workbook
+        except ImportError:
+            raise HTTPException(400, "Excel eksporti mavjud emas (openpyxl oʻrnatilmagan) — CSV tanlang")
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Kameralar"
+        ws.append(header)
+        for line in table:
+            ws.append(line)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="nigoh-kameralar-{stamp}.xlsx"'})
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    writer.writerows(table)
+    return Response(content="\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="nigoh-kameralar-{stamp}.csv"'})
+
+
+@router.get("/cameras/deleted")
+def admin_deleted():
+    """Savat: yumshoq o'chirilgan kameralar va qaytarish muddati."""
+    with get_db() as db:
+        rows = cameras.list_deleted(db)
+    return {"keep_days": trash.KEEP_DAYS, "cameras": [
+        {"id": r["id"], "name": r["name"], "region": r["region"], "deleted_at": r["deleted_at"],
+         "restore_until": trash.restore_until(r["deleted_at"])} for r in rows]}
+
+
+class BulkIn(BaseModel):
+    action: Literal["test", "delete", "enable", "disable"]
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+BULK_TEST_WORKERS = 8
+
+
+def _test_one(row) -> dict:
+    """Mavjud ulanish tekshiruvi (POST /admin/probe bilan bir xil) — bitta kamera."""
+    if not row["ip"]:
+        return {"id": row["id"], "ok": False, "detail": "IP manzil yoʻq (tashqi oqim)"}
+    result = probe(row["ip"], row["port"] or 554, (row["rtsp_path"] or "").strip(),
+                   row["username"] or "", security.decrypt(row["password_enc"]))
+    return {"id": row["id"], "ok": bool(result.get("ok")),
+            "detail": result.get("message") or ""}
+
+
+@router.post("/cameras/bulk")
+def admin_bulk(body: BulkIn, request: Request):
+    """Ommaviy amal: test (parallel, ≤ 8), delete (savatga), enable, disable.
+
+    Har kamera uchun natija: {"id", "ok", "detail"}; topilmagani — ok: false.
+    """
+    ids = list(dict.fromkeys(body.ids))
+    with get_db() as db:
+        found = {r["id"]: r for r in cameras.list_by_ids(db, ids)}
+    results: dict[int, dict] = {i: {"id": i, "ok": False, "detail": "Kamera topilmadi"}
+                                for i in ids if i not in found}
+    if body.action == "test":
+        with ThreadPoolExecutor(max_workers=BULK_TEST_WORKERS) as pool:
+            for res in pool.map(_test_one, list(found.values())):
+                results[res["id"]] = res
+    else:
+        with get_db() as db:
+            for cid in found:
+                if body.action == "delete":
+                    at = cameras.soft_delete(db, cid)
+                    results[cid] = {"id": cid, "ok": at is not None,
+                                    "detail": (f"savatda {trash.restore_until(at).date()} gacha"
+                                               if at else "allaqachon oʻchirilgan")}
+                else:
+                    cameras.set_enabled(db, cid, body.action == "enable")
+                    results[cid] = {"id": cid, "ok": True,
+                                    "detail": "yoqildi" if body.action == "enable" else "oʻchirildi"}
+            done = [cid for cid in found if results[cid]["ok"]]
+            if done:
+                audit_log.record(db, request, f"camera.bulk_{body.action}", "camera",
+                                 after={"ids": done[:500], "count": len(done)})
+    return {"results": [results[i] for i in ids]}
 
 
 @router.post("/cameras", status_code=201)
@@ -398,7 +643,7 @@ def admin_update(ref: str, cam: CameraIn, request: Request):
             if twin is not None and twin["id"] != camera_id:
                 raise HTTPException(
                     409, f"Bu manzil boshqa kameraga tegishli: "
-                         f"«{twin['name']}» (o'sha IP, port va RTSP yo'l)")
+                         f"«{twin['name']}» (oʻsha IP, port va RTSP yoʻl)")
             raise HTTPException(409, f"external_id band: {cam.external_id}")
         row = cameras.get(db, camera_id)
     # Manzil/parol o'zgargan bo'lishi mumkin — holat va pasport yangilanadi.
@@ -441,13 +686,34 @@ def admin_detect_sub():
     return {"checked": len(rows), "found": len(found)}
 
 
-@router.delete("/cameras/{ref}", status_code=204)
-def admin_delete(ref: str):
+@router.delete("/cameras/{ref}")
+def admin_delete(ref: str, request: Request):
+    """Yumshoq o'chirish: kamera savatga tushadi — ro'yxatlar, statistika,
+    MediaMTX va health'dan chiqadi; 30 kun ichida /restore bilan qaytadi,
+    keyin fon vazifasi butunlay o'chiradi (camera/trash.py)."""
     with get_db() as db:
         row = resolve_ref(db, ref)
         if row is None:
             raise HTTPException(404, "Kamera topilmadi")
-        cameras.delete(db, row["id"])
+        at = cameras.soft_delete(db, row["id"])
+        if at is None:
+            raise HTTPException(404, "Kamera topilmadi")
+        audit_log.record(db, request, "camera.delete", "camera", entity_id=row["id"],
+                         before={"name": row["name"], "region": row["region"]})
+    return {"id": row["id"], "restore_until": trash.restore_until(at)}
+
+
+@router.post("/cameras/{camera_id}/restore")
+def admin_restore(camera_id: int, request: Request):
+    """Savatdan qaytarish (o'chirilganiga 30 kun bo'lmagan bo'lsa)."""
+    with get_db() as db:
+        old = cameras.get_deleted(db, camera_id)
+        if old is None or not cameras.restore(db, camera_id, trash.KEEP_DAYS):
+            raise HTTPException(404, "Savatda bunday kamera yoʻq (yoki muddati oʻtgan)")
+        audit_log.record(db, request, "camera.restore", "camera", entity_id=camera_id,
+                         after={"name": old["name"]})
+        row = cameras.get(db, camera_id)
+    return admin_camera(row, request)
 
 
 @router.post("/cameras/{ref}/enabled")
@@ -530,7 +796,7 @@ def parse_channels(spec: str, limit: int = 512) -> list[int]:
             try:
                 start, end = (int(v) for v in chunk.split("-", 1))
             except ValueError:
-                raise HTTPException(400, f"Kanal oralig'i noto'g'ri: {chunk}")
+                raise HTTPException(400, f"Kanal oraligʻi notoʻgʻri: {chunk}")
             if start > end:
                 start, end = end, start
             numbers.extend(range(start, end + 1))
@@ -538,13 +804,13 @@ def parse_channels(spec: str, limit: int = 512) -> list[int]:
             try:
                 numbers.append(int(chunk))
             except ValueError:
-                raise HTTPException(400, f"Kanal raqami noto'g'ri: {chunk}")
+                raise HTTPException(400, f"Kanal raqami notoʻgʻri: {chunk}")
 
     unique = sorted({n for n in numbers if n > 0})
     if not unique:
-        raise HTTPException(400, "Kanallar ko'rsatilmagan")
+        raise HTTPException(400, "Kanallar koʻrsatilmagan")
     if len(unique) > limit:
-        raise HTTPException(400, f"Bir marta ko'pi bilan {limit} ta kanal")
+        raise HTTPException(400, f"Bir marta koʻpi bilan {limit} ta kanal")
     return unique
 
 
@@ -603,7 +869,7 @@ def admin_nvr_import(body: NvrIn):
         if lead.get("stage") == "parol":
             raise HTTPException(
                 401, f"{lead['message']} — qolgan kanallar tekshirilmadi "
-                     f"(registrator xato urinishlardan keyin IP'ni bloklaydi)")
+                     f"(registrator xato urinishlardan keyin IPʼni bloklaydi)")
         results[(planned[0]["channel"], "main")] = lead
 
         jobs = [(item["channel"], "main", item["rtsp_path"])
@@ -651,7 +917,7 @@ def admin_nvr_import(body: NvrIn):
         for item in keep:
             # Takror kanal (o'sha IP+port+yo'l) qayta saqlanmaydi.
             if cameras.find_by_address(db, body.ip.strip(), body.port, item["rtsp_path"]):
-                item["message"] = "allaqachon qo'shilgan — o'tkazib yuborildi"
+                item["message"] = "allaqachon qoʻshilgan — oʻtkazib yuborildi"
                 continue
             lat, lng = item["lat"], item["lng"]
             if lat == 0 and lng == 0:
@@ -682,7 +948,7 @@ def admin_nvr_import(body: NvrIn):
                 # Kanal shu orada boshqa so'rovda qo'shilgan — cheklov
                 # bazada (device_id, rtsp_path). Bitta kanal butun importni
                 # yiqitmaydi: qolganlari saqlanaveradi.
-                item["message"] = "allaqachon qo'shilgan — o'tkazib yuborildi"
+                item["message"] = "allaqachon qoʻshilgan — oʻtkazib yuborildi"
                 continue
             created_ids.append(camera_id)
             created += 1
@@ -802,7 +1068,7 @@ def admin_keyframe(ref: str, stream: str = "main"):
     if row is None:
         raise HTTPException(404, "Kamera topilmadi")
     if not row["ip"]:
-        raise HTTPException(400, "Bu kamera tayyor oqim — keyframe so'ralmaydi")
+        raise HTTPException(400, "Bu kamera tayyor oqim — keyframe soʻralmaydi")
     sent = fast_start.request_keyframe(
         row["ip"], row["username"] or "",
         security.decrypt(row["password_enc"]),

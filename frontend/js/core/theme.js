@@ -1,54 +1,43 @@
 /* ==========================================================================
-   core/theme.js — qorong'i / yorug' mavzu
+   core/theme.js — uch mavzu: White · Cream · Dark (Figma v3)
    --------------------------------------------------------------------------
-   Vazifasi:
-     Mavzuni almashtirish, brauzerda saqlash va xaritadagi mavzuga bog'liq
-     qatlamlarni (plitkalar, chegara, parda) moslash.
+   <html data-theme="white | cream | dark">. Boshlang'ich mavzuni index.html
+   dagi kichik skript birinchi chizishdan OLDIN qo'yadi (miltillamasin).
+   Almashtirish: kirish ekranidagi Preferences/Bar, Profil menyusi va
+   Sozlamalar → Umumiy — hammasi shu modul orqali, bir-biri bilan sinxron.
 
    Eksport:
-     ThemeSwitcher             — klass: set(theme, persist); konstruktor tugmani ulaydi
-     themeSwitcher             — yagona nusxa
-     setTheme(theme, persist)  — themeSwitcher.set ga yo'naltiradi
-
-   Bog'liqliklar:
-     import: ./state.js ($), ./icons.js (ICO.sun / ICO.moon),
-             ../map/map.js (tiles, setTiles, uzMask, uzBorder, uzMaskStyle, uzBorderStyle)
-
-   DOM: #theme-btn, <html data-theme>
-   Backend: yo'q. localStorage kaliti: "nigoh-theme"
-
-   Qoidalar / tuzoqlar:
-     - Boshlang'ich mavzuni index.html dagi kichik skript sahifa chizilishidan
-       OLDIN qo'yadi (miltillash bo'lmasin); main.js keyin setTheme(..., false)
-       bilan tugma ikonkasini va xarita plitkalarini moslaydi.
-     - Plitka qatlami birinchi setTheme chaqiruvida yaratiladi (setTiles).
+     THEMES                 — [{ id, label, icon }]
+     getTheme()             — joriy mavzu
+     setTheme(theme, persist=true) — qo'llash; "theme:changed" hodisasi
+                              (xarita plitkalari, grafiklar shunga quloq soladi)
    ========================================================================== */
-import { $ } from "./state.js";
-import { ICO } from "./icons.js";
-import { setTiles, tiles, uzBorder, uzBorderStyle, uzMask, uzMaskStyle } from "../map/map.js";
+import { prefs } from "./prefs.js";
 
-/* ---------- Mavzu ---------- */
-export class ThemeSwitcher {
-  constructor() {
-    $("theme-btn").addEventListener("click", () =>
-      this.set(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
-  }
+export const THEMES = [
+  { id: "white", label: "Oq", icon: "sun" },
+  { id: "cream", label: "Qaymoq", icon: "mug-saucer" },
+  { id: "dark", label: "Qorongʻi", icon: "moon" },
+];
 
-  set(theme, persist = true) {
-    document.documentElement.dataset.theme = theme;
-    if (persist) localStorage.setItem("nigoh-theme", theme);
-    const tb = $("theme-btn");
-    tb.innerHTML = theme === "dark" ? ICO.sun : ICO.moon;
-    tb.title = theme === "dark" ? "Yorug' mavzuga o'tish" : "Tungi mavzuga o'tish";
-    if (!tiles) setTiles();
-    // Hudud pardasi va chegara rangi ham mavzuga moslashadi.
-    if (uzMask) uzMask.setStyle(uzMaskStyle());
-    if (uzBorder) uzBorder.setStyle(uzBorderStyle());
-  }
+export function getTheme() {
+  const t = document.documentElement.dataset.theme;
+  return THEMES.some((x) => x.id === t) ? t : "white";
 }
-
-export const themeSwitcher = new ThemeSwitcher();
 
 export function setTheme(theme, persist = true) {
-  themeSwitcher.set(theme, persist);
+  if (theme === "light") theme = "white";
+  if (!THEMES.some((x) => x.id === theme)) theme = "white";
+  document.documentElement.dataset.theme = theme;
+  if (persist) prefs.set("theme", theme);
+  document.dispatchEvent(new CustomEvent("theme:changed", { detail: { theme } }));
 }
+
+// Serverdan kelgan afzalliklar (kirgandan keyin) mavzuni almashtirishi mumkin.
+document.addEventListener("prefs:loaded", () => {
+  const t = prefs.get("theme");
+  if (t && t !== getTheme()) setTheme(t, false);
+});
+
+/* Eski API (v2): themeSwitcher.set */
+export const themeSwitcher = { set: setTheme };

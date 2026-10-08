@@ -1,0 +1,49 @@
+/* ==========================================================================
+   css/login.css — 01 Kirish (Figma 01.01–01.04)
+   Xarita fonida (statik, 10px xira snapshot) shishasimon 420px karta,
+   o'ng tepada Preferences/Bar (til + 3 mavzu).
+   ========================================================================== */
+.login {
+  position: fixed; inset: 0; z-index: 90; display: none; align-items: center; justify-content: center;
+  padding: var(--spacing-2xl) var(--spacing-lg); overflow: auto; background: var(--color-bg-canvas);
+}
+.login.open { display: flex; }
+.login__bg {
+  position: fixed; inset: -40px; background-color: var(--map-base-water);
+  background-image: var(--login-img, var(--backdrop-img)); background-size: cover; background-position: center;
+}
+[data-theme="white"] { --login-img: url("/assets/login-white.jpg"); }
+[data-theme="cream"] { --login-img: url("/assets/login-cream.jpg"); }
+[data-theme="dark"] { --login-img: url("/assets/login-dark.jpg"); }
+.login__veil { position: fixed; inset: 0; background: var(--color-bg-sheet); opacity: .35; }
+
+.login .prefbar { position: fixed; top: 24px; right: 24px; z-index: 1; }
+/* Til menyusi kirish ekrani ustida ochiladi (.login z-index 90 > --z-popover). */
+.popover.popover--login { z-index: 91; }
+
+.login__card {
+  position: relative; width: 420px; max-width: 100%; margin: auto;
+  display: flex; flex-direction: column; gap: var(--spacing-xl); padding: var(--spacing-3xl);
+  background: color-mix(in srgb, var(--color-bg-primary) 84%, transparent);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  border: 1px solid var(--color-border-secondary); border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-float);
+  animation: dialog-in var(--dur-overlay) var(--ease);
+}
+.login__brand { display: flex; align-items: center; gap: var(--spacing-md); }
+.login__brand > span:last-child { display: flex; flex-direction: column; }
+.login__brand b { font-weight: 600; }
+.login__brand i { font-style: normal; }
+.login__fields { display: flex; flex-direction: column; gap: var(--spacing-lg); }
+.login .input { background: var(--input-bg); }
+.login__guest { display: flex; align-items: center; justify-content: center; gap: var(--spacing-xs); margin-top: calc(-1 * var(--spacing-xs)); }
+.login__guest > button:first-child:hover { text-decoration: underline; }
+.login__foot { padding-top: var(--spacing-lg); border-top: 1px solid var(--color-border-secondary); }
+.login.is-shake .login__card { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+@media (max-width: 640px) {
+  .login { align-items: flex-start; padding-top: 80px; }
+  .login .prefbar { top: 16px; right: 16px; }
+  .login__card { padding: var(--spacing-2xl); }
+}

@@ -91,7 +91,7 @@ def test_audit_va_parol_yozilmaydi(client):
     acts = [(i["action"], i["entity_id"]) for i in items]
     assert ("settings.update", None) in acts and ("user.create", str(u["id"])) in acts
     upd = next(i for i in items if i["action"] == "user.update")
-    assert upd["after"]["password"] == "o'zgartirildi"
+    assert upd["after"]["password"] == "oʻzgartirildi"
     assert PAROL not in str(items) and "yangi-parol-456" not in str(items)
     assert upd["actor"] == "api-kalit"
     # Audit yozuvi bor foydalanuvchi o'chiriladi (FK olib tashlangan).
@@ -120,7 +120,7 @@ def test_ozini_va_oxirgi_adminni_bloklab_bolmaydi(client):
     me = next(u for u in a.get("/api/v1/admin/users").json()["users"] if u["username"] == "set-admin")
     r = a.put(f"/api/v1/admin/users/{me['id']}", json={
         "username": "set-admin", "role": "admin", "is_active": False})
-    assert r.status_code == 400 and "O'z" in r.json()["detail"]
+    assert r.status_code == 400 and "Oʻz" in r.json()["detail"]
 
 
 def test_faqat_admin(client):

@@ -6,7 +6,8 @@ qaysi kameralarni ko'radi) bu yerda emas — groups/api.py da; bu yerda faqat
 SQL.
 
 A'zolar `position` bo'yicha tartiblanadi; qo'shilgan kameralar oxiriga
-tushadi, mavjudlari takrorlanmaydi.
+tushadi, mavjudlari takrorlanmaydi. Savatdagi (yumshoq o'chirilgan) kamera
+`camera_ids` da ko'rinmaydi, tiklansa — o'z joyiga qaytadi.
 
 Tarkibi:
     GroupRepository                 guruhlar (holatsiz, `db` oladi)
@@ -35,6 +36,7 @@ _SELECT = """
     FROM camera_groups g
     LEFT JOIN users u ON u.id = g.owner_id
     LEFT JOIN camera_group_members m ON m.group_id = g.id
+          AND EXISTS (SELECT 1 FROM cameras c WHERE c.id = m.camera_id AND c.deleted_at IS NULL)
 """
 _GROUP = " GROUP BY g.id, u.username"
 

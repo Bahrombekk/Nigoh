@@ -55,7 +55,7 @@ async def sse_events(request: Request):
     q = bus.subscribe()
     if q is None:
         raise HTTPException(
-            503, f"SSE abonentlari chegarasi to'lgan ({bus.MAX_SUBSCRIBERS})")
+            503, f"SSE abonentlari chegarasi toʻlgan ({bus.MAX_SUBSCRIBERS})")
 
     async def gen():
         try:

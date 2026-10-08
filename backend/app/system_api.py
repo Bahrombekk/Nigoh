@@ -2,8 +2,8 @@
 
 5000 kamerani ko'z bilan emas, raqam bilan kuzatish uchun: MediaMTX
 tirikmi, health sweep intervalga sig'ayaptimi, qaysi faol oqimlar
-muzlagan, tugunlar qay ahvolda, disk qancha band. Versiya faqat shu yerda
-(kirganlarga) beriladi — ochiq /health uni oshkor qilmaydi.
+muzlagan, tugunlar qay ahvolda, disk qancha band. Ochiq /health versiyani
+bermaydi; v3 dan kirish oynasi uchun u /public/info da ham bor.
 
 Endpointlar (router darajasida require_admin; prefiks /api/v1/admin,
 eski /api/admin):
@@ -11,8 +11,10 @@ eski /api/admin):
                                  ready / readers / bytes_received /
                                  bytes_sent / warm. Faqat lokal tugun —
                                  uzoq tugunlar salomatligi /admin/nodes da
-    GET  /api/v1/admin/status    versiya, MediaMTX, health sweep, disk
-                                 (suratlar, baza, jurnal), muzlagan yo'llar,
+    GET  /api/v1/admin/status    versiya va update {current, latest}, MediaMTX
+                                 (bool) va mediamtx_uptime_s, health sweep,
+                                 network.latency_ms, disk (suratlar, baza, jurnal,
+                                 used_pct, total_mb, free_mb), muzlagan yo'llar,
                                  tugunlar (status, ready, readers, stalled,
                                  pending_paths — 0 bo'lishi kerak)
 
@@ -27,6 +29,7 @@ Kim ishlatadi: app/factory.py (key_guard bilan ulanadi);
 """
 from fastapi import APIRouter, Depends
 
+from app import system_state
 from camera.media import reconciler
 from camera.media import sync as mediamtx_sync
 from camera.monitoring import health
@@ -108,13 +111,23 @@ def admin_status():
     db_mb = round(db_bytes / 1_048_576, 1)
     log_mb, _ = _dir_size_mb(LOG_DIR, recursive=True)        # logs/ — hamma toifa va arxivlar
     snap_mb, snap_files = _dir_size_mb(snapshots.SNAP_DIR)
+    used_pct, total_mb, free_mb = system_state.disk_usage()
+    sweep = health.sweep_stats()
     return {
-        # Versiya faqat kirganlarga: ochiq /health uni oshkor qilmaydi.
         "version": VERSION,
+        # v3: yangilanish tekshiruvi hali yo'q — latest null.
+        "update": {"current": VERSION, "latest": None},
+        # `mediamtx` — v2 dagidek bool (mos kelish uchun); uptime alohida maydonda.
         "mediamtx": mediamtx_sync.api_available(),
-        "health": health.sweep_stats(),
+        "mediamtx_uptime_s": reconciler.uptime_s(1),
+        "health": sweep,
+        # Kamera tarmog'i: oxirgi sweep'dagi muvaffaqiyatli TCP ulanishning o'rtacha vaqti.
+        "network": {"latency_ms": sweep.get("latency_ms"), "checked": sweep.get("checked", 0),
+                    "online": sweep.get("online", 0)},
         "disk": {"snapshots_mb": snap_mb, "snapshots_files": snap_files,
-                 "db_mb": db_mb, "log_mb": log_mb},
+                 "db_mb": db_mb, "log_mb": log_mb,
+                 # Ma'lumot katalogi joylashgan disk (suratlar, jurnal).
+                 "used_pct": used_pct, "total_mb": total_mb, "free_mb": free_mb},
         "stalled": sorted(reconciler.stalled_paths()),
         "nodes": nodes,
     }
