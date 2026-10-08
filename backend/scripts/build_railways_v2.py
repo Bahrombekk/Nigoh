@@ -9,7 +9,10 @@ Yechim: haqiqiy geometriya OSM'dan (xarita plitkalari ham OSM — chiziq yo'lga
 aniq tushadi), bo'linma (MTU) ranglari esa eski fayldan olinadi.
 
 Qadamlar:
-  1. OSM yo'llari (`fetch_osm_railways.py` yuklagan) o'qiladi.
+  1. OSM yo'llari (`fetch_osm_railways.py` yuklagan) o'qiladi va O'zbekiston
+     chegarasida (frontend/assets/uz.geojson) kesiladi: qo'shni davlatga
+     o'tib ketgan qismlari olib tashlanadi, chegara kesishgan nuqtada aniq
+     (~1 m) tugaydi.
   2. Bo'linma: har yo'l eski fayldagi eng yaqin rangli chiziqdan ovoz bilan
      (120 m ichida) aniqlanadi; topilmaganlariga tarmoq bo'ylab (umumiy
      uchlar) tarqatiladi, qolganlariga eng yaqin rangli yo'ldan.
@@ -43,6 +46,7 @@ from build_railways import BRANCHES, length_km, merge_lines, simplify  # noqa: E
 
 ROOT = Path(__file__).resolve().parents[2]
 OSM = ROOT / "osm_rail.json"
+BORDER = ROOT / "frontend" / "assets" / "uz.geojson"
 OLD = ROOT / "railway-lines.json"
 DST = ROOT / "frontend" / "assets" / "railways-v2.geojson"
 
@@ -157,6 +161,71 @@ def chaikin(line, rounds: int = 1):
         new.append(line[-1])
         line = new
     return line
+
+
+# ---------- davlat chegarasida kesish ----------
+
+class Border:
+    """O'zbekiston chegarasi: nuqta ichkarimi (kenglik bo'yicha qatorlangan nur usuli)."""
+
+    BAND = 0.02
+
+    def __init__(self, path: Path):
+        gj = json.loads(path.read_text(encoding="utf-8"))
+        geom = gj["features"][0]["geometry"]
+        polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+        self.rings = [[tuple(c) for c in poly[0]] for poly in polys]      # faqat tashqi halqalar
+        self.bands: dict[int, list] = defaultdict(list)
+        self.bbox = []
+        for ring in self.rings:
+            xs, ys = [c[0] for c in ring], [c[1] for c in ring]
+            self.bbox.append((min(xs), min(ys), max(xs), max(ys)))
+            for a, b in zip(ring, ring[1:] + ring[:1]):
+                for band in range(int(math.floor(min(a[1], b[1]) / self.BAND)),
+                                  int(math.floor(max(a[1], b[1]) / self.BAND)) + 1):
+                    self.bands[band].append((a, b))
+
+    def inside(self, p) -> bool:
+        x, y = p
+        if not any(b[0] <= x <= b[2] and b[1] <= y <= b[3] for b in self.bbox):
+            return False
+        crossings = 0
+        for a, b in self.bands.get(int(math.floor(y / self.BAND)), ()):
+            if (a[1] > y) != (b[1] > y) and x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]:
+                crossings += 1
+        return crossings % 2 == 1
+
+    def crossing(self, inside_pt, outside_pt):
+        """Segment chegarani kesgan nuqta (bisektsiya, ~1 m aniqlikda)."""
+        lo, hi = inside_pt, outside_pt
+        for _ in range(22):
+            mid = ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2)
+            if self.inside(mid):
+                lo = mid
+            else:
+                hi = mid
+        return lo
+
+    def clip(self, line: list) -> list[list]:
+        """Chiziqning chegara ichidagi qismlari (bir nechta bo'lishi mumkin)."""
+        flags = [self.inside(p) for p in line]
+        if all(flags):
+            return [line]
+        if not any(flags):
+            return []
+        parts, cur = [], []
+        for i, p in enumerate(line):
+            if flags[i]:
+                if not cur and i > 0:                       # tashqaridan kirdi
+                    cur.append(self.crossing(p, line[i - 1]))
+                cur.append(p)
+            elif cur:                                       # ichkaridan chiqdi
+                cur.append(self.crossing(line[i - 1], p))
+                parts.append(cur)
+                cur = []
+        if cur:
+            parts.append(cur)
+        return [pt for pt in parts if len(pt) >= 2]
 
 
 # ---------- ma'lumot yuklash va tasniflash ----------
@@ -349,6 +418,19 @@ def build(osm_path: Path, old_path: Path, dst: Path) -> dict:
     ways = load_osm(osm_path)
     old = load_old(old_path)
     stat = {"osm_yo'llar": len(ways), "osm_nuqta": sum(len(w["pts"]) for w in ways)}
+    border = Border(BORDER)
+    cut_km, cut_ways, kept = 0.0, 0, []
+    for w in ways:
+        parts = border.clip(w["pts"])
+        before = length_km([list(p) for p in w["pts"]])
+        after = sum(length_km([list(p) for p in part]) for part in parts)
+        if after < before - 0.0005:
+            cut_km += before - after
+            cut_ways += 1
+        for part in parts:
+            kept.append({**w, "pts": [(round(x, 7), round(y, 7)) for x, y in part]})
+    ways = kept
+    stat["chegaradan_tashqari"] = {"kesilgan_yo'llar": cut_ways, "olib_tashlangan_km": round(cut_km, 1)}
     stat["bo'linma"] = assign_branches(ways, old)
 
     groups: dict[tuple, list] = defaultdict(list)

@@ -4,7 +4,7 @@ Xaritadagi temir yo'l chiziqlari ikki manbadan, ikkalasi ham loyihada saqlanadi:
 
 | Fayl | Nima | Nuqtalar | Holat |
 |---|---|---|---|
-| `frontend/assets/railways-v2.geojson` | **v2** — OpenStreetMap geometriyasi + bo'linma ranglari | ~156 ming | standart |
+| `frontend/assets/railways-v2.geojson` | **v2** — OpenStreetMap geometriyasi + bo'linma ranglari, chegarada kesilgan | ~155 ming | standart |
 | `frontend/assets/railways.geojson` | v1 — `railway-lines.json` dan | 35 ming (soddalashtirilgan) | eski; afsonadagi "Eski" tugmasi bilan |
 
 Afsonada (xarita chap pastida) "Yangi · OSM / Eski" tugmasi bor — bir bosishda
@@ -29,7 +29,10 @@ python backend/scripts/fetch_osm_railways.py            # OSM'dan yuklash (osm_r
 python backend/scripts/build_railways_v2.py             # frontend/assets/railways-v2.geojson
 ```
 
-1. **Yo'llar** — `railway=rail` (+ qurilayotgan): 12 865 yo'l, 101 mingga yaqin nuqta, **10 376 km**.
+1. **Yo'llar** — `railway=rail` (+ qurilayotgan): 12 865 yo'l, 101 mingga yaqin nuqta, 10 376 km.
+   **Chegarada kesish:** OSM qo'shni davlatlarga o'tgan yo'llarni ham beradi — ular
+   `frontend/assets/uz.geojson` chegarasida (~1 m aniqlikda) kesiladi: 39 yo'l, **43 km** tashqarisi
+   olib tashlandi, qolgan **~10 333 km** O'zbekiston ichida (chiziqlar chegarada aniq tugaydi).
 2. **Bo'linma** — har yo'l eski fayldagi eng yaqin rangli chiziqdan ovoz bilan
    (120 m ichida): 11 995 yo'l; qolganlari tarmoq bo'ylab tarqatilgan (233),
    eng yaqin rangli yo'ldan (637).
