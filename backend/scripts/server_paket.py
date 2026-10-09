@@ -103,7 +103,9 @@ def main() -> int:
                       capture_output=True, text=True).stdout.strip():
         print("DIQQAT: commit qilinmagan o'zgarishlar bor — ular paketga KIRMAYDI")
     bundle = out / "nigoh.bundle"
-    subprocess.run(["git", "bundle", "create", str(bundle), "main"], cwd=ROOT_DIR,
+    # HEAD ham kiritiladi: usiz `git clone` "remote HEAD refers to nonexistent
+    # ref" deydi va ish katalogini bo'sh qoldiradi (serverda shunday bo'ldi).
+    subprocess.run(["git", "bundle", "create", str(bundle), "HEAD", "main"], cwd=ROOT_DIR,
                    check=True, capture_output=True)
     fayllar.append(bundle)
     if not args.suratsiz:

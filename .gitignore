@@ -32,7 +32,9 @@ __pycache__/
 # Ish vaqti loglari
 mediamtx.log
 # Loglar — hammasi logs/ da (core/logs/)
-logs/
+# Faqat ildizdagi logs/ — "logs/" har chuqurlikka mos kelib backend/core/logs
+# paketini gitdan yashirgan edi (toza klonda ModuleNotFoundError).
+/logs/
 backend.log
 backend.err.log
 nigoh.log
