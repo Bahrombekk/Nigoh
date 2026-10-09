@@ -7,8 +7,8 @@
    Joriy til setCurrentLang() bilan beriladi (provayder chaqiradi) — sana
    nomlari (WEEKDAYS/MONTHS/dateShort) shunga qaraydi.
    ========================================================================== */
-import RU, { rules as RU_RULES } from "./ru.js";
-import EN, { rules as EN_RULES } from "./en.js";
+/* Lug'atlar (ru.js, en.js — har biri ~100 KB) faqat shu til tanlanganda
+   yuklanadi: loadLang(l). Yuklanmaguncha translate() manbani qaytaradi. */
 
 export const LANGS = [
   { id: "uz", label: "Oʻzbekcha", html: "uz" },
@@ -18,8 +18,26 @@ export const LANGS = [
 ];
 const IDS = LANGS.map((l) => l.id);
 // Prototipsiz nusxa — "constructor" kabi satr Object.prototype'ga tushmasin.
-const DICT = { ru: Object.assign(Object.create(null), RU), en: Object.assign(Object.create(null), EN) };
-const RULES = { ru: RU_RULES, en: EN_RULES };
+const DICT = { ru: null, en: null };
+const RULES = { ru: [], en: [] };
+const LOADERS = { ru: () => import("./ru.js"), en: () => import("./en.js") };
+const loading = {};
+
+/** Til lug'ati tayyormi (uz va uz-cyrl — lug'atsiz). */
+export function langReady(l) { return !(l in DICT) || DICT[l] !== null; }
+
+/** Lug'atni yuklash (bir marta). */
+export function loadLang(l) {
+  if (langReady(l)) return Promise.resolve();
+  if (!loading[l]) {
+    loading[l] = LOADERS[l]().then((m) => {
+      DICT[l] = Object.assign(Object.create(null), m.default);
+      RULES[l] = m.rules || [];
+      if (cache[l]) cache[l].clear();
+    });
+  }
+  return loading[l];
+}
 
 let lang = "uz";
 
@@ -124,6 +142,7 @@ const normApos = (s) => s.replace(/([oOgG])['‘’`ʼ]/g, "$1ʻ").replace(/([A-
 /* Bitta boʻlak: aniq → apostrof → harf kattaligi → raqam shabloni → qoida. */
 function lookup1(s, l) {
   const d = DICT[l];
+  if (!d) return null;                 // lug'at hali yuklanmagan
   if (d[s] !== undefined) return d[s];
   const n = normApos(s);
   if (n !== s && d[n] !== undefined) return d[n];

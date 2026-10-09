@@ -12,6 +12,7 @@ type Status = "idle" | "wait" | "playing" | "fail";
 interface PlayerLike {
   open: (cam: unknown, useHevc: boolean, quality?: string) => void;
   stop: () => void;
+  destroy?: () => void;
   retry: () => void;
   onOpen: ((ms: number, mode: string) => void) | null;
   onState: ((kind: string, text: string) => void) | null;
@@ -37,7 +38,7 @@ export function usePlayer(cam: Camera | null | undefined, opts: { quality?: "" |
       else if (kind === "fail") setStatus("fail");
     };
     player.current = p;
-    return () => { p.stop(); player.current = null; };
+    return () => { (p.destroy || p.stop).call(p); player.current = null; };
   }, []);
 
   useEffect(() => {

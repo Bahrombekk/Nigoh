@@ -32,6 +32,7 @@ import { EmptyState, IconButton, InfoTip, cx } from "@/components/ui";
 import { Menu, Popover, useShortcut, type MenuEntry } from "@/components/overlays";
 import { useCameras } from "@/data/queries";
 import { prefs, usePref } from "@/lib/prefs";
+import { getSelectedCamera } from "@/lib/selection";
 import { fmtTime } from "@/lib/format";
 import type { Camera } from "@/lib/types";
 import { WallTile, isDown, type Quality } from "./WallTile";
@@ -265,7 +266,7 @@ export default function WallPage() {
 
   /* ---------- Fokus ---------- */
   const focusId = focusMode
-    ? ([P.focus].find((x) => x != null && byId.has(x)) ?? (all[0] ? all[0].id : null))
+    ? ([P.focus, getSelectedCamera()].find((x) => x != null && byId.has(x)) ?? (all[0] ? all[0].id : null))
     : null;
   const focusCam = focusId != null ? byId.get(focusId) || null : null;
   useEffect(() => {

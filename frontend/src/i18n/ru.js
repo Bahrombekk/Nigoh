@@ -1317,6 +1317,8 @@ const D = {
 export default D;
 
 const MON = { yan: "янв", fev: "фев", mar: "мар", apr: "апр", may: "мая", iyun: "июн", iyul: "июл", avg: "авг", sen: "сен", okt: "окт", noy: "ноя", dek: "дек" };
+/* O'zgarishlar jurnali: harakat egasi; "tizim" — tarjima qilinadi. */
+const ACTOR = (who) => (who === "tizim" ? "Система" : who);
 export const rules = [
   // Brauzer sarlavhasi: "<sayt nomi> — video nazorat tizimi"
   [/^(.+) — video nazorat tizimi$/, (m) => m[1] + " — система видеонаблюдения"],
@@ -1335,13 +1337,14 @@ export const rules = [
   [/^(.+) registrator \(NVR\)$/, (m) => m[1] + ", регистратор (NVR)"],
   [/^Rang (#[0-9a-f]{3,8})$/i, (m) => "Цвет " + m[1]],
   [/^— Guruh (.+)$/, (m) => "— Группа " + m[1]],
-  [/^(\S+) tahrirladi$/, (m) => m[1] + " изменил(а)"],
-  [/^(\S+) qoʻshdi$/, (m) => m[1] + " добавил(а)"],
-  [/^(\S+) oʻchirdi$/, (m) => m[1] + " удалил(а)"],
-  [/^(\S+) qaytardi$/, (m) => m[1] + " восстановил(а)"],
-  [/^(\S+) parolni tikladi$/, (m) => m[1] + " сбросил(а) пароль"],
-  [/^(\S+) parolini almashtirdi$/, (m) => m[1] + " сменил(а) пароль"],
-  [/^(\S+) ommaviy oʻzgartirdi$/, (m) => m[1] + " изменил(а) массово"],
+  [/^(\S+) tahrirladi$/, (m) => ACTOR(m[1]) + " изменил(а)"],
+  [/^(\S+) qoʻshdi$/, (m) => ACTOR(m[1]) + " добавил(а)"],
+  [/^(\S+) oʻchirdi$/, (m) => ACTOR(m[1]) + " удалил(а)"],
+  [/^(\S+) qaytardi$/, (m) => ACTOR(m[1]) + " восстановил(а)"],
+  [/^(\S+) parolni tikladi$/, (m) => ACTOR(m[1]) + " сбросил(а) пароль"],
+  [/^(\S+) parolini almashtirdi$/, (m) => ACTOR(m[1]) + " сменил(а) пароль"],
+  [/^(\S+) oʻzgartirdi$/, (m) => ACTOR(m[1]) + " изменил(а)"],
+  [/^(\S+) ommaviy oʻzgartirdi$/, (m) => ACTOR(m[1]) + " изменил(а) массово"],
   [/^— (Foydalanuvchi|Kamera|Sozlamalar|Video devor) (.+)$/, (m, tr) => "— " + tr(m[1]) + " " + m[2]],
   // Sana: "27 sen 16:44", "8 okt 2025", "Du 8", "Chor, 8 okt"
   [/^(\d{1,2}) (yan|fev|mar|apr|may|iyun|iyul|avg|sen|okt|noy|dek)\b(.*)$/, (m) => m[1] + " " + MON[m[2]] + m[3]],

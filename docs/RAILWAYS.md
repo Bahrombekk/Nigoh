@@ -62,15 +62,15 @@ Elektrlashtirilgan: **4 099 km**. Ko'prik: 68 km, tunnel: 21 km (OSM teglari).
 
 ## Kameralar (xaritadagi koordinata tekshiruvi)
 
-145 ta koordinatali kameradan **142 tasi yo'ldan 60 m ichida**. Qolgani:
+145 ta koordinatali kameradan **143 tasi yo'ldan 60 m ichida** (2026-10-09, chegara yangilangandan keyin qayta qurilgan). Qolgani:
 
 | Kamera | Yo'ldan masofa | Izoh |
 |---|---|---|
-| **3393/1 km** (id 30) | **2 455 m** | koordinata **xato**: (41.21587, 69.08541). Qo'shnilari 3392/9 va 3394/4 yo'lda aniq (41.1435 / 41.1319). 3393/1 ularning orasida, taxminan 41.142, 69.0857 bo'lishi kerak |
+| 3393/1 km (id 30) | 4 m | **2026-10-09 tuzatildi**: eski (41.21587, 69.08541) yo'ldan 2,4 km narida edi. Yangi (41.141963, 69.085604) — qo'shnilar 3392/9 va 3394/4 orasida km bo'yicha interpolyatsiya, temir yo'l chizig'iga tushirilgan |
 | 3418/1 km | 138 m | kamera yo'l chetida o'rnatilgan, juda katta emas |
 | 3405/3 km | 65 m | xuddi shunday |
 
-Kamera koordinatasi bazada o'zgartirilmadi (hisobot uchun).
+Koordinata tekshiruvi: `build_railways_v2.py` oxirida chiqadi (chiziqdan > 60 m — ro'yxat).
 
 ## Qatlam ko'rinishi (`frontend/src/pages/map/railways.ts`)
 

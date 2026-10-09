@@ -1,0 +1,55 @@
+# Nigoh — Windows (Docker Desktop) da, IP bo'yicha HTTPS bilan.
+#
+# Linux server uchun asosiy fayl — docker-compose.yml (host tarmog'i).
+# Docker Desktop'da host tarmog'i yo'q, shuning uchun bu yerda portlar
+# map qilinadi va HTTPS'ni nginx beradi:
+#
+#     venv\Scripts\python backend\scripts\docker_https.py
+#     docker compose -f docker-compose.windows.yml up -d --build
+#
+# Sayt: https://<IP>/  (sertifikat — data/tls, CA'ni mijozlarga o'rnating).
+#
+# Baza — hostdagi PostgreSQL (Windows servisi, 5434); konteyner unga
+# host.docker.internal orqali ulanadi (data/compose.env).
+#
+# DIQQAT: shu mashinada lokal servis (start.bat) bilan BIR VAQTDA
+# ishlatmang — ikkalasi bitta bazaga va bitta kameralarga ulanadi,
+# 8189 porti ham to'qnashadi.
+services:
+  nigoh:
+    build: .
+    image: nigoh:latest
+    container_name: nigoh
+    restart: unless-stopped
+    # tini — FFmpeg zombilarini yig'ishtiradi (docker-compose.yml dagi izoh).
+    init: true
+    env_file: data/compose.env
+    volumes:
+      # secret.key, mediamtx.yml, loglar, suratlar, sertifikatlar
+      - ./data:/data
+    ports:
+      # HTTPS (nginx shu konteyner tarmog'ida tinglaydi). 80 — faqat
+      # https:// ga yo'naltirish: IP sxemasiz yozilsa ham Nigoh ochiladi.
+      - "80:80"
+      - "443:443"
+      # WebRTC media — nginx'dan o'tmaydi, brauzer to'g'ridan ulanadi.
+      - "8189:8189/udp"
+      - "8189:8189/tcp"
+    # NVIDIA GPU — H.265 ni H.264 ga o'girish (yo'q bo'lsa servis CPU'ga tushadi).
+    gpus: all
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+
+  # HTTPS: sayt, /media/hls (chipta auth_request bilan), /media/whep.
+  # nigoh tarmog'ida turadi — MediaMTX'ning HLS/WebRTC portlari
+  # proksi rejimida faqat 127.0.0.1 da ochiq (camera/media/sync.py: _bind).
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nigoh-nginx
+    restart: unless-stopped
+    network_mode: "service:nigoh"
+    depends_on:
+      - nigoh
+    volumes:
+      - ./data/nginx/nigoh.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data/tls:/etc/nginx/tls:ro

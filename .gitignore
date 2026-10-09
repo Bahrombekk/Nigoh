@@ -68,3 +68,6 @@ osm_rail.json
 
 # OpenStreetMap chegaralar xom yuklamasi (backend/scripts/fetch_osm_boundaries.py)
 osm_boundaries.json
+
+# Docker (Windows) ma'lumot papkasi: secret.key nusxasi, sertifikatlar, compose.env
+/data/

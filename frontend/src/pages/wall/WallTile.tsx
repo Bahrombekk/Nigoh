@@ -20,6 +20,7 @@ import { Icon } from "@/components/Icon";
 import { cx } from "@/components/ui";
 import { useT } from "@/i18n/I18nProvider";
 import { camStatus, type Camera } from "@/lib/types";
+import { useSelectedCamera } from "@/lib/selection";
 
 export type Quality = "" | "sub";
 type TileState = "" | "connecting" | "live" | "offline" | "fail";
@@ -27,6 +28,7 @@ type TileState = "" | "connecting" | "live" | "offline" | "fail";
 interface PlayerLike {
   open: (cam: unknown, useHevc: boolean, quality?: string) => void;
   stop: () => void;
+  destroy?: () => void;
   onOpen: ((ms: number, mode: string) => void) | null;
   onState: ((kind: string, text: string) => void) | null;
 }
@@ -87,6 +89,7 @@ export interface WallTileProps {
 export function WallTile(props: WallTileProps) {
   const { cam, quality, actions = true, main, staged, draggable } = props;
   const t = useT();
+  const selectedId = useSelectedCamera();      // xaritada tanlangan — ko'k chegara (v3 is-sel)
   const [, force] = useReducer((x: number) => x + 1, 0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const msgRef = useRef<HTMLSpanElement>(null);
@@ -120,7 +123,7 @@ export function WallTile(props: WallTileProps) {
     },
     stopPlayer() {
       api.clearTimers();
-      if (m.player) { m.player.onState = null; m.player.onOpen = null; m.player.stop(); m.player = null; }
+      if (m.player) { m.player.onState = null; m.player.onOpen = null; (m.player.destroy || m.player.stop).call(m.player); m.player = null; }
     },
     open() {
       api.clearTimers();
@@ -242,7 +245,8 @@ export function WallTile(props: WallTileProps) {
   }
 
   return (
-    <div ref={props.elRef} className={cx("wl-tile", main && "wl-tile--main", staged && "is-staged")} data-id={cam.id}
+    <div ref={props.elRef} className={cx("wl-tile", main && "wl-tile--main", staged && "is-staged",
+      !main && !staged && selectedId === cam.id && "is-sel")} data-id={cam.id}
       data-state={st} tabIndex={0} draggable={draggable || undefined} aria-hidden={staged || undefined}
       onClick={click} onKeyDown={key} onDoubleClick={(e) => e.stopPropagation()}>
       <video ref={videoRef} className="wl-tile__video" muted playsInline autoPlay />

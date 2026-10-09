@@ -48,7 +48,13 @@
    ========================================================================== */
 import { HEVC_OK, PLAYOUT_DELAY } from "./env.js";
 import { openTimes } from "./openTimes.js";
-import Hls from "hls.js";
+/* hls.js dinamik yuklanadi (alohida bo'lak) — playHls birinchi chaqirilganda. */
+let Hls = null;
+let hlsLoading = null;
+function loadHls() {
+  if (!hlsLoading) hlsLoading = import("hls.js").then((m) => { Hls = m.default; return Hls; });
+  return hlsLoading;
+}
 import { api } from "@/lib/api";
 import { getCurrentLang, translate } from "@/i18n/core.js";
 
@@ -125,6 +131,11 @@ export class Player {
     this.last = null;
     this.onCleanup = null;
     this.onState = null;
+    this.active = false;              // open() dan keyin true, stop() dan keyin false
+    // Tab/oynaga qaytilganda: brauzer fon tabida videoni pauza qiladi yoki
+    // dekodlashni to'xtatadi — qaytgach kadr kelmay ekran qora qolardi.
+    this.onVisible = () => this.wake();
+    document.addEventListener("visibilitychange", this.onVisible);
     msgEl.classList.add("pmsg");
     msgEl.addEventListener("click", (e) => {
       if (!msgEl.classList.contains("fail") || !this.last) return;
@@ -147,8 +158,29 @@ export class Player {
     if (this.last) this.open(...this.last);
   }
 
+  /* Sahifa yana ko'rindi: video davom ettiriladi; 2,5 s ichida kadr
+     yurmasa (pauza, uzilgan WebRTC, eskirgan HLS) oqim qayta ochiladi. */
+  wake() {
+    if (document.hidden || !this.active || !this.last) return;
+    const video = this.video;
+    if (video.paused) video.play().catch(() => {});
+    const t0 = video.currentTime;
+    const my = this.token;
+    setTimeout(() => {
+      if (document.hidden || !this.active || this.token !== my) return;
+      if (video.readyState < 2 || video.currentTime <= t0 + 0.05) this.retry();
+    }, 2500);
+  }
+
+  /* Pleyer butunlay olib tashlanadi (komponent yopilganda). */
+  destroy() {
+    this.stop();
+    document.removeEventListener("visibilitychange", this.onVisible);
+  }
+
   stop() {
     const video = this.video;
+    this.active = false;
     this.token++;
     // Kutish yozuvining taymerlari — pleyer yopilgach xabar yangilanmasin.
     if (this.onCleanup) { this.onCleanup(); this.onCleanup = null; }
@@ -164,6 +196,7 @@ export class Player {
   open(cam, useHevc, quality) {
     const video = this.video;
     this.stop();
+    this.active = true;
     this.last = [cam, useHevc, quality];
     const my = ++this.token;
     const stale = () => this.token !== my;
@@ -301,6 +334,13 @@ export class Player {
     // brauzer o'lik oqimni ko'rsatishda davom etadi va HLS ulanmaydi.
     video.srcObject = null;
     const isHls = url.includes(".m3u8");
+    // hls.js (~500 KB) faqat HLS kerak bo'lganda yuklanadi — odatda WebRTC
+    // ishlaydi va kutubxona umuman kerak bo'lmaydi.
+    if (isHls && !Hls) {
+      loadHls().then(() => { if (!staleFn()) this.playHls(url, staleFn, onFail); },
+                     () => { if (!staleFn()) this.setMsg(FAIL_MSG, "fail"); });
+      return;
+    }
     if (isHls && Hls.isSupported()) {
       // Zaxira: WebRTC'dagi PLAYOUT_DELAY ning HLS'dagi muqobili.
       // Ilgari `liveSyncDurationCount: 1` va `maxBufferLength: 6` edi —

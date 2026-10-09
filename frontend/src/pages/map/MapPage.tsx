@@ -24,6 +24,7 @@ import { useShortcut, useToast } from "@/components/overlays";
 import { useCameras, usePollSeconds } from "@/data/queries";
 import { api } from "@/lib/api";
 import { prefs, usePref } from "@/lib/prefs";
+import { setSelectedCamera } from "@/lib/selection";
 import type { Camera } from "@/lib/types";
 import { LAYER_DEFAULTS, MapController, type LayerState } from "./MapController";
 import {
@@ -345,6 +346,8 @@ export default function MapPage() {
   // Kameralar → markerlar (to'plam o'zgarsa qayta quriladi, aks holda faqat belgilar).
   useEffect(() => { if (ctl && loaded) ctl.setCameras(visible, byId); }, [ctl, visible, byId, loaded]);
   useEffect(() => { ctl?.setSelected(selectedId); }, [ctl, selectedId]);
+  // Bo'limlararo: video devor tanlangan kamerani ajratib ko'rsatadi (lib/selection).
+  useEffect(() => { setSelectedCamera(selectedId); }, [selectedId]);
 
   // Qidiruv: mos markerlar ajratiladi; so'rov o'zgarganda natijalarga moslanadi.
   const lastFitQ = useRef("");

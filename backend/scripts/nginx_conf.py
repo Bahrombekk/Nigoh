@@ -76,21 +76,14 @@ def load_env(path: Path) -> None:
 
 def media_locations(domain: str, api_port: int, hls_port: int,
                     webrtc_port: int, secret: str, scheme: str) -> str:
-    """/media/... bloklari — 80 va 443 uchun aynan bir xil matn."""
-    return f"""
-    # ---- Jurnal: CHIPTA yozilmaydi -------------------------------------
-    # Oqim manzili `?token=...` bo'lib keladi va nginx standart holda
-    # butun so'rov satrini jurnalga yozadi. Chipta bir soat amal qiladi,
-    # ya'ni jurnalni o'qiy oladigan har kim shu muddat ichida kamerani
-    # ocha oladi. Jurnal ko'pincha zaxiraga ham, monitoringga ham
-    # ko'chiriladi — sir uzoq yashaydi.
-    #
-    # `$uri` so'rov satrisiz yo'lni beradi: tashxis uchun yetarli
-    # (qaysi kamera, qaysi segment), sir esa tushmaydi.
-    log_format nigoh_media '$remote_addr - [$time_local] '
-                           '"$request_method $uri $server_protocol" '
-                           '$status $body_bytes_sent $request_time';
+    """/media/... bloklari — 80 va 443 uchun aynan bir xil matn.
 
+    domain "_" — domensiz (IP bo'yicha) o'rnatma: redirect'lar so'rov
+    kelgan manzilga (`$host`) qaytariladi, chunki sayt bir nechta IP'dan
+    ochilishi mumkin.
+    """
+    host = "$host" if domain == "_" else domain
+    return f"""
     # ---- HLS video -----------------------------------------------------
     location /media/hls/ {{
         access_log /var/log/nginx/nigoh_media.log nigoh_media;
@@ -137,7 +130,7 @@ def media_locations(domain: str, api_port: int, hls_port: int,
         # MediaMTX redirect'lari prefikssiz yoki http:// bilan kelishi
         # mumkin — doim to'liq manzilga keltiramiz, aks holda brauzer
         # Mixed Content deb bloklaydi.
-        proxy_redirect ~^(?:https?://[^/]+)?/(?:media/hls/)?(.*)$ {scheme}://{domain}/media/hls/$1;
+        proxy_redirect ~^(?:https?://[^/]+)?/(?:media/hls/)?(.*)$ {scheme}://{host}/media/hls/$1;
     }}
 
     # Chipta tekshiruvi — faqat ichki, tashqaridan chaqirilmaydi.
@@ -157,7 +150,7 @@ def media_locations(domain: str, api_port: int, hls_port: int,
         access_log /var/log/nginx/nigoh_media.log nigoh_media;
         proxy_pass http://127.0.0.1:{webrtc_port}/;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_redirect ~^(?:https?://[^/]+)?/(?:media/whep/)?(.*)$ {scheme}://{domain}/media/whep/$1;
+        proxy_redirect ~^(?:https?://[^/]+)?/(?:media/whep/)?(.*)$ {scheme}://{host}/media/whep/$1;
     }}
 """
 
@@ -196,6 +189,24 @@ def api_locations(api_port: int, scheme: str) -> str:
 """
 
 
+# ---- Jurnal: CHIPTA yozilmaydi ---------------------------------------------
+# Oqim manzili `?token=...` bo'lib keladi va nginx standart holda butun
+# so'rov satrini jurnalga yozadi. Chipta bir soat amal qiladi, ya'ni
+# jurnalni o'qiy oladigan har kim shu muddat ichida kamerani ocha oladi.
+# Jurnal ko'pincha zaxiraga ham, monitoringga ham ko'chiriladi — sir uzoq
+# yashaydi. `$uri` so'rov satrisiz yo'lni beradi: tashxis uchun yetarli
+# (qaysi kamera, qaysi segment), sir esa tushmaydi.
+#
+# `log_format` faqat http darajasida ruxsat etilgan — server{} ichida
+# turganda `nginx -t` "directive is not allowed here" bilan yiqilardi.
+# Fayl sites-enabled/ yoki conf.d/ dan http{} ichiga qo'shiladi, ya'ni
+# fayl boshidagi direktiva aynan http darajasi.
+LOG_FORMAT = """
+log_format nigoh_media '$remote_addr - [$time_local] '
+                       '"$request_method $uri $server_protocol" '
+                       '$status $body_bytes_sent $request_time';
+"""
+
 HEADER = """# Nigoh — nginx konfiguratsiyasi.
 # AVTOMATIK YARATILGAN: python scripts/nginx_conf.py
 #
@@ -216,12 +227,15 @@ HEADER = """# Nigoh — nginx konfiguratsiyasi.
 
 
 def build(domain: str, api_port: int, hls_port: int, webrtc_port: int,
-          secret: str, ssl: bool, cert_dir: str) -> str:
+          secret: str, ssl: bool, cert_dir: str,
+          cert_file: str = "", key_file: str = "") -> str:
+    """cert_file/key_file berilsa cert_dir o'rniga o'sha fayllar olinadi
+    (o'z-o'zini imzolagan sertifikat, scripts/docker_https.py)."""
     api80 = api_locations(api_port, "$scheme")
     if not ssl:
         media80 = media_locations(domain, api_port, hls_port, webrtc_port,
                                   secret, "http")
-        return HEADER + f"""
+        return HEADER + LOG_FORMAT + f"""
 server {{
     listen 80;
     server_name {domain};
@@ -229,7 +243,7 @@ server {{
 """
     media443 = media_locations(domain, api_port, hls_port, webrtc_port,
                                secret, "https")
-    return HEADER + f"""
+    return HEADER + LOG_FORMAT + f"""
 # 80 -> 443. ACME (certbot) tekshiruvi redirect'dan oldin turadi.
 server {{
     listen 80;
@@ -249,8 +263,8 @@ server {{
     http2 on;
     server_name {domain};
 
-    ssl_certificate     {cert_dir}/{domain}/fullchain.pem;
-    ssl_certificate_key {cert_dir}/{domain}/privkey.pem;
+    ssl_certificate     {cert_file or f"{cert_dir}/{domain}/fullchain.pem"};
+    ssl_certificate_key {key_file or f"{cert_dir}/{domain}/privkey.pem"};
 {api_locations(api_port, "https")}{media443}}}
 """
 

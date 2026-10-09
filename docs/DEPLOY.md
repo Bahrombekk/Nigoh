@@ -125,6 +125,46 @@ Eslatma: sahifa HTTPS'da ochilsa, brauzer HTTP'dagi videoni bloklaydi
 o'tkazing yoki `MEDIA_HOST` ga HTTPS beradigan manzil qo'ying. WebRTC'ning
 UDP qismi (8189) proksisiz to'g'ridan ishlayveradi.
 
+To'liq va to'g'ri konfiguratsiya (HLS chipta tekshiruvi, CDN kaliti bilan)
+`python backend/scripts/nginx_conf.py` dan olinadi — yuqoridagi qisqa
+namunani ishlab chiqarishda ishlatmang.
+
+## Windows (Docker Desktop) — IP bo'yicha HTTPS
+
+Domen yo'q joyda (ichki tarmoq) sayt mashina IP'sidan HTTPS bilan
+ochiladi. Docker Desktop'da host tarmog'i yo'q, shuning uchun alohida
+fayl — `docker-compose.windows.yml` (nigoh + nginx, nginx nigoh
+tarmog'ida turadi):
+
+```powershell
+venv\Scripts\python backend\scripts\docker_https.py --ip 192.168.136.168 --ip 192.168.1.155
+docker compose -f docker-compose.windows.yml up -d --build
+```
+
+`--ip` berilmasa mashinaning hamma IPv4 manzillari olinadi. Skript
+`data/` ga yozadi: `secret.key` nusxasi, lokal CA va sayt sertifikati
+(`data/tls`), nginx konfiguratsiyasi va konteyner muhiti
+(`data/compose.env`). IP o'zgarsa skriptni qayta yurgizing va
+`docker compose -f docker-compose.windows.yml restart` qiling — CA
+o'zgarmaydi.
+
+- Mijozda ogohlantirishsiz ochilishi uchun `data/tls/ca.crt` ni
+  "Trusted Root Certification Authorities" ga o'rnating (bir marta).
+- Ochiq portlar: 80/tcp (faqat https:// ga yo'naltirish), 443/tcp va
+  8189/udp+tcp (WebRTC). 8010 tashqariga ochilmaydi.
+- Baza — hostdagi PostgreSQL (5434), `host.docker.internal` orqali.
+- `start.bat` bilan BIR VAQTDA ishlatmang: ikkalasi bitta baza va
+  kameralarga ulanadi, 8189 to'qnashadi.
+
+Cheklovlar (Docker Desktop tarmog'i, Linux'da yo'q):
+
+- Hamma tomoshabin nginx'ga bitta manzildan (Docker shlyuzi, masalan
+  `172.27.0.1`) keladi: kirish cheklovi, jurnal va HLS'ning `(ip, yo'l)`
+  sessiyasi IP bo'yicha ajratilmaydi. Ishlab chiqarish uchun Linux
+  server va asosiy `docker-compose.yml` (host tarmog'i) tavsiya qilinadi.
+- VM'da `net.core.rmem_max` kichik — UDP qabul buferi 104 KB
+  (`MEDIAMTX_UDP_READ_BUFFER`); UDP kameralarda yo'qotish ko'payishi mumkin.
+
 ## Bir nechta MediaMTX tuguni (kameralar har xil joylarda bo'lsa)
 
 Kameralar bir necha binoda/shaharda bo'lsa, har joyga bitta MediaMTX
