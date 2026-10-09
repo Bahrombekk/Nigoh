@@ -23,7 +23,11 @@ Mijozda ogohlantirishsiz ochilishi uchun `data/tls/ca.crt` ni
 Authorities) ga o'rnating. O'rnatilmasa ham sayt ishlaydi — brauzer bir
 marta "xavfsiz emas" deb so'raydi.
 
-Ishlatish (loyiha ildizidan):
+Ishlatish — Linux server (docs/SERVER_KOCHIRISH.md), konteyner ichida:
+
+    docker compose run --rm --no-deps nigoh python scripts/docker_https.py --server --ip <IP>
+
+Ishlatish — Windows (loyiha ildizidan):
 
     venv\\Scripts\\python backend\\scripts\\docker_https.py            # IP'lar avtomatik
     venv\\Scripts\\python backend\\scripts\\docker_https.py --ip 192.168.136.168
@@ -131,16 +135,24 @@ def issue_server(tls: Path, ca_cert, ca_key, ips: list[str]) -> None:
                                      + ca_cert.public_bytes(serialization.Encoding.PEM))
 
 
-def compose_env(ips: list[str]) -> str:
-    """Konteyner muhiti. Faqat kerakli qiymatlar — .env butunligicha
-    (superuser paroli, test bazasi) konteynerga berilmaydi."""
-    url = urlsplit(os.environ["DATABASE_URL"])
-    db = url._replace(netloc=f"{url.username}:{url.password}@{DB_HOST}:{url.port or 5432}").geturl()
-    lines = [
-        "# AVTOMATIK YARATILGAN: backend/scripts/docker_https.py — qo'lda tahrirlamang.",
-        f"DATABASE_URL={db}",
-        f"PORT={os.environ.get('PORT', '8010')}",
-        f"PUBLIC_VIEW={os.environ.get('PUBLIC_VIEW', '1')}",
+def compose_env(ips: list[str], server: bool = False) -> str:
+    """Konteyner muhiti.
+
+    Windows: faqat kerakli qiymatlar — .env butunligicha (superuser
+    paroli, test bazasi) konteynerga berilmaydi, baza host.docker.internal.
+    Server (--server): .env konteynerga baribir beriladi (docker-compose.yml),
+    bu fayl faqat HTTPS uchun kerak bo'lganlarni ustidan yozadi.
+    """
+    lines = ["# AVTOMATIK YARATILGAN: backend/scripts/docker_https.py — qo'lda tahrirlamang."]
+    if not server:
+        url = urlsplit(os.environ["DATABASE_URL"])
+        db = url._replace(netloc=f"{url.username}:{url.password}@{DB_HOST}:{url.port or 5432}").geturl()
+        lines += [
+            f"DATABASE_URL={db}",
+            f"PORT={os.environ.get('PORT', '8010')}",
+            f"PUBLIC_VIEW={os.environ.get('PUBLIC_VIEW', '1')}",
+        ]
+    lines += [
         # Oqimlar nginx orqali, sahifa ochilgan manzilning o'zidan (nisbiy yo'l)
         # — sayt qaysi IP'dan ochilsa ham video o'sha IP'dan keladi.
         "MEDIA_BASE=/media",
@@ -148,6 +160,12 @@ def compose_env(ips: list[str]) -> str:
         f"WEBRTC_HOSTS={','.join(ips)}",
         # nginx shu konteyner tarmog'ida (127.0.0.1) — X-Forwarded-* faqat undan.
         "TRUSTED_PROXIES=127.0.0.1,::1",
+    ]
+    if server:
+        # Server — oddiy Linux: rmem_max sysctl bilan oshiriladi (yo'riqnoma),
+        # bufer standart 8 MB qoladi.
+        return "\n".join(lines) + "\n"
+    lines += [
         # Docker Desktop VM'ida net.core.rmem_max ~104 KB va konteyner uni
         # o'zgartira olmaydi (namespace'lanmagan sysctl). 8 MB so'ralsa
         # MediaMTX umuman ko'tarilmaydi ("unable to set UDP read buffer
@@ -167,11 +185,22 @@ def main() -> int:
                          "Berilmasa mashinaning hamma IPv4 manzillari olinadi.")
     ap.add_argument("--data", default=str(ROOT_DIR / "data"),
                     help="Konteyner ma'lumot papkasi (standart: ildizdagi data/).")
+    ap.add_argument("--server", action="store_true",
+                    help="Linux server (docker-compose.yml, host tarmog'i): skript "
+                         "konteyner ichida yuradi, baza manzili .env dagicha qoladi.")
     args = ap.parse_args()
+    if args.server and "--data" not in sys.argv:
+        # Konteyner ichida ma'lumot papkasi /data (NIGOH_DATA), /app/data emas.
+        args.data = os.environ.get("NIGOH_DATA") or args.data
 
     nginx_conf.load_env(ROOT_DIR / ".env")
-    if not os.environ.get("DATABASE_URL"):
+    if not args.server and not os.environ.get("DATABASE_URL"):
         ap.error(".env da DATABASE_URL yo'q")
+    if args.server and not (Path(args.data) / "secret.key").exists():
+        # core.security kalit topmasa YANGISINI yaratadi — keyin ko'chirilgan
+        # bazadagi kamera parollari ochilmaydi. Shuning uchun bu yerda to'xtaymiz.
+        ap.error(f"{Path(args.data) / 'secret.key'} yo'q — eski serverdan "
+                 "ko'chirilgan kalitni avval data/ ga qo'ying")
     from core import (
         security,  # .env yuklangandan keyin — kalit servisdagi bilan bir xil
     )
@@ -192,6 +221,12 @@ def main() -> int:
         shutil.copy2(src_key, data / "secret.key")
         print(f"secret.key nusxalandi -> {data / 'secret.key'}")
 
+    # `docker compose up` konfiguratsiyadan OLDIN yurgizilsa Docker bind
+    # mount uchun yo'q faylning o'rniga bo'sh PAPKA yaratadi — o'chiramiz.
+    conf = ngx / "nigoh.conf"
+    if conf.is_dir() and not any(conf.iterdir()):
+        conf.rmdir()
+
     ca_cert, ca_key = ensure_ca(tls)
     issue_server(tls, ca_cert, ca_key, ips)
     (ngx / "nigoh.conf").write_text(nginx_conf.build(
@@ -204,7 +239,7 @@ def main() -> int:
         cert_file=f"{TLS_IN_CONTAINER}/server.crt",
         key_file=f"{TLS_IN_CONTAINER}/server.key",
     ), encoding="utf-8", newline="\n")
-    (data / "compose.env").write_text(compose_env(ips), encoding="utf-8", newline="\n")
+    (data / "compose.env").write_text(compose_env(ips, args.server), encoding="utf-8", newline="\n")
 
     print("IP:", ", ".join(ips))
     print(f"Tayyor: {tls / 'server.crt'}, {ngx / 'nigoh.conf'}, {data / 'compose.env'}")

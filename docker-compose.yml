@@ -34,7 +34,12 @@ services:
     # keyin backend/database/sql/setup-roles.sql (docs/DEPLOY.md). Host tarmog'i
     # tufayli konteyner unga .env dagi DATABASE_URL (127.0.0.1:5432) orqali
     # ulanadi; PostgreSQL tashqi tarmoqqa ochilmaydi.
-    env_file: .env
+    env_file:
+      - .env
+      # IP bo'yicha HTTPS (profil `https`): MEDIA_BASE=/media, WEBRTC_HOSTS ...
+      # backend/scripts/docker_https.py --server yaratadi; yo'q bo'lsa e'tiborsiz.
+      - path: data/compose.env
+        required: false
     volumes:
       # Baza, shifrlash kaliti, loglar — konteyner yangilansa ham qoladi.
       # BU PAPKANI ZAXIRALANG: ichida kamera parollari kaliti bor.
@@ -53,3 +58,21 @@ services:
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+
+  # HTTPS (IP bo'yicha, o'z sertifikatimiz) — faqat `https` profilida:
+  # .env ga COMPOSE_PROFILES=https yozilsa `docker compose up -d` (va
+  # deploy/update.sh) uni o'zi ko'taradi. Konfiguratsiya va sertifikat:
+  #   docker compose run --rm --no-deps nigoh python scripts/docker_https.py --server --ip <IP>
+  # Host tarmog'ida: MediaMTX HLS/WebRTC portlari proksi rejimida faqat
+  # 127.0.0.1 da — nginx ularga shu yerdan yetadi. Yo'riqnoma: docs/SERVER_KOCHIRISH.md
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nigoh-nginx
+    restart: unless-stopped
+    profiles: ["https"]
+    network_mode: host
+    depends_on:
+      - nigoh
+    volumes:
+      - ./data/nginx/nigoh.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./data/tls:/etc/nginx/tls:ro

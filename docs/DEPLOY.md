@@ -1,5 +1,8 @@
 # Nigoh — serverga qo'yish
 
+> Hozirgi o'rnatmani ma'lumotlari bilan yangi serverga ko'chirish (IP
+> bo'yicha HTTPS) — qadam-baqadam: [SERVER_KOCHIRISH.md](SERVER_KOCHIRISH.md).
+
 ## Talablar
 
 - Linux server (Ubuntu 22.04+ tavsiya), Docker va docker compose plugin.
