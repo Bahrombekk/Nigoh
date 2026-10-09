@@ -4,7 +4,7 @@ Natija — xom JSON (`out geom`): har yo'l `railway=rail` (va qurilayotgan
 temir yo'l) uchun geometriya va teglar (usage, service, electrified,
 maxspeed, bridge, tunnel, name ...). Hajmi ~10 MB, ~13 ming yo'l, ~100 ming
 nuqta. Loyihaga qo'shilmaydi — `build_railways_v2.py` shundan
-`frontend/assets/railways-v2.geojson` yasaydi.
+`frontend/public/assets/railways-v2.geojson` yasaydi.
 
 Ma'lumot © OpenStreetMap contributors (ODbL). Xarita plitkalari ham OSM
 asosida, shuning uchun chiziqlar xaritadagi yo'lga aniq tushadi.

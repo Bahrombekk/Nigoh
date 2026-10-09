@@ -1,7 +1,7 @@
 """Nigoh — fayl yo'llari.
 
     BACKEND_DIR — backend kodi (main.py, stream_launcher.py shu yerda);
-    ROOT_DIR    — repo ildizi: .env, mediamtx/ (dastur), frontend/;
+    ROOT_DIR    — repo ildizi: .env, mediamtx/ (dastur), frontend/ (React, build — frontend/dist);
     DATA_DIR    — mashinaga xos fayllar: shifrlash kaliti, loglar,
                   mediamtx.yml, kamera suratlari (papka yo'q bo'lsa yaratiladi).
 

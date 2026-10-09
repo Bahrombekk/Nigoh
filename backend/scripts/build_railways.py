@@ -1,4 +1,4 @@
-"""Temir yo'l chiziqlarini xarita uchun tayyorlash: railway-lines.json -> frontend/assets/railways.geojson.
+"""Temir yo'l chiziqlarini xarita uchun tayyorlash: railway-lines.json -> frontend/public/assets/railways.geojson.
 
 Manba (railway-lines.json, loyiha ildizida): 8165 ta LineString, 70 mingga
 yaqin nuqta, har birida `color` — temir yo'lning hududiy bo'linmasi (MTU).
@@ -31,7 +31,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "railway-lines.json"
-DST = ROOT / "frontend" / "assets" / "railways.geojson"
+DST = ROOT / "frontend" / "public" / "assets" / "railways.geojson"
 TOLERANCE = 0.00004            # daraja ≈ 4 m (yaqin ko'rinish)
 # Uzoq ko'rinish (z < 10): silliq va toza. ~90 m dan mayda egrilik, 0,5 km dan
 # qisqa bo'lak (stansiya yo'llari) va 3 km dan kichik alohida tarmoq (sanoat

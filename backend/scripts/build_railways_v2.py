@@ -10,7 +10,7 @@ aniq tushadi), bo'linma (MTU) ranglari esa eski fayldan olinadi.
 
 Qadamlar:
   1. OSM yo'llari (`fetch_osm_railways.py` yuklagan) o'qiladi va O'zbekiston
-     chegarasida (frontend/assets/uz.geojson) kesiladi: qo'shni davlatga
+     chegarasida (frontend/public/assets/uz.geojson) kesiladi: qo'shni davlatga
      o'tib ketgan qismlari olib tashlanadi, chegara kesishgan nuqtada aniq
      (~1 m) tugaydi.
   2. Bo'linma: har yo'l eski fayldagi eng yaqin rangli chiziqdan ovoz bilan
@@ -46,9 +46,9 @@ from build_railways import BRANCHES, length_km, merge_lines, simplify  # noqa: E
 
 ROOT = Path(__file__).resolve().parents[2]
 OSM = ROOT / "osm_rail.json"
-BORDER = ROOT / "frontend" / "assets" / "uz.geojson"
+BORDER = ROOT / "frontend" / "public" / "assets" / "uz.geojson"
 OLD = ROOT / "railway-lines.json"
-DST = ROOT / "frontend" / "assets" / "railways-v2.geojson"
+DST = ROOT / "frontend" / "public" / "assets" / "railways-v2.geojson"
 
 VOTE_RADIUS_KM = 0.12          # bo'linma ovozi uchun eski chiziqqacha masofa
 BRIDGE_GAP_KM = 0.015          # shundan kichik uzilishlar to'ldiriladi

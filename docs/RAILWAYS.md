@@ -72,7 +72,7 @@ Elektrlashtirilgan: **4 099 km**. Ko'prik: 68 km, tunnel: 21 km (OSM teglari).
 
 Kamera koordinatasi bazada o'zgartirilmadi (hisobot uchun).
 
-## Qatlam ko'rinishi (`frontend/js/map/railways.js`)
+## Qatlam ko'rinishi (`frontend/src/pages/map/railways.ts`)
 
 - har yo'l to'rt qatlam: nur, to'q yostiq, rangli chiziq, shpallar (z ≥ 14);
 - asosiy liniya qalinroq, tarmoq va sanoat yo'llari ingichkaroq; chizish tartibi kichigidan kattasiga;

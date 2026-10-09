@@ -8,6 +8,8 @@ KATTA — mos kelmaydigan o'zgarish (masalan baza sxemasi), KICHIK — yangi
 imkoniyat, TUZATISH — xato tuzatish va ichki qayta qurish. Chiqarishda git
 tag ham shu bilan bir xil bo'ladi (v2.2.0).
 
+    3.0.1  interfeys React + Vite + TypeScript ga ko'chirildi (frontend/, build —
+           frontend/dist); eski vanilla JS interfeys o'chirildi; dizayn o'zgarmagan
     3.0.0  v3 (Figma "Nigoh vision"): profil (prefs, parol), kuzatuvchi roli,
            bildirishnomalar, tizim holati, yumshoq o'chirish (savat),
            boshqaruvda server tomonda filtr/saralash, ommaviy amallar, eksport;
@@ -27,4 +29,4 @@ Kim ishlatadi: app/factory.py (OpenAPI versiyasi), app/system_api.py
     (/admin/status), app/public_api.py (/public/info), users/api.py (/auth/me);
     ochiq /health uni bermaydi.
 """
-VERSION = "3.0.0"
+VERSION = "3.0.1"

@@ -26,8 +26,8 @@ Qadamlar:
      strelkasi bo'yicha (RFC 7946).
   4. Koordinatalar 6 xonagacha yaxlitlanadi (~0,1 m).
 
-Natija: `frontend/assets/uz_regions.geojson` (properties: name) va
-`frontend/assets/uz.geojson` (properties: shapeName, shapeISO, shapeType,
+Natija: `frontend/public/assets/uz_regions.geojson` (properties: name) va
+`frontend/public/assets/uz.geojson` (properties: shapeName, shapeISO, shapeType,
 source). Ma'lumot © OpenStreetMap contributors (ODbL).
 
 Ishlatish:
@@ -44,7 +44,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OSM = ROOT / "osm_boundaries.json"
-ASSETS = ROOT / "frontend" / "assets"
+ASSETS = ROOT / "frontend" / "public" / "assets"
 DST_REGIONS = ASSETS / "uz_regions.geojson"
 DST_COUNTRY = ASSETS / "uz.geojson"
 

@@ -5,7 +5,7 @@ ichidagi barcha viloyat relation'lari (12 viloyat, Qoraqalpog'iston, Toshkent
 shahri) a'zolari bilan (`out body`, outer/inner rollari), so'ng ularning
 barcha a'zo yo'llari geometriyasi (`out geom`) — umumiy chegara yo'li bir
 marta keladi. Hajmi ~3 MB. Loyihaga qo'shilmaydi — `build_boundaries.py`
-shundan `frontend/assets/uz_regions.geojson` va `frontend/assets/uz.geojson`
+shundan `frontend/public/assets/uz_regions.geojson` va `frontend/public/assets/uz.geojson`
 yasaydi.
 
 Ma'lumot © OpenStreetMap contributors (ODbL). Xarita plitkalari ham OSM

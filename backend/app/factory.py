@@ -127,7 +127,7 @@ Tugun holati (`status`): `online / degraded / offline`.
 
 # Statik fayllar access logga yozilmaydi (LOG_ACCESS_STATIC=1 bilan yoziladi):
 # sahifa har ochilganda 25+ so'rov — muhim yozuvlar ko'rinmay qoladi.
-_STATIC_PREFIXES = ("/css/", "/js/", "/assets/", "/favicon")
+_STATIC_PREFIXES = ("/static/", "/assets/", "/favicon")
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
@@ -158,7 +158,14 @@ class _NoCacheStatic(StaticFiles):
 
     def file_response(self, *args, **kwargs):
         response = super().file_response(*args, **kwargs)
-        response.headers["Cache-Control"] = "no-cache"
+        scope = kwargs.get("scope") or (args[2] if len(args) > 2 else {})
+        # Vite build'ining /static/ fayllari nomida xesh bor (index-CKQovN8y.js):
+        # mazmun o'zgarsa nom ham o'zgaradi — ular bir yilga keshlanadi.
+        # index.html va /assets/ esa har safar tekshiriladi (yangi versiya darhol).
+        if str(scope.get("path", "")).startswith("/static/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
 

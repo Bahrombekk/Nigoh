@@ -9,6 +9,14 @@
 # Qo'shimcha MediaMTX tugunlari (boshqa serverlarda) alohida, toza MediaMTX
 # bo'lib turadi — ularga /api/v1/admin/nodes/{id}/config dan konfiguratsiya
 # olinadi, bu image kerak emas.
+# 1-bosqich: interfeys (React + Vite) — frontend/dist
+FROM node:22-slim AS ui
+WORKDIR /ui
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12-slim
 
 # FFmpeg — H.265 kameralarni brauzer o'qiydigan H.264 ga o'girish uchun.
@@ -36,14 +44,14 @@ RUN mkdir -p /app/mediamtx \
     && curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/${MEDIAMTX_VERSION}/mediamtx_${MEDIAMTX_VERSION}_linux_${MEDIAMTX_ARCH}.tar.gz" \
        | tar -xz -C /app/mediamtx mediamtx
 
-# Tuzilma repo bilan bir xil: /app/backend (kod), /app/frontend (interfeys),
-# /app/mediamtx (dastur). Backend ROOT_DIR ni /app deb biladi.
+# Tuzilma repo bilan bir xil: /app/backend (kod), /app/frontend/dist (interfeys
+# build'i), /app/mediamtx (dastur). Backend ROOT_DIR ni /app deb biladi.
 WORKDIR /app/backend
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ /app/backend/
-COPY frontend/ /app/frontend/
+COPY --from=ui /ui/dist/ /app/frontend/dist/
 
 # Barcha o'zgaruvchan ma'lumot (baza, kalit, loglar, mediamtx.yml) /data da —
 # konteyner yangilansa ham kameralar va parollar joyida qoladi.

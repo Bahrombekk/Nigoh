@@ -39,12 +39,13 @@ from core import env  # noqa: E402,F401
 
 PORT = int(os.environ.get("PORT", "8010"))
 
-# Interfeys papkasi — backend uni o'zi beradi (standart: repo ildizidagi
-# frontend/). Bo'sh qiymat (`FRONTEND_DIR=`) — backend faqat API, interfeys
-# alohida serverda (nginx yoki frontendchining dev serveri).
+# Interfeys papkasi — backend uni o'zi beradi (standart: React build natijasi
+# frontend/dist; `cd frontend && npm run build` yasaydi, start.bat yo'q bo'lsa
+# o'zi yig'adi). Bo'sh qiymat (`FRONTEND_DIR=`) — backend faqat API, interfeys
+# alohida serverda (nginx yoki `npm run dev`).
 _frontend = os.environ.get("FRONTEND_DIR")
 FRONTEND_DIR = (Path(_frontend) if _frontend else
-                Path(__file__).resolve().parents[2] / "frontend") if _frontend != "" else None
+                Path(__file__).resolve().parents[2] / "frontend" / "dist") if _frontend != "" else None
 
 # Kirmagan (anonim) foydalanuvchi xarita va oqimlarni ko'ra oladimi.
 # Standart — ha. PUBLIC_VIEW=0 qilinsa faqat tizimga kirganlar ko'radi:

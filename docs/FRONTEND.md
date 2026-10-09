@@ -1,3 +1,5 @@
+> **Tarixiy hujjat (v2 / vanilla JS).** 3.0.1 dan interfeys React'da: `docs/V4_REACT.md`.
+
 # Nigoh — frontendchi uchun qo'llanma
 
 Bu hujjat kameralar bilan **hech qachon ishlamagan** frontendchi uchun

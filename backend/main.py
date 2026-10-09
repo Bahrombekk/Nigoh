@@ -51,7 +51,7 @@ Kod tuzilishi (backend/):
                          watchdog, security, alerts, version
     scripts/             yordamchi CLI skriptlar (diagnostika, import, nginx)
     tests/               pytest (pytest.ini: testpaths=tests)
-    ../frontend/         interfeys (xarita, devor, dashboard, boshqaruv) —
+    ../frontend/         interfeys — React + Vite + TS (src/), build: frontend/dist —
                          backend o'zi beradi (FRONTEND_DIR)
 """
 import os

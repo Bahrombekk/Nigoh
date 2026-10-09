@@ -1,3 +1,6 @@
+> **Tarixiy hujjat.** 3.0.1 dan interfeys React'da — `docs/V4_REACT.md`. Bu yerdagi tokenlar,
+> komponent klasslari va qoidalar React'da ham amal qiladi (CSS fayllari o'zgarmagan).
+
 # v3 frontend — qobiq va umumiy komponentlar (Figma "Nigoh vision")
 
 Figma fayli: `ddCkB9SY2dEsbAHtiNEOYM`. Batafsil ekran tavsiflari (agentlar uchun):

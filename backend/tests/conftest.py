@@ -25,6 +25,18 @@ os.environ["NIGOH_API_KEY"] = "test-kalit"
 # (app/config.py uni o'qiydi) testlar bir xil muhitda yursin.
 os.environ["PUBLIC_VIEW"] = "0"
 
+# Interfeys: backend frontend/dist (React build) ni beradi. Build qilinmagan
+# muhitda (CI, toza checkout) testlar Node'siz ham yursin — vaqtinchalik
+# index.html va public/assets dagi geojson'lar bilan soxta dist.
+_repo = Path(__file__).resolve().parents[2]
+if not (_repo / "frontend" / "dist" / "index.html").exists() and "FRONTEND_DIR" not in os.environ:
+    _ui = Path(_data_dir) / "ui"
+    (_ui / "assets").mkdir(parents=True)
+    (_ui / "index.html").write_text("<!doctype html><title>Nigoh</title>", encoding="utf-8")
+    for _g in (_repo / "frontend" / "public" / "assets").glob("*.geojson"):
+        (_ui / "assets" / _g.name).write_bytes(_g.read_bytes())
+    os.environ["FRONTEND_DIR"] = str(_ui)
+
 # Loyiha ildizi import yo'lida bo'lsin (pytest'ni istalgan joydan yuritish uchun).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
