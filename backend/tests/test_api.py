@@ -94,6 +94,7 @@ def test_mahalliy_xarita_range(client):
         r = client.get("/tiles/test.pmtiles", headers={"Range": "bytes=10-19"})
         assert r.status_code == 206
         assert r.content == bytes(range(10, 20))
+        assert r.headers["cache-control"] == "public, max-age=86400"   # kuniga bir tekshiruv
         assert client.get("/tiles/yoq.pmtiles").status_code == 404
     finally:
         f.unlink()

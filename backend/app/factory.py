@@ -170,6 +170,23 @@ class _NoCacheStatic(StaticFiles):
         return response
 
 
+class _TilesStatic(StaticFiles):
+    """Mahalliy xarita fayli (PMTiles) — kuniga bir marta tekshiriladi.
+
+    Fayl oyda bir marta yangilanadi, brauzer esa undan har xarita surilganda
+    o'nlab Range bo'laklarini so'raydi. Standart holatda har biri serverdan
+    qayta tekshirilardi (ETag). `max-age` bilan bo'laklar brauzer keshidan
+    olinadi: qayta ochish va surish tezroq, serverga yuk kamroq. Fayl
+    almashtirilsa yangi ETag bilan keladi — pmtiles kutubxonasi eski
+    bo'laklarni tashlaydi; ko'pi bilan bir kun eski kesh ishlatiladi.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+
 # Interfeys tashqi manbalardan yuklaydi: Leaflet/markercluster (unpkg),
 # hls.js (jsdelivr), shriftlar (Google Fonts) va OSM xarita plitkalari.
 # Ro'yxat shu yerda — yangi CDN qo'shilsa, sahifa jimgina buzilmasin.
@@ -339,7 +356,7 @@ def create_app() -> FastAPI:
     # faqat kerakli bo'laklarni HTTP Range bilan oladi (Starlette FileResponse
     # Range'ni qo'llaydi). Fayl bo'lmasa — 404, interfeys "Mahalliy" tugmasini
     # o'chiq ko'rsatadi. Xarita ma'lumoti ochiq (ODbL) — kirish talab qilinmaydi.
-    app.mount("/tiles", StaticFiles(directory=str(DATA_DIR / "tiles"), check_dir=False), name="tiles")
+    app.mount("/tiles", _TilesStatic(directory=str(DATA_DIR / "tiles"), check_dir=False), name="tiles")
 
     # Interfeys (frontend/) — ildizga, hamma API yo'llaridan KEYIN ulanadi:
     # /api, /health, /docs ustun turadi, qolgan manzillar (css/, js/,

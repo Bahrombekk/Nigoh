@@ -29,3 +29,9 @@ createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </StrictMode>,
 );
+
+/* Mahalliy xarita bo'laklari keshi (public/sw.js) — faqat /tiles/ so'rovlari;
+   boshqa hamma narsa odatdagidek tarmoqdan. HTTPS yoki localhost'da ishlaydi. */
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
+}
