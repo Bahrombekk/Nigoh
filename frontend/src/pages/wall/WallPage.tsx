@@ -52,7 +52,9 @@ const TV_MIN_WIDTH = 1720;
 const GAP = 8;
 
 type WallQuality = "auto" | "sub" | "main";
-interface WallPrefs { size: number; quality: WallQuality; auto: boolean; interval: number; group: string; order: number[]; focus: number | null }
+/* Holat filtri: hammasi / faqat onlayn / faqat uzilgan (foydalanuvchi talabi). */
+type WallStatus = "all" | "online" | "offline";
+interface WallPrefs { size: number; quality: WallQuality; status: WallStatus; auto: boolean; interval: number; group: string; order: number[]; focus: number | null }
 
 function normPrefs(raw: unknown): WallPrefs {
   const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -60,6 +62,7 @@ function normPrefs(raw: unknown): WallPrefs {
   return {
     size: SIZES.includes(Number(p.size)) ? Number(p.size) : 3,
     quality: ["auto", "sub", "main"].includes(p.quality as string) ? (p.quality as WallQuality) : "auto",
+    status: ["all", "online", "offline"].includes(p.status as string) ? (p.status as WallStatus) : "all",
     auto: !!p.auto,
     interval: iv > 0 ? INTERVALS.reduce((a, b) => (Math.abs(b - iv) < Math.abs(a - iv) ? b : a)) : 12,
     group: typeof p.group === "string" ? p.group : "",
@@ -135,12 +138,18 @@ export default function WallPage() {
   }, [pinned]);
 
   /* Devorga tushadigan kameralar: guruh yoki hudud filtri; uzilganlar ham, o'chirilganlar — yo'q. */
-  const all = useMemo(() => {
+  const scope = useMemo(() => {
     const ok = (c: Camera | undefined): c is Camera => !!c && c.state !== "disabled";
-    const base = group ? group.camera_ids.map((id) => byId.get(id)).filter(ok)
+    return group ? group.camera_ids.map((id) => byId.get(id)).filter(ok)
       : cameras.filter((c) => ok(c) && (!region || c.region === region));
+  }, [group, byId, cameras, region]);
+  /* Holat filtri — sanoq tanlangan guruh/hudud ichida. */
+  const downN = useMemo(() => scope.filter(isDown).length, [scope]);
+  const all = useMemo(() => {
+    const base = P.status === "online" ? scope.filter((c) => !isDown(c))
+      : P.status === "offline" ? scope.filter(isDown) : scope;
     return sorted(base, P.order);
-  }, [group, byId, cameras, region, P.order, sorted]);
+  }, [scope, P.status, P.order, sorted]);
 
   /* ---------- O'lchamlar ---------- */
   const [box, setBox] = useState<Box>({ W: 0, H: 0, gap: GAP, vw: innerWidth });
@@ -452,6 +461,14 @@ export default function WallPage() {
                 <button key={q} type="button" data-wq={q} className={cx(P.quality === q && "is-on")}
                   data-tip={q === "auto" ? "Katak 480 px gacha — qoʻshimcha (yengil) oqim, kattaroq — asosiy oqim" : undefined}
                   onClick={() => savePrefs({ quality: q })}>{t(label)}</button>
+              ))}
+            </div>
+            <div className="seg seg--inline wl-seg" id="wall-status" role="group" aria-label={t("Holat")}>
+              {([["all", "Hammasi", scope.length], ["online", "Onlayn", scope.length - downN], ["offline", "Uzilgan", downN]] as const).map(([s, label, n]) => (
+                <button key={s} type="button" data-wst={s} className={cx(P.status === s && "is-on")}
+                  onClick={() => { savePrefs({ status: s }); setPage(0); resetAuto(); setStaged(null); }}>
+                  {t(label)} <span className="wl-seg__n">{n}</span>
+                </button>
               ))}
             </div>
             <div className="wl-auto">

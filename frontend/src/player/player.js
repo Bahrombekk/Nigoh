@@ -112,11 +112,102 @@ export class WebRtcHealth {
 
 export const webrtcHealth = new WebRtcHealth();
 
+/* WebRTC'da ochilmaydigan kameralar eslab qolinadi (foydalanuvchi talabi).
+
+   Ba'zi kameralar WebRTC'da hech qachon kadr bermaydi (kodek/paket
+   yo'qotish/NVR) — har ochilishda 6 s WebRTC'ni kutib, keyin HLS'ga
+   ("Zaxira yo'l orqali ulanmoqda…") o'tardi. HLS'da muvaffaqiyatli
+   ochilgan bunday kamera (va sifat) HLS_MEMO_MS davomida eslab qolinadi
+   va keyingi safar to'g'ridan HLS bilan ochiladi. Muddat o'tgach WebRTC
+   yana sinaladi — kamera tuzalgan bo'lishi mumkin. HLS ham ochilmasa
+   yozuv o'chiriladi. Brauzerda saqlanadi (localStorage). */
+const HLS_MEMO_KEY = "nigoh.hlsOnly";
+const HLS_MEMO_MS = 12 * 3600 * 1000;
+
+function hlsMemo() {
+  try {
+    const m = JSON.parse(localStorage.getItem(HLS_MEMO_KEY) || "{}");
+    return m && typeof m === "object" ? m : {};
+  } catch { return {}; }
+}
+function hlsMemoSave(m) {
+  const now = Date.now();
+  for (const k of Object.keys(m)) if (now - m[k] > HLS_MEMO_MS) delete m[k];
+  try { localStorage.setItem(HLS_MEMO_KEY, JSON.stringify(m)); } catch { /* yashirin rejim */ }
+}
+export function hlsPreferred(key) {
+  const ts = hlsMemo()[key];
+  return !!ts && Date.now() - ts < HLS_MEMO_MS;
+}
+function rememberHls(key, on) {
+  const m = hlsMemo();
+  if (on) m[key] = Date.now(); else if (key in m) delete m[key]; else return;
+  hlsMemoSave(m);
+}
+
 export function webrtcDead() { return webrtcHealth.isDead(); }
 export function noteWebRtc(ok) { webrtcHealth.note(ok); }
 
 /* ---------- Video pleyer (WebRTC -> HLS) ----------
    Har bir pleyer o'z holatini olib yuradi — devorda bir nechta birga ishlaydi. */
+
+/* ---------- Oqimni uzatish (handoff) ----------
+   Xaritada kamera popover'da (sub oqim) o'ynab turibdi; "Batafsil" yoki
+   to'liq ekran bosilsa yangi oyna o'z pleyerini ochardi va video yana
+   "Ulanmoqda…" bo'lib qolardi (foydalanuvchi shikoyati). Endi:
+     - pleyer to'xtaganda jonli WebRTC ulanishi darhol yopilmaydi —
+       HANDOFF_MS davomida "to'xtab turadi" (park);
+     - shu kamerani ochgan pleyer uni darhol oladi: sifat bir xil bo'lsa
+       o'sha ulanish davom etadi, boshqa bo'lsa (sub -> asosiy) eski oqim
+       ko'rinib turadi, yangisi FONDA ulanadi va birinchi kadri kelgach
+       almashadi (qora ekran va "Ulanmoqda" yo'q);
+     - boshqa pleyer shu kamerani ko'rsatib turgan bo'lsa (masalan devor),
+       uning oqimi ham shunday olinadi.
+   Bitta MediaStream bir nechta <video> da birga ko'rsatilishi mumkin. */
+const HANDOFF_MS = 8000;
+const MAX_PARKED = 4;                         // devor sahifalanganda ulanishlar ko'payib ketmasin
+const allPlayers = new Set();
+const parked = new Map();                     // camId -> { pc, stream, quality, timer }
+
+function closeParked(camId) {
+  const e = parked.get(camId);
+  if (!e) return;
+  clearTimeout(e.timer);
+  parked.delete(camId);
+  e.pc.close();
+}
+
+function parkStream(camId, quality, pc, stream) {
+  // Shu oqimni egasiz ko'rsatib turgan pleyer bo'lsa — ulanish unga o'tadi.
+  for (const p of allPlayers) {
+    if (p.preview && p.preview.stream === stream && !p.preview.pc) { p.preview.pc = pc; return; }
+  }
+  if (parked.has(camId) && parked.get(camId).pc !== pc) closeParked(camId);
+  while (parked.size >= MAX_PARKED) closeParked(parked.keys().next().value);
+  const timer = setTimeout(() => {
+    if (parked.get(camId)?.pc === pc) { parked.delete(camId); pc.close(); }
+  }, HANDOFF_MS);
+  parked.set(camId, { pc, stream, quality, timer });
+}
+
+function takeParked(camId) {
+  const e = parked.get(camId);
+  if (!e) return null;
+  clearTimeout(e.timer);
+  parked.delete(camId);
+  if (["failed", "closed"].includes(e.pc.connectionState)) { e.pc.close(); return null; }
+  return e;
+}
+
+/* Shu kamerani hozir jonli ko'rsatib turgan boshqa pleyerning oqimi. */
+function findLive(camId, except) {
+  for (const p of allPlayers) {
+    if (p === except || !p.active || p.liveCam !== camId) continue;
+    if (p.pc && p.pc.__stream && p.webrtcLive) return { stream: p.pc.__stream, quality: p.liveQuality, pc: null };
+    if (p.preview) return { stream: p.preview.stream, quality: p.preview.quality, pc: null };
+  }
+  return null;
+}
 
 const FAIL_MSG = "Oqim ochilmadi — MediaMTX ishlayotganini va kamera ulanganini tekshiring";
 
@@ -132,6 +223,11 @@ export class Player {
     this.onCleanup = null;
     this.onState = null;
     this.active = false;              // open() dan keyin true, stop() dan keyin false
+    this.webrtcLive = false;          // this.pc kadr beryapti (uzatishga yaroqli)
+    this.liveCam = null;              // qaysi kamera / sifat ko'rsatilyapti (uzatish uchun)
+    this.liveQuality = "";
+    this.preview = null;              // { pc|null, stream, quality } — uzatilgan oqim, asosiysi kutilmoqda
+    allPlayers.add(this);
     // Tab/oynaga qaytilganda: brauzer fon tabida videoni pauza qiladi yoki
     // dekodlashni to'xtatadi — qaytgach kadr kelmay ekran qora qolardi.
     this.onVisible = () => this.wake();
@@ -140,7 +236,7 @@ export class Player {
     msgEl.addEventListener("click", (e) => {
       if (!msgEl.classList.contains("fail") || !this.last) return;
       e.stopPropagation();
-      this.open(...this.last);
+      this.retry();
     });
   }
 
@@ -153,28 +249,53 @@ export class Player {
     if (this.onState) this.onState(text ? (kind || "") : "", text);
   }
 
-  /* Oxirgi open() ni qayta chaqirish ("Qayta ulash"). */
+  /* Oxirgi open() ni qayta chaqirish ("Qayta ulash"). Joriy ulanish
+     uzatishga qo'yilmaydi — aks holda open() o'sha o'lik ulanishni
+     darhol qaytarib olardi va qayta ulanish hech narsa o'zgartirmasdi. */
   retry() {
-    if (this.last) this.open(...this.last);
+    if (!this.last) return;
+    this.discardLive();
+    this.open(...this.last);
   }
 
-  /* Sahifa yana ko'rindi: video davom ettiriladi; 2,5 s ichida kadr
-     yurmasa (pauza, uzilgan WebRTC, eskirgan HLS) oqim qayta ochiladi. */
+  discardLive() {
+    if (this.pc) { this.pc.close(); this.pc = null; }
+    if (this.preview && this.preview.pc) this.preview.pc.close();
+    this.preview = null;
+    this.webrtcLive = false;
+    if (this.liveCam != null) closeParked(this.liveCam);
+  }
+
+  /* Sahifa yana ko'rindi: video davom ettiriladi; 2,5 s ichida YANGI KADR
+     chizilmasa (pauza, uzilgan WebRTC, eskirgan HLS) oqim qayta ochiladi.
+
+     Kadr requestVideoFrameCallback bilan tekshiriladi. Ilgari currentTime
+     qaralardi — Chrome'da WebRTC oqimi fon tabidan qaytgach ekran qora
+     qolsa ham currentTime yuraveradi (MediaStream soati), shuning uchun
+     pleyer "ishlayapti" deb o'ylab qayta ulanmasdi (foydalanuvchi shikoyati). */
   wake() {
     if (document.hidden || !this.active || !this.last) return;
     const video = this.video;
     if (video.paused) video.play().catch(() => {});
     const t0 = video.currentTime;
     const my = this.token;
+    const rvfc = typeof video.requestVideoFrameCallback === "function";
+    let frames = 0;
+    if (rvfc) {
+      const tick = () => { frames++; if (frames < 3 && this.token === my) video.requestVideoFrameCallback(tick); };
+      video.requestVideoFrameCallback(tick);
+    }
     setTimeout(() => {
       if (document.hidden || !this.active || this.token !== my) return;
-      if (video.readyState < 2 || video.currentTime <= t0 + 0.05) this.retry();
+      const frozen = rvfc ? frames === 0 : (video.readyState < 2 || video.currentTime <= t0 + 0.05);
+      if (frozen) this.retry();
     }, 2500);
   }
 
   /* Pleyer butunlay olib tashlanadi (komponent yopilganda). */
   destroy() {
     this.stop();
+    allPlayers.delete(this);
     document.removeEventListener("visibilitychange", this.onVisible);
   }
 
@@ -185,7 +306,21 @@ export class Player {
     // Kutish yozuvining taymerlari — pleyer yopilgach xabar yangilanmasin.
     if (this.onCleanup) { this.onCleanup(); this.onCleanup = null; }
     if (this.hls) { this.hls.destroy(); this.hls = null; }
-    if (this.pc) { this.pc.close(); this.pc = null; }
+    this.dropOverlay();
+    // Jonli WebRTC yopilmaydi — qisqa muddat boshqa pleyerga uzatish uchun turadi.
+    const camId = this.liveCam;
+    if (this.preview) {
+      const pv = this.preview;
+      this.preview = null;
+      if (pv.pc && camId != null) parkStream(camId, pv.quality, pv.pc, pv.stream);
+    }
+    if (this.pc) {
+      if (this.webrtcLive && camId != null && this.pc.__stream) parkStream(camId, this.liveQuality, this.pc, this.pc.__stream);
+      else this.pc.close();
+      this.pc = null;
+    }
+    this.webrtcLive = false;
+    this.liveCam = null;
     video.pause();
     video.removeAttribute("src");
     video.srcObject = null;
@@ -197,12 +332,14 @@ export class Player {
     const video = this.video;
     this.stop();
     this.active = true;
+    this.liveCam = cam.id;
     this.last = [cam, useHevc, quality];
     const my = ++this.token;
     const stale = () => this.token !== my;
     const t0 = performance.now();
     this.setMsg("Ulanmoqda…", "wait");
     if (!video.poster) video.poster = "/api/cameras/" + cam.id + "/snapshot";
+    const q = quality || "";
 
     const opened = () => {
       if (stale()) return;
@@ -212,6 +349,26 @@ export class Player {
       if (this.onOpen) this.onOpen(ms, this.mode);
     };
     video.addEventListener("playing", opened, { once: true });
+
+    // Uzatish: to'xtab turgan yoki boshqa pleyerda o'ynayotgan oqim darhol ko'rsatiladi.
+    const src = takeParked(cam.id) || findLive(cam.id, this);
+    if (src) {
+      video.srcObject = src.stream;
+      video.play().catch(() => {});
+      this.setMsg("");
+      if (src.pc && src.quality === q) {
+        // O'sha ulanish to'liq qabul qilinadi — yangi ulanish kerak emas.
+        this.pc = src.pc;
+        this.webrtcLive = true;
+        this.liveQuality = q;
+        this.mode = "webrtc";
+        return;
+      }
+      this.preview = { pc: src.pc, stream: src.stream, quality: src.quality };
+      // Boshqa pleyerdagi aynan shu sifatli oqim — uni ko'rsatish kifoya
+      // (egasi yopilsa ulanish shu pleyerga o'tadi, parkStream).
+      if (src.quality === q) { this.mode = "webrtc"; return; }
+    }
 
     api("/api/cameras/" + cam.id + "/stream?hevc=" + (useHevc ? 1 : 0) +
         (quality ? "&quality=" + quality : ""))
@@ -231,12 +388,16 @@ export class Player {
   }
 
   attach(urls, staleFn, onFail) {
-    if (urls.webrtc_url && !webrtcDead()) {
+    const memoKey = this.last ? this.last[0].id + ":" + (this.last[2] || "") : "";
+    const failSafe = () => { if (memoKey) rememberHls(memoKey, false); onFail(); };
+    if (urls.webrtc_url && !webrtcDead() && !(memoKey && hlsPreferred(memoKey))) {
       this.playWebRtc(urls.webrtc_url, staleFn).then(() => {
         if (!staleFn()) noteWebRtc(true);
       }).catch((err) => {
         // Boshqa kamera bosilgan — bu WebRTC'ning aybi emas.
         if (staleFn()) return;
+        // Uzatilgan oqim ko'rinib turibdi — asosiy ochilmasa ham o'shani qoldiramiz.
+        if (this.preview) { this.dropOverlay(); this.setMsg(""); return; }
         // Faqat tarmoq darajasidagi jimlik sanaladi (ICE ulanmagan).
         if (!(err && err.iceOk)) noteWebRtc(false);
         if (err && err.noSource) {
@@ -247,16 +408,26 @@ export class Player {
           return;
         }
         this.setMsg("Zaxira yoʻl orqali ulanmoqda…", "wait");
-        this.playHls(urls.stream_url, staleFn, onFail);
+        // HLS'da ochilsa — keyingi safar WebRTC kutilmaydi.
+        if (memoKey) {
+          this.video.addEventListener("playing", () => { if (!staleFn()) rememberHls(memoKey, true); }, { once: true });
+        }
+        this.playHls(urls.stream_url, staleFn, failSafe);
       });
       return;
     }
     if (!urls.stream_url) { this.setMsg("Oqim manzili sozlanmagan", "fail"); return; }
-    this.playHls(urls.stream_url, staleFn, onFail);
+    this.playHls(urls.stream_url, staleFn, failSafe);
   }
 
   async playWebRtc(whepUrl, staleFn) {
     const video = this.video;
+    // Uzatilgan oqim ko'rinib turgan bo'lsa yangisi USTMA-UST qo'yilgan
+    // shaffof videoda kadr berguncha kutadi. O'lchov: srcObject almashtirilsa
+    // element ~0,5-0,9 s qora turadi (yangi sink birinchi kadrni kutadi) —
+    // shuning uchun avval ustki qatlam ko'rinadi, ostidagi video yangi oqimni
+    // chiza boshlagach qatlam olib tashlanadi.
+    const target = this.preview ? this.makeOverlay() : video;
     const pc = new RTCPeerConnection({ iceServers: [] });
     this.pc = pc;
     pc.addTransceiver("video", { direction: "recvonly" });
@@ -267,8 +438,8 @@ export class Player {
       try { e.receiver.jitterBufferTarget = PLAYOUT_DELAY * 1000; } catch (x) { /* qo'llamaydi */ }
       try { e.receiver.playoutDelayHint = PLAYOUT_DELAY; } catch (x) { /* qo'llamaydi */ }
       pc.__stream = e.streams[0];
-      video.srcObject = e.streams[0];
-      video.play().catch(() => {});
+      target.srcObject = e.streams[0];
+      target.play().catch(() => {});
     };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -305,18 +476,53 @@ export class Player {
       // yangi (hali bo'sh) videoga qarab eski urinishni "jim" deb
       // sanardi va WebRTC butun seansga o'chib qolardi.
       const t0 = performance.now();
+      let waitNoted = false;
       const poll = setInterval(() => {
         if (staleFn()) { clearInterval(poll); reject(new Error("bekor")); return; }
-        if (video.srcObject === pc.__stream && video.currentTime > 0) {
-          clearInterval(poll); resolve(); return;
+        const ready = target === video
+          ? target.currentTime > 0
+          : target.readyState >= 2 && target.videoWidth > 0;
+        if (target.srcObject === pc.__stream && ready) {
+          clearInterval(poll);
+          if (target !== video) {
+            this.fitOverlay(target);           // to'liq ekranga o'tilgan bo'lishi mumkin
+            target.style.opacity = "1";
+            video.srcObject = pc.__stream;
+            video.play().catch(() => {});
+            const pv = this.preview;
+            this.preview = null;
+            if (pv && pv.pc && pv.pc !== pc) parkStream(this.liveCam, pv.quality, pv.pc, pv.stream);
+            // Ostidagi video yangi oqimni chiza boshlagach (yoki 3 s) qatlam olinadi.
+            const s0 = performance.now();
+            const drop = setInterval(() => {
+              if ((video.readyState >= 2 && video.videoWidth === target.videoWidth) || performance.now() - s0 > 3000 || staleFn()) {
+                clearInterval(drop);
+                this.dropOverlay(target);
+              }
+            }, 50);
+          }
+          this.webrtcLive = true;
+          this.liveQuality = (this.last && this.last[2]) || "";
+          resolve(); return;
         }
-        if (performance.now() - t0 > 6000) {
+        // ICE ulangan bo'lsa kadr 20 s gacha kutiladi, ulanmagan bo'lsa 6 s.
+        // O'lchov (2026-10-12): H.265 kameralarning o'girish yo'li (_h264)
+        // birinchi kadrni 5,5-7,5 s da beradi — 6 s chegara ularni har gal
+        // HLS'ga tashlab yuborardi va HLS undan ham sekinroq (segment kutadi),
+        // devorda "Kamera uygʻotilmoqda…" uzoq turardi. Ulanish bor — demak
+        // kamera uyg'onyapti, uni kutish HLS'ga o'tishdan tezroq.
+        const iceOk = ["connected", "completed"].includes(pc.iceConnectionState);
+        const elapsed = performance.now() - t0;
+        if (iceOk && elapsed > 6000 && !waitNoted) {
+          waitNoted = true;
+          if (target === video) this.setMsg("Kamera uygʻotilmoqda…", "wait");
+        }
+        if (elapsed > (iceOk ? 20000 : 6000)) {
           clearInterval(poll);
           // ICE ulangan-u kadr yo'q — tarmoq emas, kameraning o'zi
           // (oqim bermayapti). Bunday holat WebRTC'ni o'chirishga
           // sanalmaydi: aks holda ikkita nosoz kamera ketma-ket ochilsa
           // butun seans sekin HLS'ga tushardi.
-          const iceOk = ["connected", "completed"].includes(pc.iceConnectionState);
           pc.close();
           reject(Object.assign(new Error("WebRTC jim"), { iceOk }));
         }
@@ -325,6 +531,40 @@ export class Player {
         if (pc.connectionState === "failed") { clearInterval(poll); pc.close(); reject(new Error("WebRTC uzildi")); }
       });
     });
+  }
+
+  /* Video ustiga shaffof qatlam (o'sha klass va o'lcham). Ota element
+     joylashtirilmagan bo'lsa ko'rinmas, DOM'dan tashqari element. */
+  makeOverlay() {
+    const video = this.video;
+    const el = Object.assign(document.createElement("video"), { muted: true, playsInline: true });
+    const parent = video.parentElement;
+    if (parent && getComputedStyle(parent).position !== "static") {
+      el.className = video.className;
+      Object.assign(el.style, { position: "absolute", opacity: "0", pointerEvents: "none", margin: "0" });
+      this.fitOverlay(el);
+      video.after(el);
+    }
+    this.overlay = el;
+    return el;
+  }
+
+  /* Qatlam videoning hozirgi o'rni va o'lchamiga keltiriladi. */
+  fitOverlay(el) {
+    const video = this.video;
+    Object.assign(el.style, {
+      left: video.offsetLeft + "px", top: video.offsetTop + "px",
+      width: video.offsetWidth + "px", height: video.offsetHeight + "px",
+      objectFit: getComputedStyle(video).objectFit,
+    });
+  }
+
+  dropOverlay(el) {
+    el = el || this.overlay;
+    if (!el) return;
+    el.srcObject = null;
+    el.remove();
+    if (this.overlay === el) this.overlay = null;
   }
 
   playHls(url, staleFn, onFail) {
@@ -392,6 +632,8 @@ export class Player {
         if (onFail && (d.type === Hls.ErrorTypes.MEDIA_ERROR || this.mode === "sub")) {
           hls.destroy(); onFail(); return;
         }
+        // HLS ham ochilmadi — "faqat HLS" yozuvi o'chadi, keyingi safar WebRTC sinaladi.
+        if (this.last) rememberHls(this.last[0].id + ":" + (this.last[2] || ""), false);
         this.setMsg(FAIL_MSG, "fail");
       });
     } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {

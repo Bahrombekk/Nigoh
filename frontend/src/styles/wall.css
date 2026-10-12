@@ -36,6 +36,8 @@
 .wl-select.is-open .wl-select__chev { transform: rotate(180deg); }
 
 .wl-seg { flex: none; }
+/* Holat filtri sanog'i (Hammasi 16 · Onlayn 12 · Uzilgan 4) */
+.wl-seg__n { margin-left: 4px; font-variant-numeric: tabular-nums; opacity: .6; }
 #wall-sizes > button { width: 64px; padding: 0; }
 #wall-quality > button { width: 70px; padding: 0; }
 .wl-tv-only { display: none !important; }
@@ -234,6 +236,11 @@ body.wl-tv .wl-focus .wl-bar { display: none; }
 @media (min-width: 1720px) {
   .wl-tv-only { display: inline-flex !important; }
   .wl-sysbar { display: inline-flex; }
+}
+/* Holat filtri qo'shilgach panel 1720 px dan torroqda bir qatorga sig'maydi —
+   "To'liq ekran" ekrandan chiqib ketardi; ikkinchi qatorga o'tadi. */
+@media (max-width: 1719px) {
+  .wl-bar { flex-wrap: wrap; row-gap: var(--spacing-md); }
 }
 @media (max-width: 1439px) {
   .wl-select { width: 224px; }

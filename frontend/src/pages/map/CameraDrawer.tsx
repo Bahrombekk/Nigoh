@@ -17,6 +17,7 @@ import { usePlayer } from "@/player/usePlayer";
 import type { Camera } from "@/lib/types";
 import { useMap, type Group } from "./model";
 import { useNow } from "./hooks";
+import { useSaveSnapshot } from "@/pages/wall/snapshot";
 import {
   STATUS_LABEL, camPlace, camStatus, camSub, fmtAgo, fmtCodec, fmtDur, fmtRes, fmtStamp, fmtWhen, hasGeo, hm, hms, p2,
 } from "./util";
@@ -85,31 +86,6 @@ function buildBlocks(cam: Camera, d: Details, now: number) {
   let on = 0;
   segs.forEach((s) => { if (s.state === "online") on += s.to - s.from; });
   return { blocks, pct: (on / 86400000) * 100 };
-}
-
-/* Kamera suratini faylga saqlash (v3 wall/video-wall.js saveSnapshot) — toast 04.07. */
-export function useSaveSnapshot() {
-  const toast = useToast();
-  return async (cam: Camera) => {
-    try {
-      const res = await fetch("/api/cameras/" + cam.id + "/snapshot", { cache: "no-store" });
-      if (!res.ok) throw new Error(String(res.status));
-      const url = URL.createObjectURL(await res.blob());
-      const d = new Date();
-      const name = String(cam.name).replace(/[^\w-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") +
-        "_" + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()) + ".jpg";
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      toast("Surat saqlandi · " + name, { tone: "info", action: "Ochish", ms: 6000, onAction: () => window.open(url, "_blank", "noopener") });
-      setTimeout(() => URL.revokeObjectURL(url), 120000);
-    } catch {
-      toast("Surat olinmadi", { tone: "error" });
-    }
-  };
 }
 
 function Row({ icon, k, v, mono, cls, id, children }: { icon: string; k: string; v?: string; mono?: boolean; cls?: string; id?: string; children?: React.ReactNode }) {
@@ -232,7 +208,7 @@ export const CameraDrawer = forwardRef<HTMLDivElement>(function CameraDrawer(_pr
             <Icon name="grid" />{t("Video devorga qoʻshish")}
           </button>
           <button type="button" className="icon-btn icon-btn--secondary" id="sel-shot" data-tip="Suratni saqlash" aria-label={t("Suratni saqlash")}
-            onClick={() => { if (cam) saveSnapshot(cam); }}><Icon name="camera" /></button>
+            onClick={() => { if (cam) saveSnapshot(cam, videoRef0.current); }}><Icon name="camera" /></button>
           <button type="button" className="icon-btn icon-btn--secondary" id="sel-center" data-tip="Xaritada markazlash" aria-label={t("Xaritada markazlash")}
             onClick={() => {
               if (cam && hasGeo(cam) && m.ctl) m.ctl.map.flyTo([cam.lat, cam.lng], Math.max(m.ctl.map.getZoom(), 15), { duration: 0.6 });

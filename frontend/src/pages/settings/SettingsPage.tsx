@@ -17,7 +17,7 @@
 import "@/styles/settings.css";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { useT } from "@/i18n/I18nProvider";
+import { useI18n, useT, type LangId } from "@/i18n/I18nProvider";
 import { PageSheet } from "@/layout/AppShell";
 import { Sysbar } from "@/layout/Sysbar";
 import { Icon } from "@/components/Icon";
@@ -60,6 +60,7 @@ let keptUserQ = "";
 
 export default function SettingsPage() {
   const t = useT();
+  const { setLang, setSiteLang } = useI18n();
   const nav = useNavigate();
   const toast = useToast();
   const { sub } = useParams();
@@ -107,6 +108,13 @@ export default function SettingsPage() {
     try { await put.mutateAsync(values); }
     catch (e) { toast((e as Error).message, { tone: "error" }); return; }
     setDraft({});
+    // Sayt tili saqlansa — saqlagan odamda ham darhol almashadi. Aks holda
+    // shaxsiy til (profil menyusi/login ekrani) ustun turadi va "til
+    // o'zgarmayapti" bo'lib ko'rinadi (foydalanuvchi shikoyati).
+    if (typeof values.language === "string" && values.language) {
+      setSiteLang(values.language);
+      setLang(values.language as LangId);
+    }
     toast("Sozlamalar saqlandi");
   }
 
