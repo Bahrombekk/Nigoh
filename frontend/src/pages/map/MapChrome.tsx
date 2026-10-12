@@ -91,8 +91,10 @@ export function Toolbar({ layers, setLayer, railsOk, railSrc, hybridOk, localOk 
                 data-tip={!hybridOk ? "Sunʼiy yoʻldosh plitkalari serverda ruxsat etilmagan" : undefined}
                 onClick={() => { if (hybridOk) setLayer("base", "hybrid"); }}>{t("Gibrid")}</button>
               <button type="button" data-base="local" className={cx(layers.base === "local" && "is-on")} aria-disabled={!localOk}
-                data-tip={localOk ? "Internetsiz — xarita serverning oʻzidan" : "Mahalliy xarita fayli serverda yoʻq"}
-                onClick={() => { if (localOk) setLayer("base", "local"); }}>{t("Mahalliy")}</button>
+                data-tip={localOk ? "Internetsiz — xarita serverning oʻzidan" : "Tez orada — internetsiz xarita"}
+                onClick={() => { if (localOk) setLayer("base", "local"); }}>
+                {t("Mahalliy")}{localOk === false && <span className="mp-lp__soon">{t("Tez orada")}</span>}
+              </button>
             </div>
           </div>
         </div>

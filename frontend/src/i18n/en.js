@@ -313,6 +313,8 @@ const D = {
   "Foydalanuvchilar": "Users",
   "Foydalanuvchini tahrirlash": "Edit user",
   "Gibrid": "Hybrid",
+  "Tez orada": "Coming soon",
+  "Tez orada — internetsiz xarita": "Coming soon — offline map",
   "Mahalliy": "Local",
   "Internetsiz — xarita serverning oʻzidan": "Offline — map served by the server itself",
   "Mahalliy xarita fayli serverda yoʻq": "Local map file is missing on the server",

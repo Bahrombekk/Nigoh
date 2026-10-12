@@ -313,6 +313,8 @@ const D = {
   "Foydalanuvchilar": "Пользователи",
   "Foydalanuvchini tahrirlash": "Редактирование пользователя",
   "Gibrid": "Гибрид",
+  "Tez orada": "Скоро",
+  "Tez orada — internetsiz xarita": "Скоро — карта без интернета",
   "Mahalliy": "Локальная",
   "Internetsiz — xarita serverning oʻzidan": "Без интернета — карта с самого сервера",
   "Mahalliy xarita fayli serverda yoʻq": "Файл локальной карты на сервере отсутствует",
