@@ -191,6 +191,30 @@ crontab -e
 15 3 * * * cd /opt/nigoh && backend/database/scripts/backup.sh >> /var/log/nigoh-backup.log 2>&1
 ```
 
+## 10a. Mahalliy (internetsiz) xarita
+
+Xarita qatlamlarida "Mahalliy" — plitkalar serverning o'zidan
+(`/tiles/uz.pmtiles`, ~650 MB). Fayl bo'lmasa tugma o'chiq turadi, qolgan
+qatlamlar odatdagidek internetdan ishlaydi. Avval serverda papka ochiladi
+(`data/` konteyner foydalanuvchisiga tegishli), keyin fayl ishchi
+kompyuterdan ko'chiriladi:
+
+```bash
+docker run --rm -v /opt/nigoh/data:/d alpine sh -c 'mkdir -p /d/tiles && chmod 777 /d/tiles'
+```
+
+```powershell
+scp -P 2222 C:\Users\User\Desktop\kamera-xarita\data\tiles\uz.pmtiles developer@SERVER_IP:/opt/nigoh/data/tiles/
+```
+
+```bash
+docker run --rm -v /opt/nigoh/data:/d alpine chown -R 1000:1000 /d/tiles
+```
+
+Yangilash (oyiga bir marta yetarli) — `pmtiles` CLI bilan:
+`python backend/scripts/fetch_map_tiles.py` (yangi fayl tayyor bo'lgach
+eskisining o'rniga qo'yiladi).
+
 ## 11. Yakun
 
 - Hammasi ishlagach `/root/paket` ni o'chiring (ichida kalit bor), lekin

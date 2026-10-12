@@ -19,13 +19,21 @@
      - Holat yangilanganda markerlar qayta chizilmaydi — faqat kaliti o'zgarganlar.
      - Lasso paytida xarita surilmaydi (dragging o'chiriladi). */
 import L from "./leaflet";
+import type { PMTiles } from "pmtiles";
+import { getCurrentLang } from "@/i18n/core.js";
 import { ICONS } from "@/components/icons";
 import type { Camera, UiStatus } from "@/lib/types";
 import { prewarm } from "@/player/player.js";
 import { RailLayer, type RailSrc } from "./railways";
 import { camStatus, cssColor, hasGeo, norm } from "./util";
 
-export type Base = "scheme" | "hybrid";
+export type Base = "scheme" | "hybrid" | "local";
+
+/* Mahalliy xarita (internetsiz): serverdagi OSM plitkalari bitta PMTiles faylida
+   (backend: /tiles, DATA_DIR/tiles/uz.pmtiles). Vektor — brauzer canvas'da chizadi
+   (protomaps-leaflet); fayldan faqat kerakli bo'laklar HTTP Range bilan olinadi.
+   Ma'lumot 15-masshtabgacha (binolar ham), undan yaqinda kattalashtirib chiziladi. */
+export const LOCAL_TILES_URL = "/tiles/uz.pmtiles";
 export interface LayerState { rail: boolean; regions: boolean; clusters: boolean; base: Base; railSrc: RailSrc }
 export const LAYER_DEFAULTS: LayerState = { rail: true, regions: true, clusters: true, base: "scheme", railSrc: "v2" };
 
@@ -125,7 +133,7 @@ export function fmtDist(m: number) {
   return (m / 1000).toFixed(m < 10000 ? 2 : 1).replace(".", ",") + " km";
 }
 
-const TILE: Record<Base, { url: string; labels?: string; attribution: string }> = {
+const TILE: Record<Exclude<Base, "local">, { url: string; labels?: string; attribution: string }> = {
   scheme: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' },
   hybrid: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -143,8 +151,10 @@ export class MapController {
   cb: MapCallbacks;
   t: (s: string) => string;
   base: Base = "scheme";
-  tiles: L.TileLayer | null = null;
-  tilesUz: L.TileLayer | null = null;
+  tiles: L.Layer | null = null;
+  tilesUz: L.Layer | null = null;
+  pm: PMTiles | null = null;                // mahalliy xarita manbasi — ikki qatlam bitta keshni bo'lishadi
+  baseSeq = 0;                              // setBase chaqiruvi raqami — kech yuklangan modul eskisini qo'ymasin
   labels: L.TileLayer | null = null;
   uzMask: L.Polygon | null = null;
   uzBorder: L.Polygon | null = null;
@@ -229,7 +239,7 @@ export class MapController {
       map.setView(c.getLatLng(), Math.min(map.getZoom() + 2, map.getMaxZoom()));
     });
 
-    this.setBase(ls.base === "hybrid" ? "hybrid" : "scheme");
+    this.setBase(ls.base === "hybrid" || ls.base === "local" ? ls.base : "scheme");
 
     // Xarita bosilishi: o'lchash nuqtasi yoki karta yopilishi.
     map.on("click", (e) => {
@@ -260,14 +270,40 @@ export class MapController {
 
   /* ---------- Plitkalar ---------- */
   setBase(kind: Base) {
-    this.base = kind === "hybrid" ? "hybrid" : "scheme";
+    this.base = kind === "hybrid" || kind === "local" ? kind : "scheme";
     const map = this.map;
     [this.tiles, this.tilesUz, this.labels].forEach((t) => { if (t) map.removeLayer(t); });
+    map.getContainer().classList.toggle("mp-map--hybrid", this.base === "hybrid");
+    map.getContainer().classList.toggle("mp-map--local", this.base === "local");
+    this.tiles = this.tilesUz = this.labels = null;
+    const seq = ++this.baseSeq;
+    if (this.base === "local") {
+      // Vektor chizgich (~160 KB) faqat "Mahalliy" tanlanganda yuklanadi.
+      Promise.all([import("protomaps-leaflet"), import("pmtiles"), import("./localStyle")]).then(([pl, pt, st]) => {
+        if (seq !== this.baseSeq) return;               // shu orada boshqa tur tanlandi
+        // Yorliqlar tili — interfeys tili (OSM name:uz/ru/en; bo'lmasa asl nom).
+        const l = getCurrentLang();
+        const lang = l === "ru" || l === "en" ? l : "uz";
+        this.pm = this.pm || new pt.PMTiles(LOCAL_TILES_URL);
+        // Uslub — Sxema (OSM) bilan bir xil; mavzu CSS filtri bilan (localStyle.ts).
+        const flavor = st.localFlavor();
+        const paint = st.withStreets(pl, st.withLanduse(pl, pl.paintRules(flavor)));
+        const mk = (o: L.GridLayerOptions, labels: boolean) =>
+          pl.leafletLayer({
+            url: this.pm!, paintRules: paint, labelRules: labels ? pl.labelRules(flavor, lang) : [],
+            backgroundColor: flavor.background, maxDataZoom: 15, maxZoom: 19, ...o,
+          }) as unknown as L.Layer;
+        // Tashqi (xira) qatlamda yozuv yo'q: qo'shni davlatlar nomlari o'z yozuvida
+        // chalkashtirardi, yozuvsiz chizish ham tezroq.
+        this.tiles = mk({ attribution: "&copy; OpenStreetMap · Protomaps", className: "tiles-out" }, false).addTo(map);
+        this.tilesUz = mk({ pane: "uzSharp", className: "tiles-uz" }, true).addTo(map);
+      }, () => { if (seq === this.baseSeq) this.setBase("scheme"); });
+      return;
+    }
     const t = TILE[this.base];
     this.tiles = L.tileLayer(t.url, { attribution: t.attribution, maxZoom: 19, className: "tiles-out" }).addTo(map);
     this.tilesUz = L.tileLayer(t.url, { maxZoom: 19, pane: "uzSharp", className: "tiles-uz" }).addTo(map);
     this.labels = t.labels ? L.tileLayer(t.labels, { maxZoom: 19, pane: "labels", className: "tiles-labels" }).addTo(map) : null;
-    map.getContainer().classList.toggle("mp-map--hybrid", this.base === "hybrid");
   }
 
   /* Tiniq qatlamni O'zbekiston shakli bo'yicha kesadi (clip-path qatlam koordinatalarida;

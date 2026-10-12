@@ -16,7 +16,7 @@ import { flushSync } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import type L from "leaflet";
-import { useT } from "@/i18n/I18nProvider";
+import { useI18n, useT } from "@/i18n/I18nProvider";
 import { useAuth } from "@/auth/AuthProvider";
 import { Icon } from "@/components/Icon";
 import { cx } from "@/components/ui";
@@ -26,7 +26,7 @@ import { api } from "@/lib/api";
 import { prefs, usePref } from "@/lib/prefs";
 import { setSelectedCamera } from "@/lib/selection";
 import type { Camera } from "@/lib/types";
-import { LAYER_DEFAULTS, MapController, type LayerState } from "./MapController";
+import { LAYER_DEFAULTS, LOCAL_TILES_URL, MapController, type LayerState } from "./MapController";
 import {
   GROUPS_KEY, MapCtx, searchCams,
   type Group, type ListView, type MapApi, type RegionInfo, type StatusFilter,
@@ -44,6 +44,7 @@ const NO_GROUPS: Group[] = [];
 
 export default function MapPage() {
   const t = useT();
+  const { lang } = useI18n();
   const toast = useToast();
   const nav = useNavigate();
   const { user } = useAuth();
@@ -77,6 +78,7 @@ export default function MapPage() {
   const [railsOk, setRailsOk] = useState(true);
   const [railSrc, setRailSrc] = useState<string>(layers.railSrc === "v1" ? "v1" : "v2");
   const [hybridOk, setHybridOk] = useState<boolean | null>(null);
+  const [localOk, setLocalOk] = useState<boolean | null>(null);
 
   /* ---------- panel holati ---------- */
   const [filters, setFilters] = useState<Set<StatusFilter>>(() => new Set());
@@ -367,8 +369,10 @@ export default function MapPage() {
   useEffect(() => { ctl?.rail.setVisible(layers.rail !== false); }, [ctl, layers.rail]);
   useEffect(() => { ctl?.setRegionsVisible(layers.regions !== false); }, [ctl, layers.regions]);
   useEffect(() => { ctl?.setClusters(layers.clusters !== false); }, [ctl, layers.clusters]);
-  const base = layers.base === "hybrid" && hybridOk ? "hybrid" : "scheme";
+  const base = layers.base === "hybrid" && hybridOk ? "hybrid" : layers.base === "local" && localOk ? "local" : "scheme";
   useEffect(() => { if (ctl && ctl.base !== base) ctl.setBase(base); }, [ctl, base]);
+  // Mahalliy xarita yorliqlari interfeys tilida — til almashsa qayta chiziladi.
+  useEffect(() => { if (ctl && base === "local") ctl.setBase("local"); }, [lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const railSrcInit = useRef(true);
   useEffect(() => {
     if (!ctl) return;
@@ -377,6 +381,7 @@ export default function MapPage() {
   }, [ctl, layers.railSrc]);
   const setLayer = <K extends keyof LayerState>(k: K, v: LayerState[K]) => {
     if (k === "base" && v === "hybrid" && !hybridOk) return;
+    if (k === "base" && v === "local" && !localOk) return;
     if (k === "railSrc") setRailSrc(String(v));
     prefs.set("layers", { ...layers, [k]: v });
   };
@@ -390,6 +395,14 @@ export default function MapPage() {
       const img = (csp.match(/img-src([^;]*)/) || [])[1];
       if (alive) setHybridOk(!csp || !img || /arcgisonline|\*(\s|$)|https:(\s|$)/.test(img));
     }).catch(() => { if (alive) setHybridOk(false); });
+    return () => { alive = false; };
+  }, []);
+
+  /* "Mahalliy" — serverda xarita fayli bormi (Range bilan 1 bayt so'raladi). */
+  useEffect(() => {
+    let alive = true;
+    fetch(LOCAL_TILES_URL, { headers: { Range: "bytes=0-0" }, credentials: "same-origin" })
+      .then((r) => { if (alive) setLocalOk(r.ok); }, () => { if (alive) setLocalOk(false); });
     return () => { alive = false; };
   }, []);
 
@@ -525,7 +538,7 @@ export default function MapPage() {
         <button type="button" className="mp-ctl mp-expand" id="mp-expand" data-tip="Panelni ochish" data-tip-place="right"
           aria-label={t("Panelni ochish")} onClick={() => setCollapsed(false, true)}><Icon name="sidebar" /></button>
         <div className="mp-scrim" id="mp-scrim" aria-hidden="true" onClick={() => setCollapsed(true, false)} />
-        <Toolbar layers={{ ...layers, base }} setLayer={setLayer} railsOk={railsOk} railSrc={railSrc} hybridOk={hybridOk} />
+        <Toolbar layers={{ ...layers, base }} setLayer={setLayer} railsOk={railsOk} railSrc={railSrc} hybridOk={hybridOk} localOk={localOk} />
         <MapControls locate={locate} fs={fs} onFs={toggleMapFullscreen} />
         <Legend />
         <ScaleBar />

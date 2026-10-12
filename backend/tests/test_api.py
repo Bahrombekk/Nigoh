@@ -83,6 +83,22 @@ def test_xarita_geojson_fayllari(client):
     assert client.get("/assets/maxfiy.geojson").status_code == 404
 
 
+def test_mahalliy_xarita_range(client):
+    """Mahalliy xarita (PMTiles) — Range bilan qismi beriladi; fayl yo'q — 404."""
+    from core.paths import DATA_DIR
+    tiles = DATA_DIR / "tiles"
+    tiles.mkdir(exist_ok=True)
+    f = tiles / "test.pmtiles"
+    f.write_bytes(bytes(range(256)) * 4)
+    try:
+        r = client.get("/tiles/test.pmtiles", headers={"Range": "bytes=10-19"})
+        assert r.status_code == 206
+        assert r.content == bytes(range(10, 20))
+        assert client.get("/tiles/yoq.pmtiles").status_code == 404
+    finally:
+        f.unlink()
+
+
 def test_kamera_crud_va_external_id(client):
     _yangi(client, "Ext sinov", ext="api-test-1")
     try:

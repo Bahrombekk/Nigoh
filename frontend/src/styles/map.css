@@ -434,8 +434,10 @@ body.picking .mp-pickhint { display: flex; }
 .mp-lrow__txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .mp-lp__src { display: flex; align-items: center; gap: var(--spacing-md); padding: 0 var(--spacing-sm) var(--spacing-sm) 50px; }
 .mp-lp__sep { height: 1px; margin: var(--spacing-xs) 0; background: var(--color-border-secondary); }
-.mp-lp__type { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-md); padding: var(--spacing-sm); }
-.mp-lp__base { width: 160px; }
+/* Xarita turi: uch tugma (Sxema / Gibrid / Mahalliy) — yorliq ustida, tugmalar to'liq kenglikda. */
+.mp-lp__type { display: flex; flex-direction: column; align-items: stretch; gap: var(--spacing-sm); padding: var(--spacing-sm); }
+.mp-lp__base { display: flex; width: 100%; }
+.mp-lp__base > button { flex: 1 1 0; min-width: 0; padding: 0 var(--spacing-sm); white-space: nowrap; }
 .mp-lg .overline { padding: var(--spacing-sm) var(--spacing-sm) 0; }
 .mp-lg__row { display: flex; align-items: center; gap: var(--spacing-md); padding: 2px var(--spacing-sm); min-height: 30px; }
 .mp-lg__row > span:first-child { display: grid; place-items: center; width: 32px; flex: none; }

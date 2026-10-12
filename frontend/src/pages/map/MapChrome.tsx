@@ -23,9 +23,9 @@ const ROWS: { key: "rail" | "regions" | "clusters"; icon: string; title: string;
   { key: "clusters", icon: "circle-nodes", title: "Kamera klasterlari", meta: "Uzoqlashtirilganda birlashadi" },
 ];
 
-export function Toolbar({ layers, setLayer, railsOk, railSrc, hybridOk }: {
+export function Toolbar({ layers, setLayer, railsOk, railSrc, hybridOk, localOk }: {
   layers: LayerState; setLayer: <K extends keyof LayerState>(k: K, v: LayerState[K]) => void;
-  railsOk: boolean; railSrc: string; hybridOk: boolean | null;
+  railsOk: boolean; railSrc: string; hybridOk: boolean | null; localOk: boolean | null;
 }) {
   const t = useT();
   const [group, setGroup] = useState<HTMLDivElement | null>(null);
@@ -86,10 +86,13 @@ export function Toolbar({ layers, setLayer, railsOk, railSrc, hybridOk }: {
           <div className="mp-lp__type">
             <span className="label-sm t-secondary">{t("Xarita turi")}</span>
             <div className="seg seg--sm mp-lp__base">
-              <button type="button" data-base="scheme" className={cx(layers.base !== "hybrid" && "is-on")} onClick={() => setLayer("base", "scheme")}>{t("Sxema")}</button>
+              <button type="button" data-base="scheme" className={cx(layers.base !== "hybrid" && layers.base !== "local" && "is-on")} onClick={() => setLayer("base", "scheme")}>{t("Sxema")}</button>
               <button type="button" data-base="hybrid" className={cx(layers.base === "hybrid" && "is-on")} aria-disabled={!hybridOk}
                 data-tip={!hybridOk ? "Sunʼiy yoʻldosh plitkalari serverda ruxsat etilmagan" : undefined}
                 onClick={() => { if (hybridOk) setLayer("base", "hybrid"); }}>{t("Gibrid")}</button>
+              <button type="button" data-base="local" className={cx(layers.base === "local" && "is-on")} aria-disabled={!localOk}
+                data-tip={localOk ? "Internetsiz — xarita serverning oʻzidan" : "Mahalliy xarita fayli serverda yoʻq"}
+                onClick={() => { if (localOk) setLayer("base", "local"); }}>{t("Mahalliy")}</button>
             </div>
           </div>
         </div>

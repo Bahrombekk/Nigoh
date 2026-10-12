@@ -84,6 +84,7 @@ from core import bus, security
 from core.log import log
 from core.logs import config as log_config
 from core.logs import context as log_context
+from core.paths import DATA_DIR
 from core.version import VERSION
 from database.api import router as database_router
 from groups.api import router as groups_router
@@ -127,7 +128,7 @@ Tugun holati (`status`): `online / degraded / offline`.
 
 # Statik fayllar access logga yozilmaydi (LOG_ACCESS_STATIC=1 bilan yoziladi):
 # sahifa har ochilganda 25+ so'rov — muhim yozuvlar ko'rinmay qoladi.
-_STATIC_PREFIXES = ("/static/", "/assets/", "/favicon")
+_STATIC_PREFIXES = ("/static/", "/assets/", "/favicon", "/tiles/")
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
@@ -332,6 +333,13 @@ def create_app() -> FastAPI:
     # /health kalitsiz va prefikssiz — Docker HEALTHCHECK shu manzilga
     # qaraydi; ichida sir yo'q.
     app.include_router(health_router)
+
+    # Mahalliy xarita (internetsiz): DATA_DIR/tiles/uz.pmtiles — O'zbekiston
+    # OSM plitkalari bitta faylda (scripts/fetch_map_tiles.py). Brauzer undan
+    # faqat kerakli bo'laklarni HTTP Range bilan oladi (Starlette FileResponse
+    # Range'ni qo'llaydi). Fayl bo'lmasa — 404, interfeys "Mahalliy" tugmasini
+    # o'chiq ko'rsatadi. Xarita ma'lumoti ochiq (ODbL) — kirish talab qilinmaydi.
+    app.mount("/tiles", StaticFiles(directory=str(DATA_DIR / "tiles"), check_dir=False), name="tiles")
 
     # Interfeys (frontend/) — ildizga, hamma API yo'llaridan KEYIN ulanadi:
     # /api, /health, /docs ustun turadi, qolgan manzillar (css/, js/,
