@@ -15,7 +15,7 @@
        O'lcham o'zgarsa (300 ms jamlab) kataklar kerak bo'lsa yangi oqimga o'tadi;
        ustun/qator va 16:9 katak o'lchami esa darhol (ResizeObserver, oqim qayta ochilmaydi).
      - Fokusda devor kataklari yopiladi (trafik), qaytganda sahifa o'sha.
-     - Avto-aylanish 1 s lik tik: hover/sudrash/yashirin oynada sanoq to'xtaydi; ma'lumot
+     - Avto-aylanish 1 s lik tik: sichqoncha devor ustida harakatlanayotganda (oxirgi 5 s), sudrashda va yashirin oynada sanoq to'xtaydi; ma'lumot
        yangilanishi sanoqni noldan boshlamaydi. Almashishdan 5 s oldin (oraliq qisqa bo'lsa —
        yarmi) keyingi sahifa ko'rinmas kataklarda (.is-staged) ochiladi va o'sha katak devorga
        o'tadi (bir ota-elementda, kalit bir xil — oqim uzilmaydi).
@@ -48,6 +48,8 @@ const SUB_MAX_CELL = 480;
    (devorda o'lchangan ochilish 1,5–4,8 s). Oraliq qisqa bo'lsa — yarmi. */
 const PRELOAD_LEAD_MS = 5000;
 /* 6×6 va 8×8 — faqat keng (TV) ekranda; torroqda 4×4 gacha qisiladi. */
+/* Sichqoncha qimirlamay turgan bo'lsa shuncha vaqtdan keyin avto-aylanish davom etadi. */
+const HOVER_PAUSE_MS = 5000;
 const TV_MIN_WIDTH = 1720;
 const GAP = 8;
 
@@ -226,9 +228,15 @@ export default function WallPage() {
   const remain = useRef(0);
   const preloaded = useRef(false);
   const hover = useRef(false);
+  const lastMove = useRef(0);
   const dragId = useRef<number | null>(null);
   const resetAuto = (iv?: number) => { remain.current = period(iv); preloaded.current = false; };
-  const paused = () => hover.current || dragId.current != null || document.hidden;
+  /* Pauza: sichqoncha devor ustida HARAKATLANAYOTGANDA (oxirgi 5 s). Ilgari faqat
+     "ustida turibdi" yetarli edi — devor butun ekranni egallagani uchun sichqoncha
+     shunchaki qolib ketsa aylanish umuman ishlamasdi; mouseleave sezilmasa (to'liq
+     ekran, boshqa oyna) pauza abadiy qolardi (foydalanuvchi shikoyati). */
+  const paused = () => (hover.current && Date.now() - lastMove.current < HOVER_PAUSE_MS)
+    || dragId.current != null || document.hidden;
 
   const nextIds = useMemo(() => new Set(pages >= 2 ? pageCams(pg + 1).map((c) => c.id) : []), [pageCams, pg, pages]);
   const curIds = useMemo(() => new Set(cams.map((c) => c.id)), [cams]);
@@ -243,6 +251,13 @@ export default function WallPage() {
     const q = L.streamQuality(layout(next.length, L.sizeB, L.phoneB, L.boxB.W, L.boxB.H).cols);
     setStaged({ ids: next.filter((c) => !L.curIds.has(c.id)).map((c) => c.id), quality: q });
   };
+
+  // Oyna fokusini yo'qotsa (boshqa dastur, to'liq ekrandan chiqish) mouseleave kelmasligi mumkin.
+  useEffect(() => {
+    const off = () => { hover.current = false; };
+    addEventListener("blur", off);
+    return () => removeEventListener("blur", off);
+  }, []);
 
   useEffect(() => {
     if (!autoOn) { setStaged(null); return; }
@@ -494,7 +509,8 @@ export default function WallPage() {
 
           <div ref={gridRef} className={cx("wl-grid", sizeB >= 6 && "is-dense")} id="wall-grid" aria-label={t("Video devor")}
             style={gridStyle as CSSProperties}
-            onMouseEnter={() => { hover.current = true; tick(); }}
+            onMouseEnter={() => { hover.current = true; lastMove.current = Date.now(); tick(); }}
+            onMouseMove={() => { lastMove.current = Date.now(); }}
             onMouseLeave={() => { hover.current = false; tick(); }}
             onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={endDrag}>
             {/* Bitta massiv: oldindan ochilgan katak devorga o'tganda kalit o'sha ro'yxatda qoladi — remount yo'q */}
