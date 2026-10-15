@@ -13,6 +13,9 @@ ulanishdan oldin `GET /cameras/status` dan oling.
 
 Tarkibi:
     KEEPALIVE_S     15 s — jim ulanishni proksi (nginx) uzmasin
+    RECHECK_S       60 s — ruxsat qayta tekshiriladi (chiqish, sessiya
+                    muddati, o'chirilgan foydalanuvchi, PUBLIC_VIEW o'chdi):
+                    ruxsat yo'qolsa oqim yopiladi
     sse_events      oqim generatori; operator faqat o'z hududlaridagi
                     kameralar hodisasini oladi (ruxsatli id'lar ulanishda
                     bir marta aniqlanadi); abonentlar chegarasi to'lsa 503
@@ -26,10 +29,12 @@ snapshots `bus.publish` bilan yuboradi
 """
 import asyncio
 import json
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from app.deps import require_viewer
 from core import bus
 from database import cameras, get_db
 from users.access import allowed_areas, area_allowed
@@ -38,6 +43,21 @@ from users.access import allowed_areas, area_allowed
 router = APIRouter(tags=["events"])
 
 KEEPALIVE_S = 15.0    # proksi (nginx) jim ulanishni uzmasin
+RECHECK_S = 60.0      # ruxsat shuncha vaqtda bir qayta tekshiriladi
+
+
+def _still_allowed(request: Request) -> bool:
+    """Ulanish ochilgandagi ruxsat hali ham bormi.
+
+    Ruxsat faqat ulanishda tekshirilsa SSE soatlab ochiq turadi: chiqqan,
+    sessiyasi tugagan yoki o'chirilgan foydalanuvchi (yoki PUBLIC_VIEW
+    o'chirilgandan keyin mehmon) hodisalarni olishda davom etardi.
+    """
+    try:
+        require_viewer(request)
+    except HTTPException:
+        return False
+    return True
 
 
 @router.get("/events")
@@ -60,7 +80,13 @@ async def sse_events(request: Request):
     async def gen():
         try:
             yield ": ulandi\n\n"
+            keyingi = time.monotonic() + RECHECK_S
             while True:
+                if time.monotonic() >= keyingi:
+                    if not await asyncio.to_thread(_still_allowed, request):
+                        yield "event: auth\ndata: {\"detail\": \"sessiya tugadi\"}\n\n"
+                        return
+                    keyingi = time.monotonic() + RECHECK_S
                 try:
                     event, data = await asyncio.wait_for(q.get(),
                                                          timeout=KEEPALIVE_S)

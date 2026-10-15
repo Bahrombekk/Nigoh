@@ -23,7 +23,10 @@ videoni to'g'ridan MediaMTX portidan oladi — nginx umuman qatnashmaydi.
 Ana o'sha "lokalda ishlaydi, serverda ishlamaydi" farqi shu skript bilan
 yopiladi: 80 ham, 443 ham bitta manbadan yaratiladi. Konfiguratsiyada
 yana: jurnalga chipta yozilmaydi, HLS keshi o'chiriladi, SSE uchun
-buferlash o'chiq (sabablari chiqadigan faylning izohlarida).
+buferlash o'chiq, HLS sessiyasi mijoz cookie'siga bog'lanadi (NAT
+qo'shnisi chiptasiz ko'rmasin), /media/whep/ ostida faqat WHEP (WHIP —
+nashr — va MediaMTX'ning o'z sahifalari yopiq), Let's Encrypt
+sertifikatida HSTS (sabablari chiqadigan faylning izohlarida).
 
 Ishlatish (serverda, loyiha ildizidan):
 
@@ -102,6 +105,16 @@ def media_locations(domain: str, api_port: int, hls_port: int,
         # `hlsCDNSecret` xuddi shunga qo'yiladi (media/sync.py).
         proxy_set_header Authorization "Bearer {secret}";
 
+        # Mijoz belgisi (cookie). Chipta faqat master pleylistda keladi,
+        # qolganlari sessiya orqali — sessiya faqat (ip, yo'l) bo'lsa bitta
+        # NAT ortidagi qo'shni slug'ni bilib chiptasiz ko'rardi. Backend
+        # chiptali birinchi so'rovda belgi beradi, shu yerda brauzerga
+        # uzatiladi; keyingi so'rovlar faqat shu cookie bilan o'tadi.
+        auth_request_set $nigoh_hls_cookie $upstream_http_set_cookie;
+        add_header Set-Cookie $nigoh_hls_cookie always;
+        # MediaMTX'ga cookie (sessiya cookie'si ham) kerak emas.
+        proxy_set_header Cookie "";
+
         proxy_pass http://127.0.0.1:{hls_port}/;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_buffering off;
@@ -143,14 +156,26 @@ def media_locations(domain: str, api_port: int, hls_port: int,
         # Asl manzil va tomoshabin IP'si — chipta shu ikkisiga tekshiriladi.
         proxy_set_header X-Original-URI $request_uri;
         proxy_set_header X-Viewer-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Shu konfiguratsiya Set-Cookie'ni uzatadi — backend sessiyani
+        # mijoz belgisiga bog'lasin (users/api.py: hls_auth).
+        proxy_set_header X-Nigoh-Hls-Cookie 1;
     }}
 
     # ---- WebRTC signal (WHEP) ------------------------------------------
-    location /media/whep/ {{
+    # Faqat o'qish: <yo'l>/whep va uning sessiyasi (<yo'l>/whep/<id>,
+    # ICE PATCH / DELETE). Ilgari butun 8889-port ochiq edi: <yo'l>/whip
+    # (NASHR — sizib chiqqan ichki chipta bilan kamerani almashtirish)
+    # va MediaMTX'ning o'z HTML/JS sahifalari ham tashqaridan ko'rinardi.
+    location ~ ^/media/whep/(?<whep_yol>[A-Za-z0-9_~./-]+/whep(?:/[A-Za-z0-9-]+)?)$ {{
         access_log /var/log/nginx/nigoh_media.log nigoh_media;
-        proxy_pass http://127.0.0.1:{webrtc_port}/;
+        proxy_pass http://127.0.0.1:{webrtc_port}/$whep_yol$is_args$args;
         proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Cookie "";
         proxy_redirect ~^(?:https?://[^/]+)?/(?:media/whep/)?(.*)$ {scheme}://{host}/media/whep/$1;
+    }}
+    location /media/whep/ {{
+        return 404;
     }}
 """
 
@@ -207,6 +232,12 @@ log_format nigoh_media '$remote_addr - [$time_local] '
                        '$status $body_bytes_sent $request_time';
 """
 
+# Server darajasida: location'da o'z add_header'i bo'lsa (/media/hls/)
+# nginx bu sarlavhani u yerga meros qilmaydi — sahifalar uchun yetarli.
+HSTS = """
+    add_header Strict-Transport-Security "max-age=31536000" always;
+"""
+
 HEADER = """# Nigoh — nginx konfiguratsiyasi.
 # AVTOMATIK YARATILGAN: python scripts/nginx_conf.py
 #
@@ -228,9 +259,17 @@ HEADER = """# Nigoh — nginx konfiguratsiyasi.
 
 def build(domain: str, api_port: int, hls_port: int, webrtc_port: int,
           secret: str, ssl: bool, cert_dir: str,
-          cert_file: str = "", key_file: str = "") -> str:
+          cert_file: str = "", key_file: str = "", hsts: bool | None = None) -> str:
     """cert_file/key_file berilsa cert_dir o'rniga o'sha fayllar olinadi
-    (o'z-o'zini imzolagan sertifikat, scripts/docker_https.py)."""
+    (o'z-o'zini imzolagan sertifikat, scripts/docker_https.py).
+
+    HSTS faqat ishonchli (certbot) sertifikatda: o'z CA'miz mijozga
+    o'rnatilmagan bo'lsa HSTS brauzerning "baribir davom etish" yo'lini
+    yopadi va sayt umuman ochilmay qoladi. `hsts=None` — cert_file
+    berilmagan bo'lsa (certbot) yoqiladi.
+    """
+    if hsts is None:
+        hsts = not cert_file
     api80 = api_locations(api_port, "$scheme")
     if not ssl:
         media80 = media_locations(domain, api_port, hls_port, webrtc_port,
@@ -265,7 +304,7 @@ server {{
 
     ssl_certificate     {cert_file or f"{cert_dir}/{domain}/fullchain.pem"};
     ssl_certificate_key {key_file or f"{cert_dir}/{domain}/privkey.pem"};
-{api_locations(api_port, "https")}{media443}}}
+{HSTS if hsts else ""}{api_locations(api_port, "https")}{media443}}}
 """
 
 

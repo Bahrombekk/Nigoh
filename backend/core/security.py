@@ -35,7 +35,11 @@ Tarkibi:
     encrypt(plain) / decrypt(token)     kamera paroli shifri (buzuq/kalit
                                         almashgan bo'lsa decrypt "" qaytaradi)
     stream_token(path)                  yo'l uchun imzolangan chipta (?token=)
-    stream_access_ok(ip, path, token)   MediaMTX/nginx so'rovini tekshiradi
+    stream_access_ok(ip, path, token, client)  MediaMTX/nginx so'rovini tekshiradi
+                                        (client — HLS cookie belgisi, NAT ortidagi
+                                        qo'shni chiptasiz kirmasin)
+    new_hls_client() / valid_hls_client(v)  HLS_CLIENT_COOKIE qiymati
+    node_api_token() / node_api_ok(u, p)    masofaviy MediaMTX API Basic auth
     hls_cdn_secret()                    hlsCDNSecret va nginx Bearer qiymati
     internal_token() / internal_token_ok(t, ip)  ichki jarayonlar chiptasi (ip — faqat lokal)
     safe_stream_path(path)              yo'lda .. / . segmenti, foiz-kodlash va teskari chiziq yo'q
@@ -132,7 +136,7 @@ STREAM_SESSION_TTL = 600       # soniya — har ruxsatli so'rovda uzayadi
 
 # Kalit secret.key'dan hosil qilinadi — alohida fayl kerak emas.
 _stream_key = hashlib.sha256(b"nigoh-stream:" + _load_key()).digest()
-_stream_sessions: dict[tuple[str, str], float] = {}
+_stream_sessions: dict[tuple[str, str, str], float] = {}
 _stream_lock = threading.Lock()
 
 
@@ -183,7 +187,7 @@ def stream_token(path: str) -> str:
     return f"{expires}.{_stream_sig(path, expires)}"
 
 
-def _session_key(ip: str, path: str) -> tuple[str, str]:
+def _session_key(ip: str, path: str, client: str = "") -> tuple[str, str, str]:
     """Sessiya kaliti — HAR DOIM oqim yo'lining o'zi bo'yicha.
 
     MediaMTX ichki resurslarni ham so'raydi ("kamera_1/video1_seg7.mp4").
@@ -200,23 +204,27 @@ def _session_key(ip: str, path: str) -> tuple[str, str]:
     normallashtirilgan; sessiya ham xuddi shunday bo'lishi shart, aks
     holda mexanizmning butun ma'nosi yo'qoladi (u aynan tokensiz
     segmentlar uchun bor).
+
+    `client` — mijozga xos belgi (nginx orqali kelgan HLS'da cookie). Faqat
+    (ip, yo'l) bo'lsa bitta NAT ortidagi boshqa foydalanuvchi o'sha
+    kamerani chiptasiz ko'ra olardi: tashqaridan ikkalasi bitta IP.
     """
     base = path.split("/", 1)[0]
     # Bo'sh baza (masalan "/kamera_1") bo'lsa to'liq yo'l ishlatiladi —
     # aks holda barcha oqim bitta ("", ip) kalitiga tushib qolardi.
-    return (ip, base or path)
+    return (ip, base or path, client)
 
 
-def stream_access_ok(ip: str, path: str, token: str) -> bool:
+def stream_access_ok(ip: str, path: str, token: str, client: str = "") -> bool:
     """MediaMTX'dan kelgan o'qish so'rovini tekshiradi.
 
-    To'g'ri token — ruxsat + (ip, oqim yo'li) sessiyasi. Tokensiz so'rov
-    faqat tirik sessiya bo'lsa o'tadi (HLS segmentlari, WHEP davomi).
+    To'g'ri token — ruxsat + (ip, oqim yo'li, client) sessiyasi. Tokensiz
+    so'rov faqat tirik sessiya bo'lsa o'tadi (HLS segmentlari, WHEP davomi).
     """
     if not safe_stream_path(path):
         return False
     now = time.time()
-    key = _session_key(ip, path)
+    key = _session_key(ip, path, client)
     if token:
         expires_s, _, sig = token.partition(".")
         try:
@@ -235,6 +243,27 @@ def stream_access_ok(ip: str, path: str, token: str) -> bool:
         if alive:
             _stream_sessions[key] = now + STREAM_SESSION_TTL
     return alive
+
+
+# HLS mijoz belgisi. Chipta faqat master pleylistda keladi, segmentlar
+# sessiya orqali yuradi — sessiya kaliti faqat (ip, yo'l) bo'lsa bitta NAT
+# ortidagi (ofis, mobil operator) boshqa odam slug'ni bilib chiptasiz
+# ko'ra olardi. Chipta to'g'ri kelganda /api/auth/hls tasodifiy cookie
+# beradi (nginx uni `auth_request_set` bilan brauzerga uzatadi), keyingi
+# so'rovlar faqat shu cookie bilan sessiyaga tushadi. Cookie HttpOnly —
+# qo'shni uni o'qiy olmaydi, 128 bitni taxmin ham qila olmaydi.
+HLS_CLIENT_COOKIE = "nigoh_hls"
+
+
+def new_hls_client() -> str:
+    return secrets.token_urlsafe(16)
+
+
+def valid_hls_client(value: str | None) -> bool:
+    """Cookie qiymati biz beradigan shaklda (22 belgi, base64url)."""
+    if not value or not (16 <= len(value) <= 64):
+        return False
+    return all(c.isalnum() or c in "-_" for c in value)
 
 
 # ---------- HLS "CDN kaliti" ----------
@@ -315,6 +344,28 @@ def stored_password_for(row, ip: str) -> str:
     if (ip or "").strip().lower() != (row["ip"] or "").strip().lower():
         return ""
     return decrypt(row["password_enc"])
+
+
+# ---------- masofaviy MediaMTX tugunlari API'si ----------
+#
+# Masofaviy tugunda MediaMTX API'si (yo'llar, ular ichida kamera RTSP
+# manzili LOGIN:PAROL bilan) markaziy backend uchun tarmoqqa ochiladi.
+# Ilgari u auth'dan ozod edi (`authHTTPExclude: api`) — portga yetgan har
+# kim parollarni o'qib, yo'llarni o'zgartira olardi. Endi tugun API
+# so'rovini ham bizdan so'raydi, markaz esa `_api()` da shu Basic auth'ni
+# yuboradi. Lokal tugun (127.0.0.1) o'zgarmaydi.
+NODE_API_USER = "nigoh-markaz"
+_node_api_key = hashlib.sha256(b"nigoh-node-api:" + _load_key()).digest()
+
+
+def node_api_token() -> str:
+    """Markaz -> masofaviy MediaMTX API paroli (secret.key'dan)."""
+    return base64.urlsafe_b64encode(_node_api_key[:24]).decode().rstrip("=")
+
+
+def node_api_ok(user: str, password: str) -> bool:
+    return (bool(password) and hmac.compare_digest(user or "", NODE_API_USER)
+            and hmac.compare_digest(password, node_api_token()))
 
 
 # ---------- admin paroli ----------

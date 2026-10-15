@@ -31,6 +31,8 @@ Kirish darajalari (`mount()` da beriladi):
                      require_admin bor, key_guard xato kalitni sekinlashtiradi
     key_guard + require_admin   camera/api/devices (routerda o'zi yo'q)
     prefikssiz       /health — kalitsiz, Docker HEALTHCHECK uchun
+    require_user     /docs, /redoc, /openapi.json — API hujjati (butun
+                     endpoint xaritasi) mehmonga va tashqariga yopiq
 
 Interfeys (frontend/) ildizga hamma API yo'llaridan KEYIN ulanadi:
 /api, /health, /docs ustun turadi. `FRONTEND_DIR` bo'sh bo'lsa backend
@@ -64,6 +66,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -238,6 +241,45 @@ _CSP = (
 )
 
 
+# Swagger/ReDoc sahifalari skriptni CDN'dan va inline oladi — sayt CSP'si
+# (_CSP) ularni bloklardi. Faqat shu ikki sahifaga o'z siyosati.
+_DOCS_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+    "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.redoc.ly; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "worker-src 'self' blob:; "
+    "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+)
+
+
+def _mount_docs(app: FastAPI) -> None:
+    """API hujjati faqat kirganlarga (sessiya yoki X-API-Key).
+
+    Ilgari /docs va /openapi.json kirishsiz ochiq edi: tashqaridan har kim
+    butun endpoint xaritasini, parametr va sxemalarni ko'rardi — hujum
+    rejasi uchun tayyor ro'yxat. Integratorlar kalit bilan ham oladi.
+    """
+    auth = [Depends(require_user)]
+
+    @app.get("/openapi.json", include_in_schema=False, dependencies=auth)
+    def openapi_json():
+        return app.openapi()
+
+    @app.get("/docs", include_in_schema=False, dependencies=auth)
+    def swagger_docs():
+        javob = get_swagger_ui_html(openapi_url="/openapi.json", title=f"{app.title} — hujjat")
+        javob.headers["Content-Security-Policy"] = _DOCS_CSP
+        return javob
+
+    @app.get("/redoc", include_in_schema=False, dependencies=auth)
+    def redoc_docs():
+        javob = get_redoc_html(openapi_url="/openapi.json", title=f"{app.title} — hujjat")
+        javob.headers["Content-Security-Policy"] = _DOCS_CSP
+        return javob
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Fon thread'lari (health, reconciler, snapshots) SSE hodisalarini
@@ -252,6 +294,9 @@ def create_app() -> FastAPI:
         version=VERSION,
         description=API_DESCRIPTION,
         lifespan=_lifespan,
+        # Standart /docs, /redoc, /openapi.json kirishsiz ochiq edi — pastda
+        # require_user bilan qayta ulanadi (_mount_docs).
+        docs_url=None, redoc_url=None, openapi_url=None,
     )
 
     # Siqish. 5000 kamerada `/cameras` ro'yxati 1,2 MB, va har ochiq
@@ -380,6 +425,8 @@ def create_app() -> FastAPI:
                    settings_router):
         mount(router, key_guard)
     mount(devices_router, key_guard, require_admin)
+
+    _mount_docs(app)
 
     # /health kalitsiz va prefikssiz — Docker HEALTHCHECK shu manzilga
     # qaraydi; ichida sir yo'q.

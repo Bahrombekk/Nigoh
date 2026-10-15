@@ -57,7 +57,10 @@ def test_soxta_forwarded_for_hisobga_olinmaydi():
 
 def test_ishonchli_proksi_toifalari():
     assert auth._ishonchli_proksi("127.0.0.1")
-    assert auth._ishonchli_proksi("10.0.0.5")        # ichki tarmoq
+    assert auth._ishonchli_proksi("::1")
+    # Ichki tarmoq standartda ishonchli EMAS: LAN'dagi istalgan kompyuter
+    # backend portiga soxta X-Forwarded-For yuborardi (TRUSTED_PROXIES bilan beriladi).
+    assert not auth._ishonchli_proksi("10.0.0.5")
     assert not auth._ishonchli_proksi("8.8.8.8")      # ommaviy
     assert not auth._ishonchli_proksi("testclient")   # ip emas
 

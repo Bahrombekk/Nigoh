@@ -85,6 +85,7 @@ Kim ishlatadi: camera.media (reconciler, launcher, transport), camera.api
 (cameras, streams, nodes, mediamtx), camera.state, camera.streaming,
 app (bootstrap, health, system_api), scripts, testlar
 """
+import base64
 import ctypes
 import json
 import os
@@ -104,7 +105,7 @@ import yaml
 
 from camera.probe.rtsp_probe import build_rtsp_url
 from core.paths import BACKEND_DIR, DATA_DIR
-from core.security import hls_cdn_secret
+from core.security import NODE_API_USER, hls_cdn_secret, node_api_token
 
 # mediamtx.yml ma'lumotlar katalogida (standart — repo ildizi; konteynerda
 # NIGOH_DATA volume). MediaMTX dasturi repo ildizidagi mediamtx/ da.
@@ -380,6 +381,12 @@ def _allow_origins() -> list[str]:
     ishlab chiqish va proksisiz o'rnatma buzilardi.
 
     `ALLOW_ORIGINS` bilan qo'lda ham berish mumkin (vergul bilan).
+
+    MEDIA_BASE nisbiy ("/media", Docker HTTPS) — oqim sahifa bilan BIR
+    manbadan keladi va CORS umuman kerak emas. Ilgari bu holda ham `*`
+    qolardi, ya'ni portga to'g'ridan yetgan begona sahifa ham oqimni
+    joylay olardi. Endi faqat serverning o'z manzillari (WEBRTC_HOSTS
+    yoki marshrut bo'yicha aniqlangani).
     """
     qol = os.environ.get("ALLOW_ORIGINS", "").strip()
     if qol:
@@ -387,6 +394,10 @@ def _allow_origins() -> list[str]:
     base = os.environ.get("MEDIA_BASE", "").strip().rstrip("/")
     if not base:
         return ["*"]
+    if base.startswith("/") and not base.startswith("//"):
+        hosts = webrtc_ice_hosts() or ["localhost"]
+        hosts = [f"[{h}]" if ":" in h else h for h in hosts]
+        return [f"{sx}://{h}" for h in hosts for sx in ("https", "http")]
     parts = urllib.parse.urlsplit(base if "://" in base else "//" + base)
     if not parts.hostname:
         return ["*"]
@@ -1030,10 +1041,14 @@ def build_config(cameras: list[dict], auth_url: str | None = None,
         # Kirish nazorati: har bir o'qish so'rovini backend tekshiradi —
         # saytdan berilgan chiptasiz oqim ochilmaydi. Backend ishlamayotgan
         # bo'lsa MediaMTX hamma so'rovni rad etadi (yopiq holatda xavfsiz).
-        # API lokal portda va shusiz ham faqat 127.0.0.1 dan ochiq.
+        # Lokal tugunda API/metrika faqat 127.0.0.1 da — auth'dan ozod.
+        # Masofaviy tugunda ular tarmoqqa ochiq, shuning uchun ozod EMAS:
+        # MediaMTX ularni ham bizdan so'raydi va backend faqat markazning
+        # Basic auth'ini (`_api`, security.node_api_ok) o'tkazadi. Aks holda
+        # portga yetgan har kim yo'llardan kamera parollarini o'qir edi.
         "authMethod": "http",
         "authHTTPAddress": auth_url or STREAM_AUTH_URL,
-        "authHTTPExclude": [
+        "authHTTPExclude": [] if remote else [
             {"action": "api"}, {"action": "metrics"}, {"action": "pprof"},
         ],
 
@@ -1160,6 +1175,10 @@ def _api(method: str, path: str, payload: dict | None = None,
     url = f"{(api_base or API_BASE).rstrip('/')}{path}"
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method)
+    if not is_local_api(api_base):
+        # Masofaviy tugun API'si auth bilan (build_config: authHTTPExclude).
+        cred = base64.b64encode(f"{NODE_API_USER}:{node_api_token()}".encode()).decode()
+        req.add_header("Authorization", f"Basic {cred}")
     if data is not None:
         req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=API_TIMEOUT) as res:

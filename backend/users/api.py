@@ -206,6 +206,15 @@ def stream_auth(body: dict):
     if security.internal_token_ok(token, ip):
         return {"ok": True}
 
+    # Masofaviy tugunning API/metrikasi (lokal tugunda bular auth'dan
+    # ozod va bu yerga kelmaydi) — faqat markazning Basic auth'i bilan.
+    if action in ("api", "metrics"):
+        if security.node_api_ok(str(body.get("user") or ""),
+                                str(body.get("password") or "")):
+            return {"ok": True}
+        _log_denial(ip, action, path, "")
+        raise HTTPException(401, "Tugun API'siga ruxsat yoʻq")
+
     # Tashqaridan faqat tomosha — va faqat chipta bilan.
     if action in ("read", "playback"):
         if security.stream_access_ok(ip, path, token):
@@ -241,6 +250,12 @@ def hls_auth(request: Request):
     parametr qo'shmaydi. Shuning uchun keyingi so'rovlar `(ip, yo'l)`
     sessiyasi orqali o'tadi; `stream_access_ok` shuni allaqachon
     bajaradi.
+
+    Mijoz belgisi: yangi nginx konfiguratsiyasi `X-Nigoh-Hls-Cookie: 1`
+    yuboradi va javobdagi Set-Cookie'ni brauzerga uzatadi. Shunda sessiya
+    (ip, yo'l, cookie) bo'yicha — bitta NAT ortidagi qo'shni chiptasiz
+    kirmaydi. Sarlavha yo'q (eski nginx_conf) — avvalgidek (ip, yo'l),
+    aks holda qayta yaratilmagan nginx'da HLS butunlay to'xtardi.
     """
     uri = request.headers.get("x-original-uri", "")
     # X-Viewer-IP'ni nginx qo'yadi — faqat ishonchli proksidan kelganiga ishonamiz,
@@ -261,8 +276,26 @@ def hls_auth(request: Request):
 
     if security.internal_token_ok(token, ip):
         return Response(status_code=204)
-    if security.stream_access_ok(ip, path, token):
-        return Response(status_code=204)
+
+    client, yangi = "", False
+    if request.headers.get("x-nigoh-hls-cookie") == "1":
+        client = request.cookies.get(security.HLS_CLIENT_COOKIE, "")
+        if not security.valid_hls_client(client):
+            if not token:
+                # Belgisiz va chiptasiz — rad. Bo'sh belgiga tushirilsa
+                # WHEP (MediaMTX auth'i) ochgan (ip, yo'l, "") sessiyasi
+                # NAT qo'shnisiga yana ochilib qolardi.
+                _log_denial(ip, "read", path, token)
+                raise HTTPException(401, "Oqimga ruxsat yoʻq")
+            client, yangi = security.new_hls_client(), True
+    if security.stream_access_ok(ip, path, token, client):
+        javob = Response(status_code=204)
+        if yangi:
+            javob.set_cookie(
+                security.HLS_CLIENT_COOKIE, client, path="/media/hls/",
+                httponly=True, samesite="strict",
+                secure=request.headers.get("x-forwarded-proto") == "https")
+        return javob
     _log_denial(ip, "read", path, token)
     raise HTTPException(401, "Oqimga ruxsat yoʻq")
 
