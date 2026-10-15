@@ -33,12 +33,17 @@ services:
       - "80:80"
       - "443:443"
       # WebRTC media — nginx'dan o'tmaydi, brauzer to'g'ridan ulanadi.
-      - "8189:8189/udp"
+      # Faqat TCP: Docker Desktop'ning UDP port uzatishi katta oqimlarda paket
+      # yo'qotadi (2026-10-15 o'lchovi, shu mashinaning o'zida: 40 s da NACK 8-26,
+      # Fokusdagi katta video har bir necha soniyada qotardi). TCP'da yo'qotish 0.
       - "8189:8189/tcp"
     # NVIDIA GPU — H.265 ni H.264 ga o'girish (yo'q bo'lsa servis CPU'ga tushadi).
     gpus: all
     environment:
       NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+      # WebRTC ICE faqat TCP orqali (yuqoridagi izoh). Linux serverda
+      # (docker-compose.yml, host tarmog'i) UDP qoladi — u yerda bu muammo yo'q.
+      WEBRTC_UDP_PORT: "0"
 
   # HTTPS: sayt, /media/hls (chipta auth_request bilan), /media/whep.
   # nigoh tarmog'ida turadi — MediaMTX'ning HLS/WebRTC portlari
