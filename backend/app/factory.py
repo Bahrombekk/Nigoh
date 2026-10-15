@@ -55,6 +55,8 @@ Ishlatadi: app.config, app.deps, app.health, app.system_api, camera.api.*,
 Kim ishlatadi: main.py (`app = create_app()`), tests/ (TestClient).
 """
 import asyncio
+import base64
+import hashlib
 import os
 import re
 import time
@@ -195,19 +197,43 @@ class _TilesStatic(StaticFiles):
         await super().check_config()
 
 
-# Interfeys tashqi manbalardan yuklaydi: Leaflet/markercluster (unpkg),
-# hls.js (jsdelivr), shriftlar (Google Fonts) va OSM xarita plitkalari.
-# Ro'yxat shu yerda — yangi CDN qo'shilsa, sahifa jimgina buzilmasin.
+def _inline_script_hashes() -> str:
+    """index.html dagi inline <script> larning CSP xeshlari ('sha256-...').
+
+    Yagona inline skript — mavzuni birinchi chizishdan oldin qo'yadi. Xesh
+    ishga tushishda hisoblanadi: build o'zgarsa ham mos keladi, script-src'da
+    esa 'unsafe-inline' kerak bo'lmaydi (HTML injection skriptga aylanmaydi).
+    """
+    if not FRONTEND_DIR:
+        return ""
+    try:
+        html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    hashes = []
+    for attrs, body in re.findall(r"<script([^>]*)>(.*?)</script>", html, re.S):
+        if "src=" in attrs or not body.strip():
+            continue
+        digest = base64.b64encode(hashlib.sha256(body.encode("utf-8")).digest()).decode()
+        hashes.append(f"'sha256-{digest}'")
+    return " ".join(hashes)
+
+
+# Interfeys (React build) skriptlari o'zimizdan; tashqaridan faqat shriftlar
+# (Google Fonts) va OSM/ArcGIS xarita plitkalari. Ro'yxat shu yerda — yangi
+# manba qo'shilsa, sahifa jimgina buzilmasin. style-src'da 'unsafe-inline'
+# qoladi: React inline style'lari va Leaflet shunga tayanadi.
 _CSP = (
     "default-src 'self'; "
     "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://server.arcgisonline.com "
-    "https://tile.openstreetmap.org https://unpkg.com; "
+    "https://tile.openstreetmap.org; "
     "media-src 'self' blob: http: https:; "
     "connect-src 'self' http: https: ws: wss:; "
-    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; "
-    "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; "
+    f"script-src 'self' {_inline_script_hashes()}; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
     "worker-src 'self' blob:; "
+    "object-src 'none'; base-uri 'self'; "
     "frame-ancestors 'none'"
 )
 
