@@ -1,4 +1,4 @@
 # Faqat ishlab chiqish/CI uchun — ishlab chiqarish konteyneriga kirmaydi.
 pytest
-httpx        # fastapi.testclient shuni talab qiladi
+httpx2       # fastapi.testclient shuni talab qiladi (httpx eskirgan)
 ruff
