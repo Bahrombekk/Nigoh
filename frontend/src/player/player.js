@@ -169,6 +169,26 @@ const MAX_PARKED = 4;                         // devor sahifalanganda ulanishlar
 const allPlayers = new Set();
 const parked = new Map();                     // camId -> { pc, stream, quality, timer }
 
+/* Keyingi ko'rinishda aniq kerak bo'ladigan kameralar (devor -> Fokus: bosilgan
+   kamera va "Keyingi kameralar"). Devor yopilganda 16-64 plitka bir vaqtda
+   to'xtab park qilinadi va MAX_PARKED eskilarini yopadi — bosilgan kameraning
+   oqimi ko'pincha shular orasida qolib, Fokus uni qaytadan ochardi
+   (foydalanuvchi shikoyati). Zahiradagilar chegaraga kirmaydi va siqib
+   chiqarilmaydi; zahira HANDOFF_MS dan keyin o'zi tugaydi. */
+const reserved = new Map();                   // camId -> amal qilish muddati (ms)
+
+export function reserveHandoff(ids) {
+  const until = Date.now() + HANDOFF_MS;
+  for (const id of ids) if (id != null) reserved.set(id, until);
+}
+
+function isReserved(camId) {
+  const until = reserved.get(camId);
+  if (until == null) return false;
+  if (until < Date.now()) { reserved.delete(camId); return false; }
+  return true;
+}
+
 function closeParked(camId) {
   const e = parked.get(camId);
   if (!e) return;
@@ -183,7 +203,11 @@ function parkStream(camId, quality, pc, stream) {
     if (p.preview && p.preview.stream === stream && !p.preview.pc) { p.preview.pc = pc; return; }
   }
   if (parked.has(camId) && parked.get(camId).pc !== pc) closeParked(camId);
-  while (parked.size >= MAX_PARKED) closeParked(parked.keys().next().value);
+  if (!isReserved(camId)) {
+    // Chegara faqat zahirada bo'lmaganlarga: eng eskisi yopiladi.
+    const plain = () => [...parked.keys()].filter((id) => !isReserved(id));
+    for (let ids = plain(); ids.length >= MAX_PARKED; ids = plain()) closeParked(ids[0]);
+  }
   const timer = setTimeout(() => {
     if (parked.get(camId)?.pc === pc) { parked.delete(camId); pc.close(); }
   }, HANDOFF_MS);
@@ -195,6 +219,7 @@ function takeParked(camId) {
   if (!e) return null;
   clearTimeout(e.timer);
   parked.delete(camId);
+  reserved.delete(camId);
   if (["failed", "closed"].includes(e.pc.connectionState)) { e.pc.close(); return null; }
   return e;
 }

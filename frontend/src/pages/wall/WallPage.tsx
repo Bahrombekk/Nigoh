@@ -38,7 +38,8 @@ import { getSelectedCamera } from "@/lib/selection";
 import { fmtTime } from "@/lib/format";
 import type { Camera } from "@/lib/types";
 import { WallTile, type Quality } from "./WallTile";
-import { isDown } from "./wallUtils";
+import { focusNeighbors, isDown } from "./wallUtils";
+import { reserveHandoff } from "@/player/player.js";
 import { FocusView } from "./FocusView";
 import { useGroups } from "./queries";
 import { useSaveSnapshot } from "./snapshot";
@@ -302,7 +303,11 @@ export default function WallPage() {
     if (P.focus !== focusId) savePrefs({ focus: focusId });
   }, [focusMode, focusId, camsQ.isSuccess, P.focus, nav]);
 
+  /* Fokusda ko'rinadigan kameralar (bosilgan + keyingilari) oqimi devor yopilganda
+     yopilib ketmasin — Fokus ularni qayta ochmasdan darhol oladi (player.js). */
+  const reserveFocus = (id: number) => reserveHandoff([id, ...focusNeighbors(all, id).map((c) => c.id)]);
   const enterFocus = (id: number) => {
+    reserveFocus(id);
     savePrefs({ focus: id });
     if (!focusMode) nav("/wall/focus");
   };
@@ -314,6 +319,7 @@ export default function WallPage() {
     if (!all.length) return;
     const i = all.findIndex((c) => c.id === focusId);
     const n = all[((i < 0 ? 0 : i) + d + all.length) % all.length];
+    reserveFocus(n.id);
     savePrefs({ focus: n.id });
   };
   const showOnMap = (cam: Camera) => nav("/?camera=" + cam.id);
@@ -450,7 +456,7 @@ export default function WallPage() {
   return (
     <PageSheet id="wall-view" className="wl-sheet">
       {focusMode && focusCam ? (
-        <FocusView cam={focusCam} list={all} onShow={(id) => savePrefs({ focus: id })} onExit={exitFocus}
+        <FocusView cam={focusCam} list={all} onShow={(id) => { reserveFocus(id); savePrefs({ focus: id }); }} onExit={exitFocus}
           onShot={saveSnapshot} onMap={showOnMap} />
       ) : focusMode ? null : (
         <>

@@ -10,10 +10,9 @@ import { useT } from "@/i18n/i18nContext";
 import { camStatus, STATUS_LABEL, type Camera } from "@/lib/types";
 import { openTimes } from "@/player/openTimes.js";
 import { WallTile } from "./WallTile";
-import { fmtCodec, fmtSec } from "./wallUtils";
+import { fmtCodec, fmtSec, focusNeighbors } from "./wallUtils";
 import { useFocusKpis } from "./queries";
 
-const NEXT_COUNT = 3;
 
 const pct = (v: number | null | undefined) =>
   v == null ? "—" : (Math.round(v * 10) / 10).toFixed(1).replace(".", ",").replace(/,0$/, "") + "%";
@@ -40,12 +39,7 @@ export function FocusView({ cam, list, onShow, onExit, onShot, onMap }: {
   useEffect(() => { setLocalMs(null); }, [cam.id]);
 
   // Keyingi kameralar — devor tartibida, aylana.
-  const i = list.findIndex((c) => c.id === cam.id);
-  const next: Camera[] = [];
-  for (let k = 1; k < list.length && next.length < NEXT_COUNT; k++) {
-    const c = list[(Math.max(i, 0) + k) % list.length];
-    if (c.id !== cam.id) next.push(c);
-  }
+  const next = focusNeighbors(list, cam.id);
 
   const st = camStatus(cam);
   const k = kpis.data;
