@@ -127,7 +127,12 @@ export function WallTile(props: WallTileProps) {
         m.player = p;
       }
       api.paint("connecting", "Ulanmoqda…");
-      m.player.open(m.cam, HEVC_OK, m.quality);
+      // Fokusdagi katta katak H.265 kamerani ham serverda (GPU) H.264 ga o'girilgan
+      // holda oladi. O'lchov (2026-10-15, Chrome, 1080p-4MP): xom H.265 da brauzer
+      // dekoderi 40 s da 13-19 marta keyframe so'raydi, kamera esa uni 4 s da bir
+      // beradi — katta video har bir necha soniyada qotardi (40 s da 10,9 s gacha).
+      // O'girilganda keyframe har 1,2 s. Kichik kataklar (sub) xomligicha qoladi.
+      m.player.open(m.cam, cb.current.main ? false : HEVC_OK, m.quality);
     },
     failed(text: string) {
       api.paint("fail", text);

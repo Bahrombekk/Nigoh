@@ -237,6 +237,10 @@ function findLive(camId, except) {
   return null;
 }
 
+function streamKey(quality, useHevc) {
+  return (quality || "") + (useHevc || !HEVC_OK ? "" : ":h264");
+}
+
 /* Element haqiqatan chizgan kadrlar soni (requestVideoFrameCallback).
    Zaxira: API yo'q, element DOM'dan tashqarida yoki tab yashirin bo'lsa
    callback chaqirilmaydi — ma'lumot kelganidan SWAP_FALLBACK_MS o'tgach
@@ -393,7 +397,10 @@ export class Player {
     const t0 = performance.now();
     this.setMsg("Ulanmoqda…", "wait");
     if (!video.poster) video.poster = "/api/cameras/" + cam.id + "/snapshot";
-    const q = quality || "";
+    // Uzatish kaliti: sifat + kodek yo'li. Xom H.265 va o'girilgan H.264 bir xil
+    // sifat bo'lsa ham boshqa oqim — Fokus (o'girilgan) devordagi xom oqimni olmasin.
+    const q = streamKey(quality, useHevc);
+    this.qKey = q;
 
     const opened = () => {
       if (stale()) return;
@@ -589,7 +596,7 @@ export class Player {
             });
           }
           this.webrtcLive = true;
-          this.liveQuality = (this.last && this.last[2]) || "";
+          this.liveQuality = this.qKey || "";
           resolve(); return;
         }
         // ICE ulangan bo'lsa kadr 20 s gacha kutiladi, ulanmagan bo'lsa 6 s.
