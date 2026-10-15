@@ -643,7 +643,8 @@ def _ikki_barobar(tezlik: str) -> str:
 
 def transcode_args(src_url: str, dst_url: str, gpu: bool = True,
                    maxrate: str = TRANSCODE_MAX_MAIN,
-                   udp: bool = False, main: bool = False) -> list[str]:
+                   udp: bool = False, main: bool = False,
+                   camera_ts: bool = False) -> list[str]:
     """Kamera H.265 bergan holat: dekodlash va qayta kodlash.
 
     H.265 va H.264 — bir-biriga o'xshamaydigan siqish usullari, shuning
@@ -654,6 +655,8 @@ def transcode_args(src_url: str, dst_url: str, gpu: bool = True,
     `maxrate` — yuqori chegara, nishon emas. Sifatni `TRANSCODE_CQ`
     belgilaydi (yuqoridagi o'lchovga qarang). `main=True` — asosiy oqim:
     sifatliroq preset va past cq (TRANSCODE_PRESET_MAIN, TRANSCODE_CQ_MAIN).
+    `camera_ts=True` — kameraning o'z vaqt belgilari (wallclock emas); faqat
+    fps'i ma'lum asosiy oqim uchun (launcher.camera_timestamps_ok).
     """
     # Kirish vaqt belgisi kameraga ISHONMAYDI — paket kelgan paytdan
     # olinadi. Nima uchun (ishlab chiqarishda o'lchandi):
@@ -670,7 +673,15 @@ def transcode_args(src_url: str, dst_url: str, gpu: bool = True,
     # o'ldiradi ("reached maximum segment size"), pleyer qayta ulanadi
     # va katak sinib turadi. Bitta shunday katak butun chiqishning 80 %
     # ini yeb, DEVORDAGI QOLGAN HAMMA katakni ham sindiradi.
-    wallclock = ["-use_wallclock_as_timestamps", "1"]
+    #
+    # Lekin wallclock kamera tarmog'idagi NOTEKISLIKNI ham vaqt belgisiga
+    # yozib qo'yadi: kadr 130 ms kechikib kelsa, chiqishda ham 130 ms bo'shliq
+    # bo'ladi va brauzer buferi uni silliqlay olmaydi. O'lchov (2026-10-15,
+    # 4 MP kamera, kadrlar 60 s da 65 marta ~130 ms kechikib keladi): Fokusda
+    # o'girilgan oqim 40 s da 2-7 marta qotdi, xom oqim — 0-1. Shuning uchun
+    # fps'i ma'lum (vaqt bazasi sog'lom) asosiy oqimda kameraning o'z vaqt
+    # belgilari ishlatiladi; wallclock faqat fps noma'lum kamera va sub uchun.
+    wallclock = [] if camera_ts else ["-use_wallclock_as_timestamps", "1"]
     # Kadr TAKRORLANMASIN.
     #
     # Wallclock vaqt belgisi bilan birinchi paket real soatni oladi
@@ -714,6 +725,47 @@ def transcode_args(src_url: str, dst_url: str, gpu: bool = True,
     # Qisqa GOP — segment tezroq tayyor bo'ladi.
     return (input_args(udp) + video + fps_mode + ["-g", "30", "-bf", "0"]
             + _OUTPUT + [dst_url])
+
+
+def measure_fps(url: str, sekund: float = 3.0) -> float:
+    """Oqimning kadr tezligi — kamera vaqt belgilari SOG'LOM bo'lsagina.
+
+    Ko'p kamera (Hikvision H.265) SDP'da fps bermaydi, pasportda u bo'sh
+    qoladi va o'girish wallclock'da qolib ketadi (transcode_args izohi).
+    Ikki marta o'qiladi: kameraning o'z vaqt belgilari va kelish vaqti
+    (wallclock) bo'yicha. Ikkisi 20 % ichida mos kelsa — vaqt bazasi sog'lom,
+    fps qaytariladi; aks holda (masalan vaqt 10 barobar tez yuradigan kamera)
+    0 — wallclock qoladi. Qaytaradi: fps (1-60) yoki 0.
+    """
+    exe = ffmpeg_path()
+    if not exe:
+        return 0.0
+    probe = exe.replace("ffmpeg", "ffprobe")
+
+    def _fps(wallclock: bool) -> float:
+        cmd = ([probe, "-hide_banner", "-loglevel", "error", "-rtsp_transport", "tcp"]
+               + (["-use_wallclock_as_timestamps", "1"] if wallclock else [])
+               + ["-select_streams", "v:0", "-show_entries", "packet=pts_time",
+                  "-of", "csv=p=0", "-read_intervals", f"%+{sekund:g}", "-i", url])
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=sekund + 20)
+        except (subprocess.TimeoutExpired, OSError):
+            return 0.0
+        pts = []
+        for satr in r.stdout.splitlines():
+            try:
+                pts.append(float(satr.strip().rstrip(",")))
+            except ValueError:
+                continue
+        if len(pts) < 10:
+            return 0.0
+        span = max(pts) - min(pts)
+        return (len(pts) - 1) / span if span > 0 else 0.0
+
+    kamera, haqiqiy = _fps(False), _fps(True)
+    if not kamera or not haqiqiy or abs(kamera - haqiqiy) / haqiqiy > 0.2:
+        return 0.0
+    return round(kamera, 1) if 1 <= kamera <= 60 else 0.0
 
 
 def kadr_keladimi(url: str, sekund: float = 12.0,

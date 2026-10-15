@@ -53,6 +53,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 
 from camera.media import sync
@@ -103,6 +104,40 @@ def load_camera(slug: str):
     with single_connection() as db:
         row = cameras.get_by_slug(db, slug)
     return row
+
+
+def _learn_fps(slug: str, camera_id: int, source: str) -> None:
+    """Oqim fps'ini o'lchab bazaga yozadi (vaqt bazasi sog'lom bo'lsa)."""
+    time.sleep(2)                          # o'girish ulanib olsin
+    fps = sync.measure_fps(source)
+    if not fps:
+        print(f"{slug}: fps aniqlanmadi (vaqt belgilari ishonchsiz) — wallclock qoladi",
+              file=sys.stderr)
+        return
+    try:
+        with single_connection() as db:
+            cameras.set_measured_fps(db, camera_id, fps)
+    except Exception as e:                 # noqa: BLE001 — fon vazifasi, oqimga ta'sir qilmasin
+        print(f"{slug}: fps bazaga yozilmadi: {e}", file=sys.stderr)
+        return
+    print(f"{slug}: fps o'lchandi — {fps:g} (keyingi ochilishda kamera vaqti)", file=sys.stderr)
+
+
+def camera_timestamps_ok(row, sub: bool) -> bool:
+    """O'girishda kameraning o'z vaqt belgilariga ishonsa bo'ladimi.
+
+    Faqat asosiy oqim va pasportda sog'lom kadr tezligi (1-60 fps) bo'lsa.
+    fps=0 / noma'lum kamerada vaqt bazasi buzuq bo'lishi mumkin (sync.transcode_args
+    izohi: chiqish 99 Mbit/s ga chiqqan) — u holda wallclock qoladi. Sub oqimning
+    fps'i alohida saqlanmaydi, shuning uchun u ham wallclock'da.
+    """
+    if sub or row is None:
+        return False
+    try:
+        fps = float(row["fps"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        return False
+    return 1 <= fps <= 60
 
 
 def _ready_set() -> set[str]:
@@ -300,8 +335,9 @@ def main() -> int:
         args = transcode_args(
             source, destination, gpu=has_nvenc(),
             maxrate=TRANSCODE_MAX_SUB if sub else TRANSCODE_MAX_MAIN,
-            main=not sub)
-        print(f"{slug}: H.264 ga o'girilmoqda ({'GPU' if has_nvenc() else 'CPU'})",
+            main=not sub, camera_ts=camera_timestamps_ok(row, sub))
+        print(f"{slug}: H.264 ga o'girilmoqda ({'GPU' if has_nvenc() else 'CPU'}"
+              f"{', kamera vaqti' if camera_timestamps_ok(row, sub) else ''})",
               file=sys.stderr)
     else:
         args = relay_args(source, destination, udp=udp)
@@ -312,6 +348,12 @@ def main() -> int:
     # to'g'ri boshqaradi (to'xtatish signali ham to'g'ri yetib boradi).
     started = time.monotonic()
     process = subprocess.Popen([exe] + args)
+    # fps noma'lum asosiy oqim: hozir wallclock bilan ochildi, fonda fps
+    # o'lchanadi (MediaMTX'dagi allaqachon ochiq xom yo'ldan — kameraga
+    # qo'shimcha ulanish yo'q) va bazaga yoziladi: keyingi safar kamera vaqti.
+    if ogirish and not sub and not camera_timestamps_ok(row, sub):
+        threading.Thread(target=_learn_fps, args=(slug, row["id"], source),
+                         daemon=True).start()
     try:
         code = process.wait()
         # Darhol o'lib qoldi (masalan, xom yo'l hali tayyor emas) — restart

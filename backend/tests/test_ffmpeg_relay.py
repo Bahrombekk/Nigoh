@@ -168,3 +168,56 @@ def test_asosiy_oqim_sifatliroq_ogiriladi():
     assert main[main.index("-tune") + 1] == "ll"
     cpu = sync.transcode_args("SRC", "DST", gpu=False, main=True)
     assert cpu[cpu.index("-crf") + 1] == sync.TRANSCODE_CQ_MAIN
+
+
+def test_fps_malum_asosiy_oqim_kamera_vaqtida():
+    """Wallclock kamera tarmog'idagi notekislikni vaqt belgisiga yozardi —
+    Fokusda katta video qotardi (2026-10-15). fps'i ma'lum asosiy oqim
+    kameraning o'z vaqt belgilari bilan o'giriladi; kadr takrorlanmasligi
+    (passthrough) saqlanadi."""
+    args = sync.transcode_args("SRC", "DST", gpu=True, maxrate="12M", main=True, camera_ts=True)
+    assert "-use_wallclock_as_timestamps" not in args
+    assert args[args.index("-fps_mode") + 1] == "passthrough"
+
+
+def test_kamera_vaqti_qachon_ishlatiladi():
+    from camera.media.launcher import camera_timestamps_ok
+    assert camera_timestamps_ok({"fps": 25.0}, sub=False)
+    assert camera_timestamps_ok({"fps": 20}, sub=False)
+    # fps noma'lum / buzuq — vaqt bazasiga ishonib bo'lmaydi (99 Mbit/s holati).
+    assert not camera_timestamps_ok({"fps": 0}, sub=False)
+    assert not camera_timestamps_ok({"fps": None}, sub=False)
+    assert not camera_timestamps_ok({"fps": 250}, sub=False)
+    # Sub oqimning fps'i saqlanmaydi — har doim wallclock.
+    assert not camera_timestamps_ok({"fps": 25}, sub=True)
+    assert not camera_timestamps_ok(None, sub=False)
+
+
+def _ffprobe_stub(monkeypatch, kamera_fps, haqiqiy_fps, n=60):
+    """measure_fps uchun soxta ffprobe: kamera va wallclock vaqtlari."""
+    import subprocess as sp
+
+    def run(cmd, **kw):
+        fps = haqiqiy_fps if "-use_wallclock_as_timestamps" in cmd else kamera_fps
+        out = "\n".join(f"{i / fps:.4f}," for i in range(n)) if fps else ""
+        return sp.CompletedProcess(cmd, 0, stdout=out, stderr="")
+    monkeypatch.setattr(sync, "ffmpeg_path", lambda: "ffmpeg")
+    monkeypatch.setattr(sync.subprocess, "run", run)
+
+
+def test_fps_olchash_sog_lom_vaqt(monkeypatch):
+    _ffprobe_stub(monkeypatch, 25, 25)
+    assert sync.measure_fps("rtsp://x") == 25.0
+
+
+def test_fps_olchash_buzuq_vaqt_bazasi(monkeypatch):
+    """Vaqti 10 barobar tez yuradigan kamera (99 Mbit/s holati) — fps yozilmaydi."""
+    _ffprobe_stub(monkeypatch, 250, 25)
+    assert sync.measure_fps("rtsp://x") == 0.0
+    _ffprobe_stub(monkeypatch, 2.5, 25)
+    assert sync.measure_fps("rtsp://x") == 0.0
+
+
+def test_fps_olchash_kadrsiz(monkeypatch):
+    _ffprobe_stub(monkeypatch, 0, 0)
+    assert sync.measure_fps("rtsp://x") == 0.0

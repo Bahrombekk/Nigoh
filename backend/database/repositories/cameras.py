@@ -51,6 +51,7 @@ Tarkibi:
         .passport_candidates(db, retry_after_s, limit)  kodeki/modeli noma'lum kameralar
         .set_resolutions(db, {slug: "WxH"})  oqimdan o'lchangan o'lcham (MediaMTX)
         .set_probe_result(db, id, codec=, resolution=, fps=, error=)  faqat BO'SH
+        .set_measured_fps(db, id, fps)      oqimdan o'lchangan fps (faqat bo'sh bo'lsa)
                                 maydonga yozadi, probe_at/probe_error ni yangilaydi
       jonli holat:
         .mark_seen(db, [(host, port)], at)  javob bergan qurilmalarning last_seen'i
@@ -597,6 +598,12 @@ class CameraRepository:
             "probe_at = now(), probe_error = %s WHERE camera_id = %s",
             (_none_if_empty(codec), _none_if_empty(resolution), fps or None,
              error or None, camera_id))
+
+    def set_measured_fps(self, db, camera_id: int, fps: float) -> None:
+        """Oqimdan o'lchangan kadr tezligi (launcher, sync.measure_fps) — faqat
+        bo'sh bo'lsa: SDP'da fps bermaydigan kameralar (Hikvision H.265)."""
+        db.execute("UPDATE camera_status SET fps = COALESCE(fps, %s) WHERE camera_id = %s",
+                   (fps or None, camera_id))
 
     def set_resolutions(self, db, by_slug: dict[str, str]) -> int:
         """Oqimdan o'lchangan kadr o'lchami (MediaMTX) — slug -> "1920x1080".
