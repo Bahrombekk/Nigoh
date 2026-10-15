@@ -145,11 +145,14 @@ docker compose -f docker-compose.windows.yml up -d --build
 ```
 
 `--ip` berilmasa mashinaning hamma IPv4 manzillari olinadi. Skript
-`data/` ga yozadi: `secret.key` nusxasi, lokal CA va sayt sertifikati
-(`data/tls`), nginx konfiguratsiyasi va konteyner muhiti
+`data/` ga yozadi: `secret.key` nusxasi, lokal CA sertifikati va sayt
+sertifikati (`data/tls`), CA kaliti (`data/ca/ca.key` — nginx'ga mount
+qilinmaydi), nginx konfiguratsiyasi va konteyner muhiti
 (`data/compose.env`). IP o'zgarsa skriptni qayta yurgizing va
-`docker compose -f docker-compose.windows.yml restart` qiling — CA
-o'zgarmaydi.
+`docker compose -f docker-compose.windows.yml restart` qiling. CA
+cheklangan (pastdagi "Xavfsizlik sozlamalari"): yangi IP CA ro'yxatida
+bo'lmasa skript to'xtaydi — `--new-ca` qo'shib yurgizing va yangi
+`ca.crt` ni mijozlarga qayta o'rnating.
 
 - Mijozda ogohlantirishsiz ochilishi uchun `data/tls/ca.crt` ni
   "Trusted Root Certification Authorities" ga o'rnating (bir marta).
@@ -162,9 +165,11 @@ o'zgarmaydi.
 Cheklovlar (Docker Desktop tarmog'i, Linux'da yo'q):
 
 - Hamma tomoshabin nginx'ga bitta manzildan (Docker shlyuzi, masalan
-  `172.27.0.1`) keladi: kirish cheklovi, jurnal va HLS'ning `(ip, yo'l)`
-  sessiyasi IP bo'yicha ajratilmaydi. Ishlab chiqarish uchun Linux
-  server va asosiy `docker-compose.yml` (host tarmog'i) tavsiya qilinadi.
+  `172.27.0.1`) keladi: kirish cheklovi va jurnal IP bo'yicha
+  ajratilmaydi. HLS sessiyasi endi mijoz cookie'siga ham bog'langan
+  (pastga), shuning uchun tomoshabinlar bir-birining sessiyasidan
+  foydalana olmaydi. Ishlab chiqarish uchun Linux server va asosiy
+  `docker-compose.yml` (host tarmog'i) tavsiya qilinadi.
 - VM'da `net.core.rmem_max` kichik — UDP qabul buferi 104 KB
   (`MEDIAMTX_UDP_READ_BUFFER`); UDP kameralarda yo'qotish ko'payishi mumkin.
 
@@ -186,8 +191,43 @@ Tugunni `POST /api/v1/admin/nodes` bilan ro'yxatga oling, kameralarni
 boshqaradi (9997-portni faqat markaz serveriga oching), salomatligi
 `GET /api/v1/admin/nodes` da ko'rinadi.
 
+Tugun API'si (9997) va metrikasi (9998) endi auth bilan: MediaMTX ularni
+ham markazning `/api/auth/stream` iga so'raydi, markaz esa har so'rovda
+Basic auth yuboradi (`nigoh-markaz` + `secret.key` dan hosil qilingan
+parol). Portga yetgan begona kompyuter yo'llardan kamera parollarini
+o'qiy olmaydi. Eski tugunlar uchun konfiguratsiyani `.../config` dan
+QAYTA oling (ichida `authHTTPExclude: []` bo'lishi kerak) va MediaMTX'ni
+qayta ishga tushiring. Prometheus kabi tashqi yig'uvchi tugun
+metrikasini olmaydi — kerak bo'lsa markaz orqali oling.
+
 Eslatma: o'girish (H.265→H.264) faqat markaziy tugunda ishlaydi — uzoq
 tugun kameralarini H.264 rejimida tuting.
+
+## Xavfsizlik sozlamalari (2026-10-15 auditi)
+
+Yangilangandan keyin nginx konfiguratsiyasini QAYTA yarating — quyidagi
+o'zgarishlarning yarmi nginx tomonda:
+
+```bash
+# Linux server (Docker, IP bo'yicha HTTPS)
+docker compose run --rm --no-deps nigoh python scripts/docker_https.py --server --ip <IP>
+docker compose restart nginx
+# Domen + certbot
+python backend/scripts/nginx_conf.py > /etc/nginx/sites-available/negoh.conf
+nginx -t && systemctl reload nginx
+```
+
+| O'zgarish | Nima qilish kerak |
+|---|---|
+| `TRUSTED_PROXIES` bo'sh bo'lsa faqat **loopback** (127.0.0.1, ::1) ishonchli. Ilgari butun ichki tarmoq ishonchli edi — LAN'dagi istalgan kompyuter backend portiga soxta `X-Forwarded-For` yuborib login cheklovini aylanib o'tardi. | Ikkala docker-compose'da nginx backend bilan bitta tarmoqda (127.0.0.1) — hech narsa. Nginx alohida hostda bo'lsa: `TRUSTED_PROXIES=10.0.0.7` (CIDR ham bo'ladi: `172.18.0.0/16`). |
+| HLS sessiyasi `(ip, yo'l)` emas, `(ip, yo'l, cookie)`: chiptali birinchi so'rovda `/api/auth/hls` `nigoh_hls` cookie'sini beradi (HttpOnly, `Path=/media/hls/`), nginx uni `auth_request_set` bilan brauzerga uzatadi. Bitta NAT ortidagi qo'shni endi chiptasiz ko'rmaydi. | nginx konfiguratsiyasini qayta yarating. Eski konfiguratsiya ishlayveradi (backend `X-Nigoh-Hls-Cookie` sarlavhasi bo'lmasa eski usulda), lekin himoyasiz. `MEDIA_BASE` sayt bilan bir manbada bo'lsin (`/media` yoki o'sha domen) — aks holda cookie yuborilmaydi. |
+| `/media/whep/` ostida faqat `<yo'l>/whep` va `<yo'l>/whep/<sessiya>`; WHIP (nashr) va MediaMTX'ning o'z sahifalari — 404. | nginx qayta yaratiladi. |
+| HSTS (`max-age=1 yil`) — faqat certbot sertifikatli 443 blokida. O'z CA'mizda (Docker IP HTTPS) yo'q: CA o'rnatilmagan mijozda HSTS saytni butunlay yopardi. | nginx qayta yaratiladi. |
+| Docker HTTPS CA'si **NameConstraints** bilan: faqat server IP'lari, 127.0.0.1, `localhost` (va `--host` nomlari). CA kaliti `data/ca/ca.key` da — nginx'ga mount qilinadigan `data/tls` da emas (eski `data/tls/ca.key` birinchi yurishda ko'chiriladi). | Eski (cheklovsiz) CA ishlayveradi, skript ogohlantiradi. Qulay paytda `--new-ca` bilan yangisini yarating va `ca.crt` ni mijozlarga qayta o'rnating. |
+| `MEDIA_BASE` nisbiy (`/media`) bo'lsa `hlsAllowOrigins`/`webrtcAllowOrigins` endi `*` emas — `https://<WEBRTC_HOSTS>` (oqim sahifa bilan bir manbadan keladi, CORS kerak emas). | Hech narsa (`mediamtx.yml` servis o'zi yozadi). |
+| SSE (`/api/v1/events`) har 60 s ruxsatni qayta tekshiradi: chiqqan, sessiyasi tugagan, o'chirilgan foydalanuvchi (yoki PUBLIC_VIEW o'chganda mehmon) uchun oqim `event: auth` bilan yopiladi. | Hech narsa. |
+| `/docs`, `/redoc`, `/openapi.json` — faqat kirganlar yoki `X-API-Key` bilan (ilgari kirishsiz ochiq edi). | Integratorlar hujjatni kalit bilan oladi. |
+| Masofaviy MediaMTX tuguni API'si auth bilan (yuqoridagi bo'lim). | Tugun konfiguratsiyasini qayta oling. |
 
 ## Docker'siz (muqobil)
 

@@ -178,8 +178,12 @@ Sertifikat o'zimizniki (domen yo'q), shuning uchun brauzer avval
 - Firefox o'z ro'yxatini ishlatadi: Settings → Certificates → Import.
 
 IP o'zgarsa yoki yangisi qo'shilsa 6-qadamdagi `docker_https.py` ni qayta
-yurgizib `docker compose restart nginx` qiling — CA o'zgarmaydi, mijozlarga
-qayta o'rnatish kerak emas.
+yurgizib `docker compose restart nginx` qiling. CA cheklangan (NameConstraints:
+faqat shu server IP'lari) — kaliti sizsa ham uni boshqa sayt uchun ishlatib
+bo'lmaydi. Shu sababli yangi IP CA ro'yxatida bo'lmasa skript to'xtaydi:
+`--new-ca` qo'shib yurgizing va yangi `ca.crt` ni mijozlarga qayta o'rnating.
+CA kaliti `/opt/nigoh/data/ca/ca.key` da (nginx unga kira olmaydi) — uni
+`secret.key` kabi zaxiralang. Batafsil: docs/DEPLOY.md, "Xavfsizlik sozlamalari".
 
 ## 10. Yangilanish va zaxira
 
