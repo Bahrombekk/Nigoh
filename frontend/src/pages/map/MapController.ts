@@ -71,16 +71,42 @@ function regionStyle(): L.PathOptions {
 }
 
 /* ---------- Klaster joyi yamog'i (global, bir marta) ---------- */
-let uzRingsForPatch: [number, number][][] | null = null;
-function insideUz(lat: number, lng: number): boolean {
-  const rings = uzRingsForPatch;
-  if (!rings) return true;
-  let inside = false;
+/* Chegara 14 ming nuqtali; klaster joyi har qayta hisoblanganda (5000 kamerada ~3500
+   marta) to'liq aylanib chiqish xaritani ~2,5 s qotirardi. Shuning uchun qirralar
+   kenglik bo'yicha bo'laklarga taqsimlanadi: nur faqat o'z bo'lagidagi qirralarni
+   kesib o'tishi mumkin — natija to'liq tekshiruv bilan bir xil. */
+const UZ_BANDS = 1024;
+interface UzIndex { minLat: number; maxLat: number; minLng: number; maxLng: number; step: number; bands: number[][] }
+let uzIndex: UzIndex | null = null;
+
+function buildUzIndex(rings: [number, number][][]): UzIndex {
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const ring of rings) for (const [lat, lng] of ring) {
+    if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+  }
+  const step = (maxLat - minLat) / UZ_BANDS || 1;
+  const bands: number[][] = Array.from({ length: UZ_BANDS }, () => []);
+  const bandOf = (lat: number) => Math.min(UZ_BANDS - 1, Math.max(0, Math.floor((lat - minLat) / step)));
   for (const ring of rings) {
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
       const [yi, xi] = ring[i], [yj, xj] = ring[j];
-      if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+      if (yi === yj) continue;                       // gorizontal qirra nurni kesmaydi
+      for (let b = bandOf(Math.min(yi, yj)), e = bandOf(Math.max(yi, yj)); b <= e; b++) bands[b].push(yi, xi, yj, xj);
     }
+  }
+  return { minLat, maxLat, minLng, maxLng, step, bands };
+}
+
+function insideUz(lat: number, lng: number): boolean {
+  const ix = uzIndex;
+  if (!ix) return true;
+  if (lat < ix.minLat || lat > ix.maxLat || lng < ix.minLng || lng > ix.maxLng) return false;
+  const e = ix.bands[Math.min(UZ_BANDS - 1, Math.floor((lat - ix.minLat) / ix.step))];
+  let inside = false;
+  for (let k = 0; k < e.length; k += 4) {
+    const yi = e[k], xi = e[k + 1], yj = e[k + 2], xj = e[k + 3];
+    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
 }
@@ -329,7 +355,7 @@ export class MapController {
       const polys: [number, number][][][] = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
       const rings = polys.map((p) => p[0].map(([lng, lat]) => [lat, lng] as [number, number]));
       this.uzRings = rings;
-      uzRingsForPatch = rings;
+      uzIndex = buildUzIndex(rings);
       this.cluster.refreshClusters();
       this.applyUzClip();
       const world: L.LatLngTuple[] = [[-89.9, -179.9], [-89.9, 179.9], [89.9, 179.9], [89.9, -179.9]];
