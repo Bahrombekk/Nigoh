@@ -12,7 +12,8 @@ operator faqat o'ziga biriktirilgan hududlarni.
 Endpointlar (require_viewer; hudud cheklovi endpoint ichida):
     GET  /api/v1/cameras                xarita ro'yxati; ?bbox=minLat,minLng,
                                         maxLat,maxLng, ?limit; total/shown;
-                                        har kamerada fps va online_since (v3)
+                                        har kamerada fps va online_since (v3);
+                                        5 s umumiy kesh + ETag/304
     GET  /api/v1/cameras/status         boshlang'ich holat SSE'dan oldin:
                                         ?ids=1,2,ext:... (<=1024) yoki ?all=1
     GET  /api/v1/cameras/{ref}/stream   oqim manzili; yo'lni ensure_path qiladi,
@@ -40,6 +41,8 @@ Ishlatadi: camera.media (sync, fast_start, mapping), camera.monitoring
 (health, snapshots), camera.state, camera.streaming, users.access
 Kim ishlatadi: app/factory.py (router); frontend xarita, pleyer, devor
 """
+import hashlib
+import json
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -85,6 +88,9 @@ def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
 
     Ko'rinish: admin, API kalit va (PUBLIC_VIEW=1 bo'lsa) mehmon hammasini
     ko'radi; operator faqat o'ziga biriktirilgan hududlarni.
+
+    Javob LIST_TTL soniya umumiy keshda turadi va ETag bilan keladi:
+    o'zgarmagan ro'yxat uchun brauzer 304 oladi (5000 kamerada 150 KB tejaladi).
     """
     areas = allowed_areas(request)
     if areas is not None and not areas:
@@ -97,10 +103,46 @@ def list_cameras(request: Request, bbox: str = "", limit: int = 20000):
                 raise ValueError
         except ValueError:
             raise HTTPException(400, "bbox formati: minLat,minLng,maxLat,maxLng")
+    limit = max(1, min(limit, 50000))
+    key = (tuple(sorted(areas)) if areas is not None else None, box, limit)
     with get_db() as db:
-        total, rows = cameras.list_visible(db, bbox=box, area_ids=areas,
-                                           limit=max(1, min(limit, 50000)))
-        since = online_since_map(db, rows)
+        stamp = cameras.list_fingerprint(db)
+        hit = _list_cache.get(key)
+        if hit and hit[1] == stamp and time.monotonic() - hit[0] < LIST_TTL:
+            body, etag = hit[2], hit[3]
+        else:
+            total, rows = cameras.list_visible(db, bbox=box, area_ids=areas, limit=limit)
+            body = _json_bytes(_list_payload(db, total, rows))
+            etag = '"' + hashlib.blake2b(body, digest_size=12).hexdigest() + '"'
+            if len(_list_cache) > 64:          # hudud/bbox kombinatsiyalari cheksiz o'smasin
+                _list_cache.clear()
+            _list_cache[key] = (time.monotonic(), stamp, body, etag)
+    headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(body, media_type="application/json", headers=headers)
+
+
+# Xarita ro'yxati keshi. 5000 kamerada ro'yxatni qurish + JSON ~0,2 s, har ochiq
+# brauzer esa uni har poll_s (30 s) da so'raydi — LIST_TTL ichida bir xil kalitli
+# so'rovlar tayyor baytlarni oladi. Kalitda baza "barmoq izi" bor: admin kamera
+# qo'shsa/o'zgartirsa keyingi so'rov keshni chetlab o'tadi. Health/oqim holati
+# xotirada — u ko'pi bilan LIST_TTL soniya kechikadi (poll baribir 30 s).
+# Testlar 0 qo'yadi (conftest): ular holatni yamab darhol natija kutadi.
+LIST_TTL = 5.0
+_list_cache: dict = {}
+
+
+def _json_bytes(data) -> bytes:
+    """FastAPI JSONResponse bilan bir xil JSON — jsonable_encoder'siz (5000
+    kamerada u yana ~70 ms olardi). Sana/vaqt — ISO, xuddi FastAPI kabi."""
+    return json.dumps(data, ensure_ascii=False, allow_nan=False, separators=(",", ":"),
+                      default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)
+                      ).encode("utf-8")
+
+
+def _list_payload(db, total: int, rows) -> dict:
+    since = online_since_map(db, rows)
     return {
         "total": total,
         "shown": len(rows),

@@ -365,3 +365,25 @@ def test_sarlavhalar_401_javobda_ham_boladi():
         r = c.get("/api/v1/cameras")
         assert r.status_code == 401
         assert r.headers["X-Frame-Options"] == "DENY"
+
+
+def test_royxat_keshi_etag_va_yangi_kamera(client, monkeypatch):
+    """Xarita ro'yxati: ETag bilan 304; kesh yoqiq bo'lsa ham yangi kamera
+    keyingi so'rovda darhol ko'rinadi (baza barmoq izi keshni chetlab o'tadi)."""
+    from camera.api import cameras as cameras_api
+    monkeypatch.setattr(cameras_api, "LIST_TTL", 60.0)
+    cameras_api._list_cache.clear()
+
+    r = client.get("/api/v1/cameras", headers=KEY)
+    assert r.status_code == 200
+    etag = r.headers["ETag"]
+    assert r.headers["Cache-Control"] == "private, no-cache"
+    r2 = client.get("/api/v1/cameras", headers={**KEY, "If-None-Match": etag})
+    assert r2.status_code == 304 and r2.headers["ETag"] == etag
+
+    yangi = _yangi(client, "kesh-sinov")
+    r3 = client.get("/api/v1/cameras", headers={**KEY, "If-None-Match": etag})
+    assert r3.status_code == 200 and r3.headers["ETag"] != etag
+    assert any(c["id"] == yangi["id"] for c in r3.json()["cameras"])
+    cameras_api._list_cache.clear()
+

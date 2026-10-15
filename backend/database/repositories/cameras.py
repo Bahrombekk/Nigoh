@@ -26,6 +26,7 @@ Tarkibi:
         .list_all(db)           hammasi, id tartibida
         .all_slugs(db)          barcha sluglar to'plami
         .list_visible(db, bbox=, area_ids=, limit=)  xarita: yoqilganlar, (total, qatorlar)
+        .list_fingerprint(db)               xarita ro'yxati keshi uchun o'zgarish belgisi
         .search(db, query, limit, offset)  boshqaruv ro'yxati: nom/hudud/IP/slug/izoh (ILIKE)
       yozish:
         .unique_slug(db, base, exclude_id)  takrorlanmaydigan slug: nom, nom_2, nom_3 ...
@@ -73,7 +74,7 @@ Tarkibi:
 Jadvallar: cameras, devices, camera_status; view camera_details
 Ishlatadi: database.connection (get_db — faqat sub oqim yordamchilari)
 Kim ishlatadi: camera/api/admin.py (CRUD, search, pasport, sub oqim),
-camera/api/cameras.py (list_visible, list_all, set_sub_bad_by_id),
+camera/api/cameras.py (list_visible, list_fingerprint, list_all, set_sub_bad_by_id),
 camera/api/devices.py, camera/api/events.py, camera/state.py,
 camera/media/ (launcher, mapping, reconciler, transport),
 camera/monitoring/ (health, passport, snapshots), app/bootstrap.py,
@@ -549,6 +550,15 @@ class CameraRepository:
         rows = db.execute(f"SELECT * FROM {DETAILS} {where} ORDER BY region, name LIMIT %s",
                           params + [limit]).fetchall()
         return total, rows
+
+    def list_fingerprint(self, db) -> tuple:
+        """Xarita ro'yxatiga ta'sir qiladigan jadvallar o'zgarganini bildiruvchi
+        arzon "barmoq izi" (~1 ms): son va oxirgi updated_at (hammasida trigger bor).
+        Ro'yxat keshi shu bilan admin o'zgarishini darhol sezadi."""
+        return tuple(db.execute(
+            "SELECT (SELECT COUNT(*) FROM cameras), (SELECT MAX(updated_at) FROM cameras),"
+            " (SELECT MAX(updated_at) FROM camera_status), (SELECT MAX(updated_at) FROM devices),"
+            " (SELECT MAX(updated_at) FROM admin_areas)").fetchone())
 
     def list_all(self, db) -> list:
         return db.execute(f"SELECT * FROM {DETAILS} ORDER BY id").fetchall()

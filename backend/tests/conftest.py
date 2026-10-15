@@ -64,6 +64,10 @@ def _db():
         db.execute("DROP SCHEMA IF EXISTS public CASCADE")
         db.execute("CREATE SCHEMA public")
     init_db()
+    # Xarita ro'yxati keshi o'chiq: testlar health holatini yamab darhol yangi
+    # javob kutadi (keshning o'zi test_api.py da alohida tekshiriladi).
+    from camera.api import cameras as cameras_api
+    cameras_api.LIST_TTL = 0
 
 
 @pytest.fixture(scope="module", autouse=True)
