@@ -15,7 +15,7 @@ export function fmtDateShort(d = new Date()): string { return dateShort(d); }
 
 export function fmtNum(n: number | null | undefined, digits = 0): string {
   if (n == null || Number.isNaN(n)) return "—";
-  return n.toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits }).replace(/ /g, " ");
+  return n.toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits }).replace(/\u00a0/g, " ");
 }
 export function fmtPct(n: number | null | undefined, digits = 1): string {
   return n == null ? "—" : fmtNum(n, digits) + "%";
