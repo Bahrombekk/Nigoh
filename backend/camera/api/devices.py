@@ -33,6 +33,7 @@ Kim ishlatadi: app/factory.py (router); frontend "qurilma qo'shish" oynasi
 """
 import asyncio
 import json
+import re
 import threading
 import time
 import uuid
@@ -195,6 +196,9 @@ def _run_scan(job: dict, job_id: str, max_channels: int) -> None:
         job["done"] = True
 
 
+_HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]*$")
+
+
 @router.get("/info")
 def device_information(ip: str = "", username: str = "", password: str = "",
                        ref: str = ""):
@@ -213,9 +217,13 @@ def device_information(ip: str = "", username: str = "", password: str = "",
         camera_id = row["id"]
         ip = ip or (row["ip"] or "")
         username = username or (row["username"] or "")
-        password = password or security.decrypt(row["password_enc"])
+        password = password or security.stored_password_for(row, ip)
     if not ip:
         raise HTTPException(400, "ip yoki ref bering")
+    # ProbeIn/ScanIn bilan bir xil qoida: "127.0.0.1:9997/v3/..." kabi yo'l
+    # qo'shib ichki xizmatlarga so'rov yuborib bo'lmasin (SSRF).
+    if not _HOST_RE.match(ip):
+        raise HTTPException(400, "ip notoʻgʻri")
 
     info = devinfo.device_info(ip, username, password)
     if info is None:
@@ -239,8 +247,7 @@ def scan_start(body: ScanIn):
     if not pw and body.camera_id:
         with get_db() as db:
             row = cameras.get(db, body.camera_id)
-        if row:
-            pw = security.decrypt(row["password_enc"])
+        pw = security.stored_password_for(row, body.ip)
 
     job_id = uuid.uuid4().hex[:12]
     job = {

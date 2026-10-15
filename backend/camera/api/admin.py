@@ -421,6 +421,9 @@ _EXPORT_COLUMNS = (
 )
 
 
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
 def _export_value(row, state: str, key: str):
     if key == "state":
         return state
@@ -431,6 +434,10 @@ def _export_value(row, state: str, key: str):
         return value.astimezone(timezone.utc).isoformat(timespec="seconds")
     if isinstance(value, bool):
         return "ha" if value else "yoʻq"
+    # Jadval formulasi sifatida bajarilmasin: model/firmware kameraning o'zidan
+    # keladi (ONVIF) — buzilgan qurilma "=HYPERLINK(...)" qo'yishi mumkin.
+    if isinstance(value, str) and value[:1] in _FORMULA_START:
+        return "'" + value
     return "" if value is None else value
 
 
@@ -799,6 +806,9 @@ def parse_channels(spec: str, limit: int = 512) -> list[int]:
                 raise HTTPException(400, f"Kanal oraligʻi notoʻgʻri: {chunk}")
             if start > end:
                 start, end = end, start
+            # Kengaytirishdan OLDIN: "1-999999999" bir so'rovda milliard son yasardi.
+            if end - start + 1 > limit:
+                raise HTTPException(400, f"Bir marta koʻpi bilan {limit} ta kanal")
             numbers.extend(range(start, end + 1))
         else:
             try:
@@ -838,8 +848,7 @@ def admin_nvr_import(body: NvrIn):
     if not password and body.camera_id:
         with get_db() as db:
             row = cameras.get(db, body.camera_id)
-        if row:
-            password = security.decrypt(row["password_enc"])
+        password = security.stored_password_for(row, body.ip)
 
     planned = []
     for index, channel in enumerate(channels):
@@ -991,8 +1000,7 @@ def admin_scan(body: ScanIn):
     if not pw and body.camera_id:
         with get_db() as db:
             row = cameras.get(db, body.camera_id)
-        if row:
-            pw = security.decrypt(row["password_enc"])
+        pw = security.stored_password_for(row, ip)
 
     # 1) Shablonni aniqlash — har bir ishlab chiqaruvchining 1-kanali.
     candidates = {v: channel_path(v, 1, "main") for v in CHANNEL_VENDORS}
@@ -1050,8 +1058,7 @@ def admin_probe(body: ProbeIn):
     if not password and body.camera_id:
         with get_db() as db:
             row = cameras.get(db, body.camera_id)
-        if row:
-            password = security.decrypt(row["password_enc"])
+        password = security.stored_password_for(row, body.ip)
     return probe(body.ip.strip(), body.port, body.rtsp_path.strip(),
                  body.username.strip(), password)
 

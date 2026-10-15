@@ -1134,6 +1134,12 @@ def build_config(cameras: list[dict], auth_url: str | None = None,
 def write_config(cameras: list[dict]) -> int:
     """mediamtx.yml faylini qayta yozadi, tayyor kameralar sonini qaytaradi."""
     CONFIG_PATH.write_text(build_config(cameras), encoding="utf-8")
+    # Faylda kamera RTSP manbalari (login:parol) bo'lishi mumkin — faqat egasi o'qisin
+    # (secret.key bilan bir xil). Windows'da chmod faqat "faqat o'qish" bayrog'iga ta'sir qiladi.
+    try:
+        CONFIG_PATH.chmod(0o600)
+    except OSError:
+        pass
     return sum(1 for c in cameras if c.get("ip") and c.get("enabled"))
 
 

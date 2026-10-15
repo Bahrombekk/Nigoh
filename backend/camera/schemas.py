@@ -100,6 +100,15 @@ class CameraIn(BaseModel):
         if self.source_type == "manual" and not self.stream_url.strip():
             raise HTTPException(400, "Oqim manzili kiritilmagan")
 
+    @field_validator("rtsp_path", "sub_path", check_fields=False)
+    @classmethod
+    def _yolda_boshqaruv_belgisi_yoq(cls, v):
+        # Yo'l RTSP so'rov qatoriga xom holda tushadi: CR/LF sarlavha qo'shardi.
+        if v is not None and any(ord(ch) < 32 or ord(ch) == 127 for ch in v):
+            raise ValueError("RTSP yoʻlida boshqaruv belgilari boʻlmasin")
+        return v
+
+
 
 class EnabledIn(BaseModel):
     """Kamerani yoqish/o'chirib qo'yish — to'liq PUT talab qilinmasin."""
@@ -156,6 +165,15 @@ class ProbeIn(BaseModel):
     password: str | None = None
     rtsp_path: str = Field(default="/stream1", max_length=300)
     camera_id: int | None = None       # saqlangan parolni ishlatish uchun
+
+    @field_validator("rtsp_path", "sub_path", check_fields=False)
+    @classmethod
+    def _yolda_boshqaruv_belgisi_yoq(cls, v):
+        # Yo'l RTSP so'rov qatoriga xom holda tushadi: CR/LF sarlavha qo'shardi.
+        if v is not None and any(ord(ch) < 32 or ord(ch) == 127 for ch in v):
+            raise ValueError("RTSP yoʻlida boshqaruv belgilari boʻlmasin")
+        return v
+
 
 
 class ScanIn(BaseModel):
