@@ -133,6 +133,10 @@ def configure(console: bool = True) -> Path:
 
         console_handler = None
         if console:
+            # Windows konsoli/quvuri cp1251 bo'lishi mumkin: o'zbekcha "ʻ" kabi
+            # belgi yozuvni yiqitmasin — kodlab bo'lmaganini \uXXXX qilib chiqaramiz.
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(errors="backslashreplace")
             console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setLevel(config.CONSOLE_LEVEL)
             console_handler.setFormatter(ConsoleFormatter(color=sys.stdout.isatty()))

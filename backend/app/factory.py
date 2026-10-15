@@ -55,6 +55,7 @@ Ishlatadi: app.config, app.deps, app.health, app.system_api, camera.api.*,
 Kim ishlatadi: main.py (`app = create_app()`), tests/ (TestClient).
 """
 import asyncio
+import os
 import re
 import time
 from contextlib import asynccontextmanager
@@ -185,6 +186,13 @@ class _TilesStatic(StaticFiles):
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "public, max-age=86400"
         return response
+
+    async def check_config(self) -> None:
+        # tiles/ papkasi hali yo'q (fayl yuklab olinmagan) — 404 qaytsin, 500 emas:
+        # interfeys buni "Tez orada" deb ko'rsatadi, errors jurnali esa to'lmaydi.
+        if self.directory is not None and not os.path.isdir(self.directory):
+            return
+        await super().check_config()
 
 
 # Interfeys tashqi manbalardan yuklaydi: Leaflet/markercluster (unpkg),

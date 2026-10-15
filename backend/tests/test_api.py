@@ -387,3 +387,13 @@ def test_royxat_keshi_etag_va_yangi_kamera(client, monkeypatch):
     assert any(c["id"] == yangi["id"] for c in r3.json()["cameras"])
     cameras_api._list_cache.clear()
 
+
+def test_mahalliy_xarita_papkasi_yoq_404(tmp_path):
+    """tiles/ papkasi hali yaratilmagan (fayl yuklanmagan) — 500 emas, 404."""
+    from starlette.applications import Starlette
+
+    from app.factory import _TilesStatic
+    app = Starlette()
+    app.mount("/tiles", _TilesStatic(directory=str(tmp_path / "yoq"), check_dir=False))
+    with TestClient(app) as c:
+        assert c.get("/tiles/uz.pmtiles").status_code == 404
