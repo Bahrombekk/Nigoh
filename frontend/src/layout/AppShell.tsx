@@ -3,14 +3,16 @@
    Sahifalar <Outlet/> ga chiziladi. body[data-tab] — joriy bo'lim (CSS shunga qaraydi). */
 import { useEffect, useState, type FormEvent } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
-import { useAuth } from "@/auth/AuthProvider";
-import { useI18n, LANG_LIST, type LangId } from "@/i18n/I18nProvider";
+import { useAuth } from "@/auth/authContext";
+import { useI18n, LANG_LIST, type LangId } from "@/i18n/i18nContext";
 import { THEMES, useTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { ROLE_LABEL } from "@/lib/types";
 import { Icon } from "@/components/Icon";
 import { Alert, Button, Seg } from "@/components/ui";
-import { Dialog, Menu, Popover, useShortcut, useToast } from "@/components/overlays";
+import { Dialog, Menu, Popover } from "@/components/overlays";
+import { useShortcut } from "@/components/overlayHooks";
+import { useToast } from "@/components/overlayContext";
 
 export const TABS = [
   { tab: "dash", path: "/dash", icon: "chart-pie", label: "Statistika", auth: true },
@@ -20,7 +22,7 @@ export const TABS = [
   { tab: "settings", path: "/settings", icon: "gear", label: "Sozlamalar", admin: true },
 ] as const;
 
-export function tabOf(pathname: string): string {
+function tabOf(pathname: string): string {
   const seg = pathname.split("/")[1] || "";
   return ["dash", "wall", "admin", "settings"].includes(seg) ? seg : "map";
 }

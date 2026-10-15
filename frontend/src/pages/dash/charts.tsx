@@ -8,41 +8,17 @@
      <Donut>      — holatlar halqasi
    Qoidalar: ranglar faqat tokenlardan (cssVar), chizish haqiqiy pikselda (viewBox = element
    o'lchami) — o'lcham o'zgarsa (ResizeObserver) yoki mavzu almashsa ("nigoh:theme") qayta
-   chiziladi. Grafik maslahati kursorga ergashadi (.db-tip, bitta umumiy element). */
+   chiziladi. Grafik maslahati kursorga ergashadi (.db-tip, bitta umumiy element) — chartUtils.ts. */
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { cssVar } from "@/lib/theme";
-import { dayLabel, p2 } from "./common";
+import { dayLabel } from "./format";
+import { p2 } from "@/lib/format";
 import type { SeriesPoint, Hourly } from "./queries";
+import { HEAT_ALPHA, chTipHide, chTipShow, esc } from "./chartUtils";
 
 type T = (s: string) => string;
-const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const f1 = (n: number) => n.toFixed(1);
-
-/* ---------- Grafik maslahati (kursorga ergashadi) ---------- */
-let tipEl: HTMLDivElement | null = null;
-function tip() {
-  if (!tipEl) {
-    tipEl = document.createElement("div");
-    tipEl.className = "db-tip";
-    tipEl.setAttribute("role", "tooltip");
-    document.body.appendChild(tipEl);
-    addEventListener("scroll", chTipHide, true);
-  }
-  return tipEl;
-}
-export function chTipShow(title: string, text: string, cx: number, cy: number) {
-  const el = tip();
-  el.innerHTML = (title ? "<b>" + esc(title) + "</b>" : "") + (text ? "<span>" + esc(text) + "</span>" : "");
-  el.classList.add("show");
-  const r = el.getBoundingClientRect();
-  let x = cx + 14, y = cy - r.height - 12;
-  if (x + r.width > innerWidth - 8) x = cx - r.width - 14;
-  if (y < 8) y = cy + 16;
-  el.style.left = Math.max(8, x) + "px";
-  el.style.top = y + "px";
-}
-export function chTipHide() { tipEl?.classList.remove("show"); }
 
 /** "Kuzatuv yo'q" shtrix naqshi. */
 function hatchDef(id: string) {
@@ -327,8 +303,6 @@ export function HourBars({ data }: { data: Hourly }) {
 }
 
 /* ---------- Issiqlik xaritasi ---------- */
-/** 5 bosqich (0 — eng och, kuzatuv bor lekin uzilish yo'q). */
-export const HEAT_ALPHA = [0.07, 0.2, 0.36, 0.54, 0.74, 0.95];
 export interface HeatRow { label: string; tip: string; hours: (number | null)[] | null }
 function drawHeatmap(el: SVGSVGElement, rows: HeatRow[], t: T) {
   const W = Math.max(120, Math.round(el.clientWidth) || 380);

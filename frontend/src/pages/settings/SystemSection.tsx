@@ -5,10 +5,10 @@
    Muammo bo'lsa (warn/error) — Alert ("Koʻrish" → Tizim jurnali, toifa va daraja bilan).
    Ochiq turganda har 30 s yangilanadi (sahifa yashirin bo'lsa — yo'q); "Yangilash" — darhol. */
 import { useEffect, useState } from "react";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
 import { Button } from "@/components/ui";
-import { useToast } from "@/components/overlays";
+import { useToast } from "@/components/overlayContext";
 import { useSystemStatus, type StatusBundle } from "./queries";
 import { durText, mbText } from "./util";
 

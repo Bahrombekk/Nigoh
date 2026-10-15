@@ -2,8 +2,8 @@
    Bir nechta joyda turishi mumkin (xarita toolbar'i, sahifa sarlavhalari) — ma'lumot umumiy (Query kesh). */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { useI18n } from "@/i18n/I18nProvider";
-import { useAuth } from "@/auth/AuthProvider";
+import { useI18n } from "@/i18n/i18nContext";
+import { useAuth } from "@/auth/authContext";
 import { useMarkRead, useNotifications, useSystemState } from "@/data/queries";
 import { apiOk } from "@/lib/api";
 import { fmtDateShort, fmtHm, fmtTime } from "@/lib/format";

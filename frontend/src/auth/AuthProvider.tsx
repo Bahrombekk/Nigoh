@@ -1,32 +1,16 @@
 /* auth/AuthProvider.tsx — kim kirgan, kirish ekrani, mehmon rejimi, chiqish.
-   useAuth(): { user, me, loading, guest, loginOpen, loginReason, openLogin, login, logout, enterGuest }
+   useAuth() (authContext.ts): { user, me, loading, guest, loginOpen, loginReason, openLogin, login, logout, enterGuest }
    - 401 (api.ts "nigoh:unauthorized") → kirish ekrani "Seans tugadi" holatida.
    - Kirgach serverdagi prefs mahalliy ustiga yoziladi (mavzu, til ...).
    - Sayt nomi hujjat sarlavhasiga, sayt standart tili — I18nProvider'ga. */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { applyServerPrefs, setPrefsUser } from "@/lib/prefs";
-import type { Me, Role } from "@/lib/types";
+import type { Me } from "@/lib/types";
 import { qk, useMe } from "@/data/queries";
-import { useI18n } from "@/i18n/I18nProvider";
-
-export interface User { username: string; role: Role; full_name: string }
-type Reason = "login" | "expired";
-
-interface Ctx {
-  me: Me | undefined;
-  user: User | null;
-  loading: boolean;
-  guest: boolean;
-  loginOpen: boolean;
-  loginReason: Reason;
-  openLogin: (reason?: Reason) => void;
-  login: (username: string, password: string, remember: boolean) => Promise<Me>;
-  logout: () => Promise<void>;
-  enterGuest: () => void;
-}
-const AuthCtx = createContext<Ctx | null>(null);
+import { useI18n } from "@/i18n/i18nContext";
+import { AuthCtx, type Ctx, type Reason, type User } from "./authContext";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
@@ -36,8 +20,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [guest, setGuest] = useState(false);
   const [forced, setForced] = useState<Reason | null>(null);
 
-  const user: User | null = me?.authenticated && me.username && me.role
-    ? { username: me.username, role: me.role, full_name: me.full_name || "" } : null;
+  // Barqaror obyekt: har renderda yangisi yaratilsa useAuth() iste'molchilari
+  // hammasi qayta chizilardi va "unauthorized" tinglovchisi qayta ulanardi.
+  const user = useMemo<User | null>(() => (me?.authenticated && me.username && me.role
+    ? { username: me.username, role: me.role, full_name: me.full_name || "" } : null), [me]);
 
   useEffect(() => {
     setPrefsUser(!!user);
@@ -86,10 +72,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
-
-export function useAuth(): Ctx {
-  const c = useContext(AuthCtx);
-  if (!c) throw new Error("AuthProvider yo'q");
-  return c;
-}
-export const isAdmin = (u: User | null) => u?.role === "admin";

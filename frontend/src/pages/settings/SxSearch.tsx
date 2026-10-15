@@ -1,9 +1,9 @@
 /* pages/settings/SxSearch.tsx — v3 Sozlamalar qidiruv maydoni (.search.sx-search): "/" yorlig'isiz,
    × tozalash, .is-filled. Qiymatni chaqiruvchi 300 ms kechiktirib ishlatadi (useDebounced). */
 import { useRef } from "react";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
-import { cx } from "@/components/ui";
+import { cx } from "@/lib/cx";
 
 export function SxSearch({ value, onChange, placeholder, label, small }: {
   value: string; onChange: (v: string) => void; placeholder: string; label: string; small?: boolean;

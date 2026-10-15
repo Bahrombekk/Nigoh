@@ -17,10 +17,11 @@ import { useEffect, useReducer, useRef, type KeyboardEvent, type MouseEvent } fr
 import { createPlayer } from "@/player/player.js";
 import { HEVC_OK } from "@/player/env.js";
 import { Icon } from "@/components/Icon";
-import { cx } from "@/components/ui";
-import { useT } from "@/i18n/I18nProvider";
+import { cx } from "@/lib/cx";
+import { useT } from "@/i18n/i18nContext";
 import { camStatus, type Camera } from "@/lib/types";
 import { useSelectedCamera } from "@/lib/selection";
+import { fmtCodec, fmtSec, isDown } from "./wallUtils";
 
 export type Quality = "" | "sub";
 type TileState = "" | "connecting" | "live" | "offline" | "fail";
@@ -37,23 +38,6 @@ interface PlayerLike {
 const RETRY_HINT_MS = 3000;
 /* Oqim ochilmasa — bir marta shuncha kutib o'zi qayta urinadi. */
 const AUTO_RETRY_MS = 3000;
-
-export function isDown(cam: Camera) {
-  const s = camStatus(cam);
-  return s === "offline" || s === "disabled";
-}
-
-export function fmtCodec(codec: string | null | undefined) {
-  if (!codec) return "—";
-  const c = String(codec).toUpperCase();
-  const m = c.match(/^H\.?(\d{3})$/);
-  return m ? "H." + m[1] : c;
-}
-
-export function fmtSec(ms: number | null | undefined) {
-  if (ms == null || !isFinite(ms)) return "—";
-  return (ms / 1000).toFixed(1).replace(".", ",") + " s";
-}
 
 /* v3 tile.js fmtAgo: "hozirgina" · "10 daq oldin" · "3 soat oldin" · "2 kun oldin" */
 function fmtAgo(iso: string | null | undefined) {

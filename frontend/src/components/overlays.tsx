@@ -5,17 +5,14 @@
                     menyuda ↑↓.
    Menu           — Popover ichida MenuItem'lar (items: {label, icon, kbd, danger, on, disabled, onClick} | "sep" | {heading}).
    Dialog         — .dialog-backdrop; Esc / fonga click yopadi.
-   OverlayProvider — useToast() (toast(text, {tone, action, onAction, ms})) va
-                    useConfirm() (await confirm({title, text, ok, danger}) → boolean).
-   useShortcut(key, fn) — global yorliq (input ichida ishlamaydi).
-   useDelayed(flag, 300) — skeleton faqat 300 ms dan uzoq yuklansa. */
-import {
-  createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode,
-} from "react";
+   OverlayProvider — toast va tasdiqlash oynasi; hook'lari (useToast, useConfirm) — overlayContext.ts.
+   useMenuAnchor, useShortcut, useDelayed — overlayHooks.tsx. */
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon";
 import { Button } from "./ui";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
+import { OverlayCtx, type ConfirmOpts, type Tone, type ToastOpts } from "./overlayContext";
 
 /* ---------- Tooltip ---------- */
 export function TooltipLayer() {
@@ -174,24 +171,6 @@ export function Menu({ items, onDone, autoFocus = true }: { items: MenuEntry[]; 
   );
 }
 
-/** Tugma + menyu: const m = useMenuAnchor(); <button ref={m.ref} onClick={m.toggle}/> {m.render(items)} */
-export function useMenuAnchor(place: Place = "bottom-end") {
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  return {
-    ref: setAnchor,
-    open,
-    toggle: () => setOpen((o) => !o),
-    close,
-    render: (items: MenuEntry[], width?: number) => (
-      <Popover anchor={anchor} open={open} onClose={close} place={place} width={width}>
-        <Menu items={items} onDone={close} />
-      </Popover>
-    ),
-  };
-}
-
 /* ---------- Dialog ---------- */
 export function Dialog({ open, onClose, title, size, children, actions, role = "dialog", className = "" }: {
   open: boolean; onClose: () => void; title?: string; size?: "md" | "lg"; children?: ReactNode; actions?: ReactNode;
@@ -223,15 +202,7 @@ export function Dialog({ open, onClose, title, size, children, actions, role = "
 }
 
 /* ---------- Toast + Confirm ---------- */
-type Tone = "success" | "info" | "error";
-interface ToastOpts { tone?: Tone; action?: string; onAction?: () => void; ms?: number }
 interface ToastItem extends ToastOpts { id: number; text: string; out?: boolean }
-interface ConfirmOpts { title: string; text?: string; ok?: string; cancel?: string; danger?: boolean; icon?: string }
-
-const OverlayCtx = createContext<{
-  toast: (text: string, opts?: ToastOpts | boolean) => () => void;
-  confirm: (o: ConfirmOpts) => Promise<boolean>;
-} | null>(null);
 
 const TOAST_ICON: Record<Tone, string> = { success: "circle-check", info: "circle-info", error: "triangle-exclamation" };
 let toastSeq = 0;
@@ -304,43 +275,4 @@ function ToastView({ item, onClose }: { item: ToastItem; onClose: () => void }) 
       <button type="button" className="toast__close" aria-label={t("Yopish")} onClick={onClose}><Icon name="xmark" size="sm" /></button>
     </div>
   );
-}
-
-export function useToast() {
-  const c = useContext(OverlayCtx);
-  if (!c) throw new Error("OverlayProvider yo'q");
-  return c.toast;
-}
-export function useConfirm() {
-  const c = useContext(OverlayCtx);
-  if (!c) throw new Error("OverlayProvider yo'q");
-  return c.confirm;
-}
-
-/* ---------- Klaviatura ---------- */
-export function useShortcut(key: string, fn: (e: KeyboardEvent) => boolean | void, enabled = true) {
-  const ref = useRef(fn);
-  ref.current = fn;
-  useEffect(() => {
-    if (!enabled) return;
-    const h = (e: KeyboardEvent) => {
-      if (e.key !== key || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
-      const tg = e.target as HTMLElement;
-      if (tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))) return;
-      if (document.querySelector(".dialog-backdrop.open, .login.open")) return;
-      if (ref.current(e) !== false) e.preventDefault();
-    };
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [key, enabled]);
-}
-
-export function useDelayed(flag: boolean, ms = 300) {
-  const [v, setV] = useState(false);
-  useEffect(() => {
-    if (!flag) { setV(false); return; }
-    const id = setTimeout(() => setV(true), ms);
-    return () => clearTimeout(id);
-  }, [flag, ms]);
-  return v;
 }

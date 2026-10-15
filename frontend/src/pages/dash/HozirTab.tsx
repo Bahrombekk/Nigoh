@@ -9,18 +9,18 @@
      * Bugungi tahlil (6 xulosa), Tezkor amallar (faqat admin), Tizim holati (xizmatlar + yuklama).
    Qoida: har raqam shu tabda BIR marta. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useT } from "@/i18n/I18nProvider";
-import { useAuth } from "@/auth/AuthProvider";
+import { useT } from "@/i18n/i18nContext";
+import { useAuth } from "@/auth/authContext";
 import { useCameras } from "@/data/queries";
 import { apiOk } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { InfoTip } from "@/components/ui";
 import type { ApiState, Camera } from "@/lib/types";
 import { Sparkline } from "./charts";
-import {
-  AlertBox, CardHead, Empty, ErrBox, Loading, Section, SkelBars, Tile, camState, dayLabel, fmtDur, fmtInt, fmtPct,
-  fmtSince, hhmm, p2, STATUS, LABEL, WD, useDashNav,
-} from "./common";
+import { AlertBox, CardHead, Empty, ErrBox, Loading, Section, SkelBars, Tile } from "./common";
+import { camState, dayLabel, fmtDur, fmtInt, fmtPct, fmtSince, hhmm, STATUS, LABEL, WD } from "./format";
+import { p2 } from "@/lib/format";
+import { useDashNav } from "./hooks";
 import {
   useAvailability, useDaily, useFeed, useHourly, useOpenOutages, useOutageSummary, useRanking, useRegions, useSeries,
   useSla, useSummary, useSystemInfo, view, type Days, type FeedItem,

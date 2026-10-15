@@ -17,20 +17,23 @@
 import "@/styles/settings.css";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { useI18n, useT, type LangId } from "@/i18n/I18nProvider";
+import { useI18n, useT, type LangId } from "@/i18n/i18nContext";
 import { PageSheet } from "@/layout/AppShell";
 import { Sysbar } from "@/layout/Sysbar";
 import { Icon } from "@/components/Icon";
-import { Button, cx } from "@/components/ui";
-import { useToast } from "@/components/overlays";
+import { Button } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { useToast } from "@/components/overlayContext";
 import { usePutSettings, useSiteSettings } from "./queries";
-import { FORM_SECTIONS, SiteForm, validSetting, type Draft } from "./SiteForm";
+import { SiteForm } from "./SiteForm";
+import { FORM_SECTIONS, validSetting, type Draft } from "./siteDraft";
 import { UsersSection } from "./UsersSection";
 import { GroupsSection } from "./GroupsSection";
 import { SystemSection } from "./SystemSection";
-import { AuditSection, CATEGORIES, LOG_FILTER0, LogsSection, type LogFilter } from "./LogsSection";
+import { AuditSection, LogsSection } from "./LogsSection";
+import { CATEGORIES, LOG_FILTER0, type LogFilter } from "./logFilter";
 
-export const SECTIONS = ["umumiy", "xavfsizlik", "kuzatuv", "foydalanuvchilar", "guruhlar", "tizim", "loglar", "jurnal"];
+const SECTIONS = ["umumiy", "xavfsizlik", "kuzatuv", "foydalanuvchilar", "guruhlar", "tizim", "loglar", "jurnal"];
 const ALIAS: Record<string, string> = {
   general: "umumiy", site: "umumiy", access: "xavfsizlik", security: "xavfsizlik", monitoring: "kuzatuv",
   users: "foydalanuvchilar", groups: "guruhlar", status: "tizim", system: "tizim", logs: "loglar", audit: "jurnal",

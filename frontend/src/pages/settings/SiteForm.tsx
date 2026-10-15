@@ -10,14 +10,13 @@
        shaxsiy afzallik (setLang, darhol). Til nomlari o'z yozuvida (tarjima qilinmaydi).
    Server bermagan sozlama (eski backend) — qatori chizilmaydi. */
 import { useState, type ReactNode } from "react";
-import { useT, useI18n, type LangId } from "@/i18n/I18nProvider";
+import { useT, useI18n, type LangId } from "@/i18n/i18nContext";
 import { useTheme, THEMES } from "@/lib/theme";
-import { InfoTip, cx } from "@/components/ui";
-import { useToast } from "@/components/overlays";
+import { InfoTip } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { useToast } from "@/components/overlayContext";
 import { usePutSettings, type Setting } from "./queries";
-
-export const FORM_SECTIONS = ["umumiy", "xavfsizlik", "kuzatuv"];
-export type Draft = Record<string, unknown>;
+import { nextDraft, validSetting, type Draft } from "./siteDraft";
 
 /* Bo'lim tarkibi (tartib — Figma). "@" bilan boshlanganlar — mijoz tomonidagi qatorlar. */
 const LAYOUT: Record<string, string[]> = {
@@ -57,20 +56,6 @@ const TZ: [string, string][] = [
   ["Asia/Bishkek", "Asia/Bishkek (UTC+6)"], ["Europe/Moscow", "Europe/Moscow (UTC+3)"], ["UTC", "UTC (UTC+0)"],
 ];
 
-/* ---------- sof yordamchilar (SettingsPage ham ishlatadi) ---------- */
-export function validSetting(s: Setting | undefined, v: unknown): boolean {
-  if (!s) return true;
-  if (s.kind === "int") return Number.isInteger(v) && (s.min == null || (v as number) >= s.min) && (s.max == null || (v as number) <= s.max);
-  if (s.kind === "str") return typeof v === "string" && v.trim().length > 0 && (!s.max || v.trim().length <= s.max);
-  return true;
-}
-/** Qoralamaga yozish: asl qiymatga qaytsa — kalit o'chadi. */
-export function nextDraft(draft: Draft, s: Setting, v: unknown): Draft {
-  const d = { ...draft };
-  if (v === s.value || (typeof v === "string" && typeof s.value === "string" && v.trim() === s.value)) delete d[s.key];
-  else d[s.key] = v;
-  return d;
-}
 function fmt(s: Setting, v: unknown) {
   if (s.kind === "bool") return v ? "yoqiq" : "oʻchiq";
   if (s.kind === "choice" && LANG_LABEL[v as string]) return LANG_LABEL[v as string];

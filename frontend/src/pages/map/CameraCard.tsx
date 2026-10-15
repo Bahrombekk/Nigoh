@@ -5,9 +5,9 @@
    Nom + StatusBadge, meta, "Batafsil", devorga qo'shish, to'liq ekran, yopish.
    Tashqariga click / Esc / × yopadi (MapPage). Komponent doim joyida (pleyer ref'lari uchun) — hidden. */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
-import { cx } from "@/components/ui";
+import { cx } from "@/lib/cx";
 import { usePlayer } from "@/player/usePlayer";
 import { useMap } from "./model";
 import { STATUS_LABEL, camStatus, camSub, fmtAgo, fmtCodec, fmtRes, hasGeo, hms } from "./util";

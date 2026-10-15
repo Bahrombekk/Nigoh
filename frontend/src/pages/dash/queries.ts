@@ -6,7 +6,7 @@
    urinish" ko'rsatadi (common.useRetry → ["stats"] bekor qilinadi). */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, ApiError } from "@/lib/api";
-import { p2 } from "./common";
+import { p2 } from "@/lib/format";
 
 export type Days = 1 | 7 | 30;
 

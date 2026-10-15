@@ -7,10 +7,12 @@
      ModeBars    — o'lchash (02.17), lasso, joy tanlash izohlari */
 import { Fragment, useEffect, useRef, useState } from "react";
 import type L from "leaflet";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
-import { Button, cx } from "@/components/ui";
-import { Popover, useToast } from "@/components/overlays";
+import { Button } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { Popover } from "@/components/overlays";
+import { useToast } from "@/components/overlayContext";
 import { Sysbar } from "@/layout/Sysbar";
 import { fmtDist, iconHtml, type LayerState } from "./MapController";
 import { useMap } from "./model";

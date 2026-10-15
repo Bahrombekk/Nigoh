@@ -16,11 +16,12 @@ import { flushSync } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import type L from "leaflet";
-import { useI18n, useT } from "@/i18n/I18nProvider";
-import { useAuth } from "@/auth/AuthProvider";
+import { useI18n, useT } from "@/i18n/i18nContext";
+import { useAuth } from "@/auth/authContext";
 import { Icon } from "@/components/Icon";
-import { cx } from "@/components/ui";
-import { useShortcut, useToast } from "@/components/overlays";
+import { cx } from "@/lib/cx";
+import { useShortcut } from "@/components/overlayHooks";
+import { useToast } from "@/components/overlayContext";
 import { useCameras, usePollSeconds } from "@/data/queries";
 import { api } from "@/lib/api";
 import { prefs, usePref } from "@/lib/prefs";
@@ -37,8 +38,10 @@ import { Panel } from "./Panel";
 import { Legend, MapControls, ModeBars, ScaleBar, Toolbar } from "./MapChrome";
 import { CameraCard } from "./CameraCard";
 import { CameraDrawer } from "./CameraDrawer";
-import { GroupDialog, useGroupCache, type GroupModal } from "./GroupDialog";
-import { Onboarding, STEPS, onboardingDone, saveOnboardingDone } from "./Onboarding";
+import { GroupDialog, type GroupModal } from "./GroupDialog";
+import { useGroupCache } from "./groupCache";
+import { Onboarding } from "./Onboarding";
+import { STEPS, onboardingDone, saveOnboardingDone } from "./onboardingSteps";
 
 const NO_GROUPS: Group[] = [];
 
@@ -363,7 +366,7 @@ export default function MapPage() {
       lastFitQ.current = "";
       ctl.setSearch(null, false, padTL());
     }
-  }, [ctl, results]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ctl, results]);
 
   // Qatlamlar.
   useEffect(() => { ctl?.rail.setVisible(layers.rail !== false); }, [ctl, layers.rail]);

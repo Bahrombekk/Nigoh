@@ -6,10 +6,11 @@
    Navigatsiya: xarita — "/?group=ID"; devor — prefs "wall".group = "g:ID" (v3 kaliti) + "/wall". */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
 import { Button, EmptyState, IconButton } from "@/components/ui";
-import { Menu, Popover, useConfirm, useToast } from "@/components/overlays";
+import { Menu, Popover } from "@/components/overlays";
+import { useConfirm, useToast } from "@/components/overlayContext";
 import { usePref } from "@/lib/prefs";
 import { useCameras } from "@/data/queries";
 import { groupsApi, useGroupCache, useGroups, type Group } from "./queries";

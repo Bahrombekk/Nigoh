@@ -4,8 +4,8 @@
    set(lat, lng, recenter) — maydonlardan marker siljitish. */
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import L from "leaflet";
-import { useT } from "@/i18n/I18nProvider";
-import { cx } from "@/components/ui";
+import { useT } from "@/i18n/i18nContext";
+import { cx } from "@/lib/cx";
 
 const DEFAULT_VIEW: { center: [number, number]; zoom: number } = { center: [41.3, 64.6], zoom: 5 };
 const MARKER_HTML = '<span class="ad-mk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3Z"/><circle cx="12" cy="13" r="3.5"/></svg></span>';

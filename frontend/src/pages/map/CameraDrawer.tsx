@@ -8,10 +8,11 @@
    Komponent doim joyida (pleyer ref'lari uchun) — yopiq bo'lsa hidden. */
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
-import { InfoTip, cx } from "@/components/ui";
-import { useToast } from "@/components/overlays";
+import { InfoTip } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { useToast } from "@/components/overlayContext";
 import { api } from "@/lib/api";
 import { usePlayer } from "@/player/usePlayer";
 import type { Camera } from "@/lib/types";

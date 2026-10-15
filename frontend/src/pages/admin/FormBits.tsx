@@ -1,12 +1,12 @@
 /* pages/admin/FormBits.tsx — Boshqaruv shakllari uchun kichik bo'laklar (v3 camera-form.js).
    Fld        — .field (label yoki div) + .field__hint; xato bo'lsa .is-error, ogohlantirish ikonkasi.
    AlertBox   — showAlert(): tone success | error | warning | info | wait (spinner).
-   useErrs    — blur'da tekshirish: set(k, msg) → bool, live(k, msg) (faqat xato ko'rsatilayotgan bo'lsa),
-                reg(k) — fokus uchun ref, birinchi xatoga fokus. */
-import { useCallback, useRef, useState, type ReactNode } from "react";
+   useErrs    — formErrs.ts da (blur'da tekshirish, birinchi xatoga fokus). */
+import type { ReactNode } from "react";
 import { Icon } from "@/components/Icon";
-import { InfoTip, cx } from "@/components/ui";
-import { useT } from "@/i18n/I18nProvider";
+import { InfoTip } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { useT } from "@/i18n/i18nContext";
 
 export function Fld({ label, info, hint, hintClass, error, div, htmlFor, labelId, className, children }: {
   label: string; info?: string; hint?: ReactNode; hintClass?: string; error?: string; div?: boolean;
@@ -46,30 +46,4 @@ export function AlertBox({ st }: { st: AlertState | null }) {
       </div>
     </div>
   );
-}
-
-export function useErrs() {
-  const [errs, setErrs] = useState<Record<string, string>>({});
-  const refs = useRef<Record<string, HTMLElement | null>>({});
-  const errsRef = useRef(errs);
-  errsRef.current = errs;
-
-  const set = useCallback((k: string, msg: string) => {
-    setErrs((e) => ((e[k] || "") === msg ? e : { ...e, [k]: msg }));
-    return !msg;
-  }, []);
-  /** "input" hodisasi: maydon xato holatida bo'lsa qayta tekshiriladi. */
-  const live = useCallback((k: string, msg: string) => { if (errsRef.current[k]) set(k, msg); }, [set]);
-  const reset = useCallback(() => setErrs({}), []);
-  const reg = useCallback((k: string) => (el: HTMLElement | null) => { refs.current[k] = el; }, []);
-  const focus = useCallback((k: string) => { refs.current[k]?.focus(); }, []);
-  /** Bir nechta tekshiruv: birinchi xato maydonga fokus. [k, msg][] → hammasi to'g'rimi */
-  const checkAll = useCallback((list: [string, string][]) => {
-    let ok = true;
-    for (const [k, msg] of list) {
-      if (!set(k, msg)) { if (ok) refs.current[k]?.focus(); ok = false; }
-    }
-    return ok;
-  }, [set]);
-  return { errs, set, live, reset, reg, focus, checkAll };
 }

@@ -3,7 +3,7 @@
    Har bo'lim o'z papkasida (pages/<bo'lim>/), lazy yuklanadi. */
 import { lazy, Suspense, type ReactNode } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router";
-import { useAuth } from "@/auth/AuthProvider";
+import { useAuth } from "@/auth/authContext";
 import { LoginScreen } from "@/auth/LoginScreen";
 import { AppShell } from "@/layout/AppShell";
 import { TooltipLayer } from "@/components/overlays";

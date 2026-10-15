@@ -3,32 +3,25 @@
    Backend: POST /api/groups, PATCH/DELETE /api/groups/{id}, POST /api/groups/{id}/cameras {camera_ids, mode}.
    Guruh rangi — foydalanuvchi tanlagan ma'lumot (inline style), token emas. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
-import { Button, cx } from "@/components/ui";
-import { Dialog, useConfirm, useToast } from "@/components/overlays";
+import { Button } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { Dialog } from "@/components/overlays";
+import { useConfirm, useToast } from "@/components/overlayContext";
 import { api } from "@/lib/api";
 import type { Camera } from "@/lib/types";
-import { GROUPS_KEY, useMap, type Group } from "./model";
+import { GROUP_COLORS } from "@/lib/groupColors";
+import { useMap, type Group } from "./model";
+import { useGroupCache } from "./groupCache";
 import { IconSpan } from "./Panel";
 import { camStatus, norm } from "./util";
 
-export const GROUP_COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#a855f7", "#14b8a6", "#ec4899", "#64748b"];
 const colorOf = (g: Group) => g.color || "var(--color-bg-brand)";
 
 export type GroupModal =
   | { kind: "picker"; ids: number[]; title: string }
   | { kind: "edit"; group: Group };
-
-export function useGroupCache() {
-  const qc = useQueryClient();
-  return {
-    replace: (g: Group) => qc.setQueryData<Group[]>(GROUPS_KEY, (list = []) =>
-      list.some((x) => x.id === g.id) ? list.map((x) => (x.id === g.id ? g : x)) : [g, ...list]),
-    remove: (id: number) => qc.setQueryData<Group[]>(GROUPS_KEY, (list = []) => list.filter((x) => x.id !== id)),
-  };
-}
 
 export function GroupDialog({ modal, onClose, onSaved }: { modal: GroupModal | null; onClose: () => void; onSaved: (manyIds: boolean) => void }) {
   const t = useT();

@@ -3,13 +3,14 @@
    429 — "N daqiqadan keyin"; seans tugasa — "Qayta kiring" + Info alert. */
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "./AuthProvider";
-import { useI18n, LANG_LIST, type LangId } from "@/i18n/I18nProvider";
+import { useAuth } from "./authContext";
+import { useI18n, LANG_LIST, type LangId } from "@/i18n/i18nContext";
 import { THEMES, useTheme } from "@/lib/theme";
 import { api, ApiError } from "@/lib/api";
 import { Icon } from "@/components/Icon";
 import { Alert, Button, Check, InfoTip } from "@/components/ui";
-import { Popover, Menu, useToast } from "@/components/overlays";
+import { Popover, Menu } from "@/components/overlays";
+import { useToast } from "@/components/overlayContext";
 
 interface PublicInfo { site_name?: string; version?: string; public_view?: boolean; guest_view?: boolean }
 

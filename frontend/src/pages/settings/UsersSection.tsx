@@ -8,11 +8,13 @@
    Qoidalar: o'zini bloklash/o'chirish menyuda o'chiq; parollar ro'yxatda hech qachon ko'rinmaydi. */
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useT } from "@/i18n/I18nProvider";
-import { useAuth } from "@/auth/AuthProvider";
+import { useT } from "@/i18n/i18nContext";
+import { useAuth } from "@/auth/authContext";
 import { Icon } from "@/components/Icon";
-import { Alert, Button, EmptyState, IconButton, InfoTip, cx } from "@/components/ui";
-import { Dialog, Menu, Popover, useConfirm, useToast } from "@/components/overlays";
+import { Alert, Button, EmptyState, IconButton, InfoTip } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { Dialog, Menu, Popover } from "@/components/overlays";
+import { useConfirm, useToast } from "@/components/overlayContext";
 import { ApiError } from "@/lib/api";
 import { ROLE_LABEL, type Role } from "@/lib/types";
 import { sk, useRegions, useUsers, usersApi, type AdminUser, type UserBody } from "./queries";

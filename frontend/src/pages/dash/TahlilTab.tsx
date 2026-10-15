@@ -7,19 +7,18 @@
      * Texnik kesim (to'plangan chiziq + legenda) va Maʼlumot sifati — admin: Boshqaruv mos filtr
        bilan (README.md "Boshqaruv filtri"), boshqalar: qator ostida kameralar ro'yxati. */
 import { Fragment, useMemo, useState, type ReactNode } from "react";
-import { useT } from "@/i18n/I18nProvider";
-import { useAuth } from "@/auth/AuthProvider";
+import { useT } from "@/i18n/i18nContext";
+import { useAuth } from "@/auth/authContext";
 import { useCameras } from "@/data/queries";
-import { useToast } from "@/components/overlays";
+import { useToast } from "@/components/overlayContext";
 import { Icon } from "@/components/Icon";
 import { InfoTip } from "@/components/ui";
 import { openTimes } from "@/player/openTimes.js";
 import type { ApiState, Camera } from "@/lib/types";
 import { Donut, type DonutPart } from "./charts";
-import {
-  AlertBox, CardHead, Empty, ErrBox, Loading, Section, SkelBars, Tile, camState, dayLabel, fmtDur, fmtInt, fmtPct, hhmm,
-  is404, LABEL, STATUS, useDashNav,
-} from "./common";
+import { AlertBox, CardHead, Empty, ErrBox, Loading, Section, SkelBars, Tile } from "./common";
+import { camState, dayLabel, fmtDur, fmtInt, fmtPct, hhmm, LABEL, STATUS } from "./format";
+import { is404, useDashNav } from "./hooks";
 import {
   useAvailability, useCoverage, useLongest, useOpenMetrics, useOutageSummary, useQuality, useRanking, useRegions,
   useVendors, view, type Days, type OutageItem, type RankItem, type Regions, type Vendor, type VendorRow,
@@ -136,7 +135,7 @@ function RegionTableCard({ days }: { days: Days }) {
   const go = useDashNav();
   const toast = useToast();
   const q = view(useRegions(days));
-  const list = q.d?.regions || [];
+  const list = useMemo(() => q.d?.regions || [], [q.d]);
   const rows = useMemo(() => [...list].sort((a, b) => (a.uptime_pct ?? 101) - (b.uptime_pct ?? 101)), [list]);
   let body: ReactNode;
   if (q.err) body = <ErrBox err={q.err} />;

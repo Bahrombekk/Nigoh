@@ -9,7 +9,7 @@
    `video` berilmasa shu kameraning ekrandagi eng katta o'ynayotgan videosi
    qidiriladi (devor katagi, Fokus, drawer). */
 import { useCallback } from "react";
-import { useToast } from "@/components/overlays";
+import { useToast } from "@/components/overlayContext";
 import { p2 } from "@/lib/format";
 import type { Camera } from "@/lib/types";
 

@@ -6,10 +6,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { IconButton, InfoTip } from "@/components/ui";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { camStatus, STATUS_LABEL, type Camera } from "@/lib/types";
 import { openTimes } from "@/player/openTimes.js";
-import { WallTile, fmtCodec, fmtSec } from "./WallTile";
+import { WallTile } from "./WallTile";
+import { fmtCodec, fmtSec } from "./wallUtils";
 import { useFocusKpis } from "./queries";
 
 const NEXT_COUNT = 3;

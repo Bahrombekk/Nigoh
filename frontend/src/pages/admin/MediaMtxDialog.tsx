@@ -4,8 +4,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { Button, IconButton } from "@/components/ui";
-import { Dialog, useToast } from "@/components/overlays";
-import { useT } from "@/i18n/I18nProvider";
+import { Dialog } from "@/components/overlays";
+import { useToast } from "@/components/overlayContext";
+import { useT } from "@/i18n/i18nContext";
 
 export function MediaMtxDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();

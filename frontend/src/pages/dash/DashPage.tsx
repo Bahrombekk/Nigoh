@@ -6,11 +6,11 @@
 import "@/styles/dash.css";
 import { useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { usePref } from "@/lib/prefs";
 import { PageSheet } from "@/layout/AppShell";
 import { Sysbar } from "@/layout/Sysbar";
-import { chTipHide } from "./charts";
+import { chTipHide } from "./chartUtils";
 import { HozirTab } from "./HozirTab";
 import { TrendTab } from "./TrendTab";
 import { TahlilTab } from "./TahlilTab";

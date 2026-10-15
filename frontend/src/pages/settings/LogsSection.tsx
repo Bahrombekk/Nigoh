@@ -8,21 +8,18 @@
    Filtrlar holati SettingsPage'da (bo'lim almashganda saqlanadi; Tizim holati "Koʻrish" qo'yadi). */
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useT } from "@/i18n/I18nProvider";
-import { EmptyState, cx } from "@/components/ui";
-import { useToast } from "@/components/overlays";
+import { useT } from "@/i18n/i18nContext";
+import { EmptyState } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { useToast } from "@/components/overlayContext";
 import { api } from "@/lib/api";
 import { sk, useAudit, type AuditItem, type LogsRes, type LogsSummary } from "./queries";
 import { clockText, initials, useDebounced, whenText } from "./util";
 import { SxSearch } from "./SxSearch";
+import { CATEGORIES, type LogFilter } from "./logFilter";
 
-export const CATEGORIES: [string, string][] = [["camera", "Kamera"], ["app", "Ilova"], ["mediamtx", "MediaMTX"], ["security", "Xavfsizlik"],
-  ["database", "Baza"], ["stats", "Statistika"], ["access", "HTTP soʻrovlar"], ["errors", "Barcha xatolar"]];
 const LV_TAG: Record<string, string> = { ERROR: "error", CRITICAL: "error", WARNING: "warn", WARN: "warn" };
 const fmtN = (n: number) => Number(n || 0).toLocaleString("ru-RU").replace(/,/g, " ");
-
-export interface LogFilter { cat: string; hours: string; level: string; q: string }
-export const LOG_FILTER0: LogFilter = { cat: "camera", hours: "24", level: "", q: "" };
 
 export function LogsSection({ f, setF }: { f: LogFilter; setF: (f: LogFilter) => void }) {
   const t = useT();

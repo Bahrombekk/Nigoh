@@ -8,12 +8,13 @@
        0 kamera-soat yoki 0% qamrov) — "—" va o'zgarish belgisi yo'q.
    SLA yoki compare bo'lmasa (eski server) — tegishli qism yashiriladi. */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { cssVar } from "@/lib/theme";
-import { Columns, HEAT_ALPHA, Heatmap, HourBars, LineChart, type ColItem, type HeatRow } from "./charts";
-import {
-  CardHead, Empty, ErrBox, Loading, Section, SkelBars, SkelBlock, dayLabel, fmtDur, fmtInt, fmtPct, hhmm, p2,
-} from "./common";
+import { Columns, Heatmap, HourBars, LineChart, type ColItem, type HeatRow } from "./charts";
+import { HEAT_ALPHA } from "./chartUtils";
+import { CardHead, Empty, ErrBox, Loading, Section, SkelBars, SkelBlock } from "./common";
+import { dayLabel, fmtDur, fmtInt, fmtPct, hhmm } from "./format";
+import { p2 } from "@/lib/format";
 import {
   useAvailability, useDaily, useHeatmap, useHourly, useHourlyDay, useSeries, useSla, useSummary, view, type Days,
 } from "./queries";

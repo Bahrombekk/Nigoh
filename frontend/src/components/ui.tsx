@@ -4,10 +4,9 @@
    Matnlar chaqiruvchi tomonidan o'zbekcha beriladi — bu yerda useT() bilan tarjima. */
 import { forwardRef, useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Icon, type IconSize } from "./Icon";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { STATUS_LABEL, type UiStatus } from "@/lib/types";
-
-const cx = (...a: (string | false | null | undefined)[]) => a.filter(Boolean).join(" ");
+import { cx } from "@/lib/cx";
 
 /* ---------- Button ---------- */
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -207,4 +206,3 @@ export function Field({ label, hint, error, info, children }: {
 
 export function Kbd({ children }: { children: ReactNode }) { return <span className="kbd">{children}</span>; }
 export function IconSpan({ name, size = "md" as IconSize }: { name: string; size?: IconSize }) { return <Icon name={name} size={size} />; }
-export { cx };

@@ -9,10 +9,11 @@
      * footer "Yangilandi HH:MM:SS · har N s"; Skeleton (>300 ms); Alert (2 ketma-ket xato).
    5000+ kamerada: yopiq hudud qatorlari faqat ochilganda yaratiladi; natijalar 60 tagacha. */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
-import { Button, EmptyState, InfoTip, cx } from "@/components/ui";
-import { useDelayed } from "@/components/overlays";
+import { Button, EmptyState, InfoTip } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { useDelayed } from "@/components/overlayHooks";
 import { prewarm } from "@/player/player.js";
 import type { Camera } from "@/lib/types";
 import {

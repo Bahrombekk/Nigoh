@@ -6,16 +6,18 @@
    DELETE /api/groups/{id}. */
 import "@/styles/map.css";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useT } from "@/i18n/I18nProvider";
+import { useT } from "@/i18n/i18nContext";
 import { Icon } from "@/components/Icon";
-import { Button, cx } from "@/components/ui";
-import { Dialog, useConfirm, useToast } from "@/components/overlays";
+import { Button } from "@/components/ui";
+import { cx } from "@/lib/cx";
+import { Dialog } from "@/components/overlays";
+import { useConfirm, useToast } from "@/components/overlayContext";
 import { useCameras } from "@/data/queries";
 import { camStatus } from "@/lib/types";
+import { GROUP_COLORS } from "@/lib/groupColors";
 import { groupsApi, useGroupCache, type Group } from "./queries";
 
 export type GroupDialogMode = { kind: "new" } | { kind: "edit"; group: Group };
-export const GROUP_COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#a855f7", "#14b8a6", "#ec4899", "#64748b"];
 
 const CYR: Record<string, string> = { а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "j", з: "z", и: "i", й: "y", к: "k",
   л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "x", ц: "ts", ч: "ch",
