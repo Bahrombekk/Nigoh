@@ -31,10 +31,11 @@ Ishlatadi: walls.registry (save_wall), walls.mosaic (grid_for),
     users.access, app.config (HLS_PORT, WEBRTC_PORT, MEDIA_BASE).
 Kim ishlatadi: app/factory.py (require_viewer bilan), tests/test_walls.py.
 """
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.config import HLS_PORT, MEDIA_BASE, WEBRTC_PORT
+from app.deps import require_user
 from camera.streaming import media_host
 from core import security
 from database import cameras, get_db
@@ -51,7 +52,9 @@ class WallIn(BaseModel):
     rows: int | None = Field(default=None, ge=1, le=8)
 
 
-@router.post("")
+# Mehmonga yopiq: har yangi tanlov serverda alohida FFmpeg mozaika (qayta
+# kodlash) ishga tushiradi — anonim so'rovlar bilan CPU/GPU ni to'ldirish mumkin edi.
+@router.post("", dependencies=[Depends(require_user)])
 def create_wall(body: WallIn, request: Request):
     """Kamera tanlovidan mozaika oqimi yaratadi (yoki mavjudini qaytaradi).
 

@@ -54,6 +54,7 @@ MAX_MS = 120_000
 # Kamera boshiga shuncha oxirgi ochilish: median bitta tasodifiy sekin
 # ochilishga aldanmaydi, xotira esa 5000 kamerada ham bir necha MB.
 PER_CAMERA = 10
+MAX_CAMERAS = 50_000                 # kamera_id bo'yicha navbatlar soni chegarasi
 
 _samples: dict[str, deque] = {}
 _cameras: dict[int, deque] = {}
@@ -78,6 +79,8 @@ def record(transport: str, sample: dict) -> None:
         if isinstance(camera_id, int) and row["total_ms"] > 0:
             cam = _cameras.get(camera_id)
             if cam is None:
+                if len(_cameras) >= MAX_CAMERAS:        # xotira cheksiz o'smasin
+                    _cameras.pop(next(iter(_cameras)))  # eng eski qo'shilgani
                 cam = _cameras[camera_id] = deque(maxlen=PER_CAMERA)
             cam.append((row["total_ms"], transport, time.time()))
 

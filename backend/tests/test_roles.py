@@ -156,6 +156,14 @@ def test_mehmon_korishi_yoqilganda(client, hududlar, mehmon_ochiq):
     assert mehmon.get("/api/v1/stats/dashboard").status_code == 401
     assert mehmon.get("/api/v1/admin/cameras").status_code == 401
     assert mehmon.get("/api/v1/groups").status_code == 401
+    # Yozuvchi endpointlar mehmonga yopiq: soxta surat, sub'ni buzuq belgilash,
+    # soxta o'lchov, FFmpeg mozaika ishga tushirish.
+    cam = hududlar["buxoro"]
+    jpeg = bytes([0xFF, 0xD8, 0xFF]) + b"0" * 100
+    assert mehmon.post(f"/api/v1/cameras/{cam}/snapshot", content=jpeg).status_code == 401
+    assert mehmon.post(f"/api/v1/cameras/{cam}/sub-bad").status_code == 401
+    assert mehmon.post("/api/v1/metrics/open", json={"camera_id": cam, "total_ms": 5}).status_code == 401
+    assert mehmon.post("/api/v1/walls", json={"camera_ids": [cam]}).status_code == 401
 
 
 def test_me_public_view_bayrogi(client):
@@ -195,3 +203,34 @@ def test_init_db_takror_chaqirilsa_hech_narsa_buzilmaydi():
         assert users.set_regions(db, uid, ["Jizzax", "Jizzax"]) == []
         assert users.region_names(db, uid) == ["Jizzax"]
         assert users.set_regions(db, uid, []) == []
+
+
+def test_operator_dashboard_faqat_oz_hududi(client, hududlar):
+    """Eski /stats/dashboard va /stats/timeline ham operator hududini hisobga oladi."""
+    from database import get_db
+    _foydalanuvchi(client, "rol-op-dash", "operator", ["Andijon"])
+    with get_db() as db:
+        ids = [db.execute("INSERT INTO status_changes (ts, camera_id, kind) VALUES "
+                          "(now(), %s, 'offline') RETURNING id", (cam,)).fetchone()[0]
+               for cam in (hududlar["buxoro"], hududlar["andijon"])]
+    try:
+        op = _kir("rol-op-dash")
+        d = op.get("/api/v1/stats/dashboard").json()
+        korgan = {e["id"] for e in d["events"]}
+        assert hududlar["andijon"] in korgan and hududlar["buxoro"] not in korgan
+        assert {e["region"] for e in d["events"]} == {"Andijon"}
+        assert {r["region"] for r in d["regions"]} <= {"Andijon"}
+        assert op.get("/api/v1/stats/timeline").status_code == 200
+        # Admin (kalit) hammasini ko'radi.
+        hammasi = client.get("/api/v1/stats/dashboard", headers=KEY).json()
+        assert {hududlar["andijon"], hududlar["buxoro"]} <= {e["id"] for e in hammasi["events"]}
+    finally:
+        with get_db() as db:      # boshqa modullarning statistikasi buzilmasin
+            db.execute("DELETE FROM status_changes WHERE id = ANY(%s)", (ids,))
+
+
+def test_katta_surat_oqib_oqilmaydi(client, hududlar):
+    """Content-Length chegaradan katta bo'lsa tana o'qilmasdan 413."""
+    r = client.post(f"/api/v1/cameras/{hududlar['andijon']}/snapshot", headers={
+        **KEY, "Content-Length": "999999999"}, content=bytes([0xFF, 0xD8]))
+    assert r.status_code in (413, 400)

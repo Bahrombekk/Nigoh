@@ -47,8 +47,9 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
+from app.deps import require_user
 from camera.media import fast_start
 from camera.media import sync as mediamtx_sync
 from camera.media.mapping import camera_for_mediamtx
@@ -69,6 +70,8 @@ from users.access import (
 
 # Prefiks nisbiy — create_app uni /api/v1 (asosiy) va /api (eski) ostida ulaydi.
 router = APIRouter(prefix="/cameras", tags=["cameras"])
+
+SNAPSHOT_MAX_BYTES = 3_000_000
 
 
 @router.get("")
@@ -316,7 +319,9 @@ def camera_snapshot(ref: str, request: Request, stale: int = 0, cached: int = 0)
     return Response(content=data, media_type="image/jpeg", headers=headers)
 
 
-@router.post("/{ref}/snapshot", status_code=204)
+# Yozuvchi endpointlar mehmonga (PUBLIC_VIEW) yopiq: aks holda anonim odam istalgan
+# kameraga soxta "yangi" kadr qo'ya olardi yoki sub oqimlarni buzuq deb belgilardi.
+@router.post("/{ref}/snapshot", status_code=204, dependencies=[Depends(require_user)])
 async def push_snapshot(ref: str, request: Request):
     """Brauzer jonli ko'rinishdan olgan kadrni surat sifatida saqlaydi.
 
@@ -330,16 +335,28 @@ async def push_snapshot(ref: str, request: Request):
     if row is None or not row["enabled"]:
         raise HTTPException(404, "Kamera topilmadi")
     check_area(row, allowed_areas(request))
-    data = await request.body()
-    # Katta yuklamadan himoya + JPEG tekshiruvi store_frame ichida.
-    if len(data) > 3_000_000:
-        raise HTTPException(413, "Surat juda katta (≤3 MB)")
+    # Katta yuklamadan himoya: hajm o'qishdan OLDIN va o'qish davomida
+    # tekshiriladi (ilgari butun tana xotiraga olinib, keyin o'lchanardi).
+    # JPEG tekshiruvi store_frame ichida.
+    too_big = HTTPException(413, "Surat juda katta (≤3 MB)")
+    try:
+        if int(request.headers.get("content-length") or 0) > SNAPSHOT_MAX_BYTES:
+            raise too_big
+    except ValueError:
+        raise HTTPException(400, "Content-Length notoʻgʻri")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > SNAPSHOT_MAX_BYTES:
+            raise too_big
+        chunks.append(chunk)
+    data = b"".join(chunks)
     if not snapshots.store_frame(row, data):
         raise HTTPException(400, "JPEG kutilgan")
     return Response(status_code=204)
 
 
-@router.post("/{ref}/sub-bad", status_code=204)
+@router.post("/{ref}/sub-bad", status_code=204, dependencies=[Depends(require_user)])
 def mark_sub_bad(ref: str, request: Request):
     """Kameraning sub oqimi brauzerда ochilmadi — buni saqlaymiz.
 

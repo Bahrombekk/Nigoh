@@ -27,9 +27,10 @@ Kim ishlatadi: app/factory.py (router); frontend pleyeri (POST),
 import statistics
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from app.deps import require_user
 from camera.monitoring import open_times as metrics
 from database import cameras, get_db
 from users.access import allowed_areas, check_area
@@ -54,7 +55,8 @@ class OpenIn(BaseModel):
     total_ms: int = Field(default=0, ge=0, le=600_000)
 
 
-@router.post("/open", status_code=204)
+# Mehmonga yopiq: soxta o'lchovlar /health dagi open_ms ni buzardi.
+@router.post("/open", status_code=204, dependencies=[Depends(require_user)])
 def report_open(body: OpenIn):
     """Pleyer ochilishni o'lchab yuboradi. Javob yo'q — 204.
 
