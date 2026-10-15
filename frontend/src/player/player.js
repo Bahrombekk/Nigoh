@@ -165,6 +165,9 @@ export function noteWebRtc(ok) { webrtcHealth.note(ok); }
        uning oqimi ham shunday olinadi.
    Bitta MediaStream bir nechta <video> da birga ko'rsatilishi mumkin. */
 const HANDOFF_MS = 8000;
+// Uzatilgan past sifat ko'rinib turganda asosiy sifat necha marta qayta so'raladi.
+const MAIN_RETRY_MAX = 2;
+const MAIN_RETRY_MS = 3000;
 const MAX_PARKED = 4;                         // devor sahifalanganda ulanishlar ko'payib ketmasin
 const allPlayers = new Set();
 const parked = new Map();                     // camId -> { pc, stream, quality, timer }
@@ -359,6 +362,7 @@ export class Player {
     this.active = true;
     this.liveCam = cam.id;
     this.last = [cam, useHevc, quality];
+    this.mainRetries = 0;
     const my = ++this.token;
     const stale = () => this.token !== my;
     const t0 = performance.now();
@@ -421,8 +425,27 @@ export class Player {
       }).catch((err) => {
         // Boshqa kamera bosilgan — bu WebRTC'ning aybi emas.
         if (staleFn()) return;
-        // Uzatilgan oqim ko'rinib turibdi — asosiy ochilmasa ham o'shani qoldiramiz.
-        if (this.preview) { this.dropOverlay(); this.setMsg(""); return; }
+        // Uzatilgan (odatda past sifatli sub) oqim ko'rinib turibdi. Ilgari shu yerda
+        // to'xtalardi va Fokusda past sifat qolib ketardi (foydalanuvchi shikoyati).
+        // Endi u ko'rinib turgan holda asosiy sifat yana so'raladi; ikki urinishdan
+        // keyin HLS (zaxira yo'l) orqali asosiy sifatga o'tiladi.
+        if (this.preview) {
+          this.dropOverlay();
+          this.setMsg("");
+          this.mainRetries = (this.mainRetries || 0) + 1;
+          if (this.mainRetries <= MAIN_RETRY_MAX) {
+            setTimeout(() => { if (!staleFn() && this.preview) this.attach(urls, staleFn, onFail); },
+              MAIN_RETRY_MS * this.mainRetries);
+            return;
+          }
+          if (!urls.stream_url) return;
+          const pv = this.preview;
+          this.preview = null;
+          if (pv.pc) pv.pc.close();
+          this.setMsg("Zaxira yoʻl orqali ulanmoqda…", "wait");
+          this.playHls(urls.stream_url, staleFn, failSafe);
+          return;
+        }
         // Faqat tarmoq darajasidagi jimlik sanaladi (ICE ulanmagan).
         if (!(err && err.iceOk)) noteWebRtc(false);
         if (err && err.noSource) {
