@@ -237,7 +237,32 @@ function findLive(camId, except) {
   return null;
 }
 
-const FAIL_MSG = "Oqim ochilmadi — MediaMTX ishlayotganini va kamera ulanganini tekshiring";
+/* Element haqiqatan chizgan kadrlar soni (requestVideoFrameCallback).
+   Zaxira: API yo'q, element DOM'dan tashqarida yoki tab yashirin bo'lsa
+   callback chaqirilmaydi — ma'lumot kelganidan SWAP_FALLBACK_MS o'tgach
+   tayyor deb sanaladi (aks holda almashtirish 20 s kutib qolardi). */
+const SWAP_FRAMES = 3;
+const SWAP_FALLBACK_MS = 1500;
+function frameCounter(el) {
+  let n = 0, live = true, dataAt = 0;
+  if (typeof el.requestVideoFrameCallback === "function" && el.isConnected) {
+    const tick = () => { if (!live) return; n++; el.requestVideoFrameCallback(tick); };
+    el.requestVideoFrameCallback(tick);
+  }
+  return {
+    count: () => {
+      if (n >= SWAP_FRAMES) return n;
+      if (el.readyState >= 2 && el.videoWidth > 0) {
+        if (!dataAt) dataAt = performance.now();
+        else if (performance.now() - dataAt > SWAP_FALLBACK_MS) return SWAP_FRAMES;
+      }
+      return n;
+    },
+    stop: () => { live = false; },
+  };
+}
+
+const FAIL_MSG ="Oqim ochilmadi — MediaMTX ishlayotganini va kamera ulanganini tekshiring";
 
 export class Player {
   constructor(video, msgEl) {
@@ -525,29 +550,43 @@ export class Player {
       // sanardi va WebRTC butun seansga o'chib qolardi.
       const t0 = performance.now();
       let waitNoted = false;
+      // Sifat almashishi (ustki qatlam) faqat HAQIQATAN chizilgan kadrlarga
+      // qarab qilinadi. Ilgari readyState/videoWidth ga qaralardi: qatlam
+      // birinchi kadrdayoq ko'rsatilib keyingisini kutib qotib turardi, ostidagi
+      // video esa metadata kelishi bilan "tayyor" sanalib qatlam olinardi —
+      // u hali yangi kadr chizmagan bo'lardi (foydalanuvchi: "sifat
+      // almashayotganda qotish").
+      const overlayFrames = target === video ? null : frameCounter(target);
       const poll = setInterval(() => {
-        if (staleFn()) { clearInterval(poll); reject(new Error("bekor")); return; }
+        if (staleFn()) { clearInterval(poll); overlayFrames?.stop(); reject(new Error("bekor")); return; }
         const ready = target === video
           ? target.currentTime > 0
-          : target.readyState >= 2 && target.videoWidth > 0;
+          : overlayFrames.count() >= SWAP_FRAMES;
         if (target.srcObject === pc.__stream && ready) {
           clearInterval(poll);
           if (target !== video) {
+            overlayFrames.stop();
             this.fitOverlay(target);           // to'liq ekranga o'tilgan bo'lishi mumkin
             target.style.opacity = "1";
-            video.srcObject = pc.__stream;
-            video.play().catch(() => {});
             const pv = this.preview;
             this.preview = null;
-            if (pv && pv.pc && pv.pc !== pc) parkStream(this.liveCam, pv.quality, pv.pc, pv.stream);
-            // Ostidagi video yangi oqimni chiza boshlagach (yoki 3 s) qatlam olinadi.
-            const s0 = performance.now();
-            const drop = setInterval(() => {
-              if ((video.readyState >= 2 && video.videoWidth === target.videoWidth) || performance.now() - s0 > 3000 || staleFn()) {
-                clearInterval(drop);
-                this.dropOverlay(target);
-              }
-            }, 50);
+            // Qatlam ko'ringan kadr ekranga chiqsin, keyin ostidagi video almashadi.
+            requestAnimationFrame(() => {
+              if (staleFn()) { this.dropOverlay(target); return; }
+              video.srcObject = pc.__stream;
+              video.play().catch(() => {});
+              if (pv && pv.pc && pv.pc !== pc) parkStream(this.liveCam, pv.quality, pv.pc, pv.stream);
+              // Ostidagi video yangi oqimdan kadrlar chiza boshlagach (yoki 3 s) qatlam olinadi.
+              const under = frameCounter(video);
+              const s0 = performance.now();
+              const drop = setInterval(() => {
+                if (under.count() >= SWAP_FRAMES || performance.now() - s0 > 3000 || staleFn()) {
+                  clearInterval(drop);
+                  under.stop();
+                  this.dropOverlay(target);
+                }
+              }, 30);
+            });
           }
           this.webrtcLive = true;
           this.liveQuality = (this.last && this.last[2]) || "";
