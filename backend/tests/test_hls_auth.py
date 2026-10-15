@@ -15,7 +15,9 @@ from core import security
 
 @pytest.fixture(scope="module")
 def client():
-    with TestClient(create_app()) as c:
+    # nginx backend bilan bir mashinada — so'rov 127.0.0.1 dan keladi
+    # (X-Viewer-IP faqat ishonchli proksidan qabul qilinadi).
+    with TestClient(create_app(), client=("127.0.0.1", 50000)) as c:
         yield c
 
 
@@ -63,6 +65,40 @@ def test_chiptasiz_segmentlar_sessiya_orqali_otadi(client):
     assert _sora(client, "/media/hls/kam_c/video1_seg7.mp4", ip).status_code == 204
     # boshqa IP sessiyaga kirmaydi
     assert _sora(client, "/media/hls/kam_c/video1_seg7.mp4", "203.0.113.99").status_code == 401
+
+
+def test_yol_aylanmasi_boshqa_kamerani_ochmaydi(client):
+    """nginx MediaMTX'ga normallashtirilgan yo'lni beradi: "kam_a/../kam_b"
+    aslida kam_b. kam_a chiptasi bilan bunday so'rov rad etilishi shart."""
+    tok = security.stream_token("kam_a")
+    for uri in (f"/media/hls/kam_a/../kam_b/index.m3u8?token={tok}",
+                f"/media/hls/kam_a/%2e%2e/kam_b/index.m3u8?token={tok}",
+                f"/media/hls/kam_a/./index.m3u8?token={tok}"):
+        assert _sora(client, uri, ip="203.0.113.14").status_code == 401, uri
+
+
+def test_viewer_ip_begona_manbadan_qabul_qilinmaydi():
+    """X-Viewer-IP'ni faqat nginx (ishonchli proksi) qo'ya oladi."""
+    ip = "203.0.113.15"
+    tok = security.stream_token("kam_e")
+    with TestClient(create_app(), client=("127.0.0.1", 50001)) as nginx:
+        assert _sora(nginx, f"/media/hls/kam_e/index.m3u8?token={tok}", ip).status_code == 204
+    # Tashqi manzil sarlavhada qurbon IP'sini yozsa ham uning sessiyasiga kirmaydi.
+    with TestClient(create_app(), client=("8.8.8.8", 50002)) as tashqi:
+        assert _sora(tashqi, "/media/hls/kam_e/video1_seg1.mp4", ip).status_code == 401
+
+
+def test_ichki_chipta_faqat_lokal(client):
+    """Ichki chipta muddatsiz va publish huquqli — tashqi IP'dan ishlamasin."""
+    ichki = security.internal_token()
+    assert _sora(client, f"/media/hls/kam_f/index.m3u8?token={ichki}", "127.0.0.1").status_code == 204
+    assert _sora(client, f"/media/hls/kam_f/index.m3u8?token={ichki}", "203.0.113.16").status_code == 401
+    r = client.post("/api/auth/stream", json={"ip": "203.0.113.16", "action": "publish",
+                                              "path": "kam_f", "query": f"token={ichki}"})
+    assert r.status_code == 401
+    r = client.post("/api/auth/stream", json={"ip": "127.0.0.1", "action": "publish",
+                                              "path": "kam_f", "query": f"token={ichki}"})
+    assert r.status_code == 200
 
 
 def test_prefikssiz_manzil_ham_ishlaydi(client):

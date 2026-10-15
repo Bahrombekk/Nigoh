@@ -65,6 +65,7 @@ Kim ishlatadi: app/factory.py (kirishsiz ulanadi); MediaMTX
 """
 import json
 import math
+import secrets
 import threading
 import time
 from urllib.parse import parse_qs
@@ -115,6 +116,15 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Kirish urinishlari — mexanizm core/throttle.py da (Lockout).
 _login_throttle = Lockout(max_fails=5, block_s=300.0)
+# Login nomi bo'yicha umumiy chegara (IP'dan qat'i nazar): (login, ip) kaliti
+# IP almashtirib (masalan soxta X-Forwarded-For bilan) aylanib o'tilardi.
+# Chegara katta — begona odam haqiqiy foydalanuvchini osongina qulflay olmasin.
+_user_throttle = Lockout(max_fails=20, block_s=900.0)
+# Parol almashtirish: o'g'irlangan sessiya bilan joriy parolni terib topishga yo'l yo'q.
+_password_throttle = Lockout(max_fails=5, block_s=300.0)
+# Mavjud bo'lmagan login uchun ham scrypt ishlasin — javob vaqtidan login
+# borligini bilib bo'lmasin.
+_DUMMY_HASH, _DUMMY_SALT = security.hash_password(secrets.token_hex(16))
 # Chegaralar tashqaridan ham ko'rinsin: testlar va diagnostika bilsin.
 _FAIL_MAX = _login_throttle.max_fails
 _BLOCK_S = _login_throttle.block_s
@@ -193,7 +203,7 @@ def stream_auth(body: dict):
     # chipta bilan yuradi — publish ham, read ham mumkin. IP'ga qarab
     # ishonib bo'lmaydi: nginx proksi ortida barcha tomoshabin 127.0.0.1
     # bo'lib ko'rinadi, IP istisno chipta tekshiruvini butunlay o'chirardi.
-    if security.internal_token_ok(token):
+    if security.internal_token_ok(token, ip):
         return {"ok": True}
 
     # Tashqaridan faqat tomosha — va faqat chipta bilan.
@@ -233,8 +243,10 @@ def hls_auth(request: Request):
     bajaradi.
     """
     uri = request.headers.get("x-original-uri", "")
-    ip = (request.headers.get("x-viewer-ip")
-          or (request.client.host if request.client else ""))
+    # X-Viewer-IP'ni nginx qo'yadi — faqat ishonchli proksidan kelganiga ishonamiz,
+    # aks holda har kim begona IP sessiyasini tekshirib/uzaytirib yura olardi.
+    peer = request.client.host if request.client else ""
+    ip = (request.headers.get("x-viewer-ip") if _ishonchli_proksi(peer) else "") or peer
     yol, _, query = uri.partition("?")
     bolaklar = [b for b in yol.split("/") if b]
     # /media/hls/<slug>/<resurs> -> <slug>/<resurs> (MediaMTX ko'rgan yo'l)
@@ -247,7 +259,7 @@ def hls_auth(request: Request):
     if "session" in params:
         _bearer_yoq_ogohlantir(path)
 
-    if security.internal_token_ok(token):
+    if security.internal_token_ok(token, ip):
         return Response(status_code=204)
     if security.stream_access_ok(ip, path, token):
         return Response(status_code=204)
@@ -318,7 +330,8 @@ def login(body: LoginIn, request: Request, response: Response):
     """
     ip = _client_ip(request)
     key = _login_key(body.username, ip)
-    kutish = _retry_after(key)
+    user_key = key[0]
+    kutish = max(_retry_after(key), _user_throttle.retry_after(user_key))
     if kutish:
         # Parol tekshirilmaydi — hisob ham oshmaydi, aks holda tinmay
         # urinayotgan hujumchi blokni cheksiz uzaytirardi.
@@ -331,15 +344,18 @@ def login(body: LoginIn, request: Request, response: Response):
     with get_db() as db:
         security.purge_expired_sessions(db)
         row = users.get_for_login(db, body.username)
+        if row is None:
+            security.verify_password(body.password, _DUMMY_HASH, _DUMMY_SALT)
         if row is None or not security.verify_password(
             body.password, row["pw_hash"], row["pw_salt"]
         ):
-            remaining = _note_fail(key)
+            remaining = min(_note_fail(key), _user_throttle.note_fail(user_key))
             log("auth", "login_failed", level="warning",
                 ip=ip, username=body.username, remaining=remaining)
             return JSONResponse(status_code=401,
                                 content={"detail": LOGIN_ERROR, "remaining": remaining})
         _clear_fails(key)
+        _user_throttle.clear(user_key)
         hours = REMEMBER_DAYS * 24 if body.remember else site_settings.get("session_hours")
         token = security.create_session(db, row["id"], ip,
                                         request.headers.get("user-agent"), hours=hours)
@@ -427,11 +443,17 @@ def change_password(body: PasswordIn, request: Request):
     user = _session(request)
     if len(body.new) < 6:
         raise HTTPException(400, "Parol kamida 6 belgidan iborat boʻlsin")
+    kutish = _password_throttle.retry_after(user["id"])
+    if kutish:
+        soniya = max(1, math.ceil(kutish))
+        raise HTTPException(429, LOGIN_BLOCKED, headers={"Retry-After": str(soniya)})
     with get_db() as db:
         row = users.password_row(db, user["id"])
         if row is None or not security.verify_password(body.current, row["pw_hash"],
                                                        row["pw_salt"]):
+            _password_throttle.note_fail(user["id"])
             raise HTTPException(400, PASSWORD_ERROR)
+        _password_throttle.clear(user["id"])
         pw_hash, salt = security.hash_password(body.new)
         users.set_password_keep(db, user["id"], pw_hash, salt,
                                 security.token_hash(request.cookies.get(security.SESSION_COOKIE)))

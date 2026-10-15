@@ -37,7 +37,8 @@ Tarkibi:
     stream_token(path)                  yo'l uchun imzolangan chipta (?token=)
     stream_access_ok(ip, path, token)   MediaMTX/nginx so'rovini tekshiradi
     hls_cdn_secret()                    hlsCDNSecret va nginx Bearer qiymati
-    internal_token() / internal_token_ok(t)   ichki jarayonlar chiptasi
+    internal_token() / internal_token_ok(t, ip)  ichki jarayonlar chiptasi (ip — faqat lokal)
+    safe_stream_path(path)              yo'lda .. / . segmenti, foiz-kodlash va teskari chiziq yo'q
     hash_password(p, salt) / verify_password(p, h, salt)   scrypt
     create_session(db, user_id, ip, ua) yangi sessiya tokeni (12 soat)
     session_user(db, token)             yaroqli sessiya egasi yoki None
@@ -64,6 +65,7 @@ Kim ishlatadi: users/{api,access,admin_api}.py, app/bootstrap.py,
 import base64
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
 import threading
@@ -139,6 +141,19 @@ def _stream_sig(path: str, expires: int) -> str:
     return base64.urlsafe_b64encode(mac.digest()[:20]).decode().rstrip("=")
 
 
+def safe_stream_path(path: str) -> bool:
+    """Oqim yo'li toza: "." / ".." segmenti, foiz-kodlash va teskari chiziq yo'q.
+
+    nginx MediaMTX'ga NORMALLASHTIRILGAN yo'lni ($uri) uzatadi, tekshiruvga
+    esa xom $request_uri keladi: "kamera_1/../kamera_2/index.m3u8" kamera_1
+    chiptasi bilan o'tib, aslida kamera_2 ochilardi (hudud cheklovini
+    chetlab o'tish). Haqiqiy MediaMTX yo'llarida bunday belgilar bo'lmaydi.
+    """
+    if "%" in path or "\\" in path:
+        return False
+    return not any(seg in (".", "..") for seg in path.split("/"))
+
+
 def _sig_matches(sig: str, path: str, expires: int) -> bool:
     """Chipta shu yo'lga (yoki uning ichki resursiga) tegishlimi.
 
@@ -152,6 +167,8 @@ def _sig_matches(sig: str, path: str, expires: int) -> bool:
     "kamera_1" va uning ichidagi resurslarga ruxsat beradi. Yondosh
     "kamera_10" ga o'tmaydi — chegara sifatida "/" talab qilinadi.
     """
+    if not safe_stream_path(path):
+        return False
     if hmac.compare_digest(sig, _stream_sig(path, expires)):
         return True
     base = path.split("/", 1)[0]
@@ -196,6 +213,8 @@ def stream_access_ok(ip: str, path: str, token: str) -> bool:
     To'g'ri token — ruxsat + (ip, oqim yo'li) sessiyasi. Tokensiz so'rov
     faqat tirik sessiya bo'lsa o'tadi (HLS segmentlari, WHEP davomi).
     """
+    if not safe_stream_path(path):
+        return False
     now = time.time()
     key = _session_key(ip, path)
     if token:
@@ -270,8 +289,32 @@ def internal_token() -> str:
     return base64.urlsafe_b64encode(_internal_key[:20]).decode().rstrip("=")
 
 
-def internal_token_ok(token: str) -> bool:
-    return bool(token) and hmac.compare_digest(token, internal_token())
+def internal_token_ok(token: str, ip: str | None = None) -> bool:
+    """Ichki chipta (launcher FFmpeg'i, snapshot zaxirasi). `ip` berilsa u
+    lokal bo'lishi shart: chipta muddatsiz va publish huquqli — tashqaridan
+    (masalan /media/whep/.../whip orqali) sizib chiqsa ham ishlamasin.
+    nginx ortidagi HLS so'rovlari MediaMTX'ga 127.0.0.1 bo'lib keladi."""
+    if not token or not hmac.compare_digest(token, internal_token()):
+        return False
+    if ip is None:
+        return True
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    mapped = getattr(addr, "ipv4_mapped", None)       # ::ffff:127.0.0.1
+    return (mapped or addr).is_loopback
+
+
+def stored_password_for(row, ip: str) -> str:
+    """Kameraning saqlangan paroli — faqat so'ralgan manzil kameraning O'Z
+    manzili bo'lsa. Aks holda admin (yoki kalit egasi) camera_id + begona IP
+    bilan parolni o'zi boshqaradigan serverga yuborib, ochiq matnda olardi."""
+    if row is None or not row["password_enc"]:
+        return ""
+    if (ip or "").strip().lower() != (row["ip"] or "").strip().lower():
+        return ""
+    return decrypt(row["password_enc"])
 
 
 # ---------- admin paroli ----------
@@ -348,7 +391,11 @@ def ensure_admin(db) -> str | None:
         return None
 
     username = os.environ.get("ADMIN_LOGIN", "admin")
-    password = os.environ.get("ADMIN_PAROL")
+    # Bo'sh qiymat ("ADMIN_PAROL=") — berilmagan deb hisoblanadi: aks holda
+    # admin bo'sh parol bilan yaratilardi. Qisqa parol ham qabul qilinmaydi.
+    password = (os.environ.get("ADMIN_PAROL") or "").strip() or None
+    if password is not None and len(password) < 6:
+        raise RuntimeError("ADMIN_PAROL kamida 6 belgidan iborat boʻlsin")
     generated = password is None
     if generated:
         password = secrets.token_urlsafe(9)

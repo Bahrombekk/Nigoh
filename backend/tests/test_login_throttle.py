@@ -25,8 +25,10 @@ from users import api as auth
 def _toza_hisob():
     """Har test toza hisob bilan boshlansin — hisob modul darajasida."""
     auth._login_throttle._fails.clear()
+    auth._user_throttle._fails.clear()
     yield
     auth._login_throttle._fails.clear()
+    auth._user_throttle._fails.clear()
 
 
 @pytest.fixture(scope="module")
@@ -162,3 +164,16 @@ def test_cheklangan_urinish_hisobni_oshirmaydi(ui_client):
     for _ in range(10):                        # 429 oladigan urinishlar
         assert ui_client.post("/api/v1/auth/login", json=xato).status_code == 429
     assert auth._retry_after(kalit) <= birinchi
+
+
+def test_ip_almashtirib_login_terib_bolmaydi(ui_client):
+    """(login, ip) cheklovidan tashqari login nomi bo'yicha umumiy chegara:
+    har urinishda boshqa X-Forwarded-For yuborilsa ham 20 xatodan keyin blok."""
+    for i in range(auth._user_throttle.max_fails):
+        r = ui_client.post("/api/v1/auth/login",
+                           headers={"X-Forwarded-For": f"10.9.{i // 250}.{i % 250 + 1}"},
+                           json={"username": "terish-qurboni", "password": "xato"})
+        assert r.status_code in (401, 429)
+    r = ui_client.post("/api/v1/auth/login", headers={"X-Forwarded-For": "10.9.99.99"},
+                       json={"username": "terish-qurboni", "password": "xato"})
+    assert r.status_code == 429
