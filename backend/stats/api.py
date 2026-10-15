@@ -89,7 +89,11 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 
 
 @router.get("/dashboard")
-def dashboard_stats():
+def dashboard_stats(request: Request):
+    """Eski (v2) dashboard yig'indisi. Operator faqat o'z hududlarini ko'radi."""
+    areas = allowed_areas(request)
+    if areas is not None and not areas:
+        areas = [-1]                      # hududsiz operator — bo'sh natija
     now = datetime.now(timezone.utc)
     since24 = now - timedelta(hours=24)
     since7 = now - timedelta(days=8)   # 7 kunlik oynaga zaxira bilan
@@ -98,7 +102,7 @@ def dashboard_stats():
         # 24 soatlik chiziq: har bir surat vaqtida jami nechta onlayn edi.
         timeline = [
             {"ts": r["ts"], "online": r["online"], "total": r["total"]}
-            for r in stats_db.timeline(db, since24)
+            for r in stats_db.timeline(db, since24, areas)
         ]
 
         # Kunlik kesim (mahalliy sana bo'yicha): o'rtacha onlayn ulushi
@@ -107,11 +111,11 @@ def dashboard_stats():
         # shu zonada hisoblanadi.
         daily_up = {
             r["d"]: (r["online"], r["total"])
-            for r in stats_db.daily_uptime(db, since7)
+            for r in stats_db.daily_uptime(db, since7, areas)
         }
         daily_ev = {
             r["d"]: r["n"]
-            for r in stats_db.daily_outages(db, since7)
+            for r in stats_db.daily_outages(db, since7, areas)
         }
         today = stats_db.today(db)
         daily = []
@@ -127,7 +131,7 @@ def dashboard_stats():
         # Hudud kesimi: 24 soatlik o'rtacha onlayn ulushi va bugungi uzilishlar.
         reg_ev = {
             r["region"]: r["n"]
-            for r in stats_db.outages_today_by_region(db)
+            for r in stats_db.outages_today_by_region(db, areas)
         }
         regions = [
             {
@@ -136,12 +140,12 @@ def dashboard_stats():
                             if r["total"] else None,
                 "events_today": reg_ev.get(r["region"], 0),
             }
-            for r in stats_db.uptime_by_region(db, since24)
+            for r in stats_db.uptime_by_region(db, since24, areas)
         ]
 
         # Bugungi uzilishlar soat kesimida — 24 katakli ustuncha uchun.
         hourly = [0] * 24
-        for r in stats_db.outages_today_by_hour(db):
+        for r in stats_db.outages_today_by_hour(db, areas):
             if 0 <= r["h"] <= 23:
                 hourly[r["h"]] = r["n"]
 
@@ -150,7 +154,7 @@ def dashboard_stats():
             {"ts": r["ts"], "id": r["camera_id"], "name": r["name"],
              "region": r["region"], "km": r["km"], "picket": r["picket"],
              "kind": r["kind"]}
-            for r in stats_db.recent_changes(db, 40)
+            for r in stats_db.recent_changes(db, 40, areas)
         ]
 
     return {
@@ -164,13 +168,17 @@ def dashboard_stats():
 
 
 @router.get("/timeline")
-def stats_timeline(days: int = Query(default=7, ge=1, le=30)):
-    """Onlaynlik grafigi uzun davr uchun — soatlik o'rtacha (7 yoki 30 kun)."""
+def stats_timeline(request: Request, days: int = Query(default=7, ge=1, le=30)):
+    """Onlaynlik grafigi uzun davr uchun — soatlik o'rtacha (7 yoki 30 kun).
+    Operator faqat o'z hududlari bo'yicha."""
+    areas = allowed_areas(request)
+    if areas is not None and not areas:
+        areas = [-1]
     since = datetime.now(timezone.utc) - timedelta(days=days)
     with get_db() as db:
         return {"days": days, "points": [
             {"ts": r["ts"], "online": round(r["online"], 2), "total": round(r["total"], 2)}
-            for r in stats_db.timeline_hourly(db, since)]}
+            for r in stats_db.timeline_hourly(db, since, areas)]}
 
 
 @router.get("/overview")

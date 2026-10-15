@@ -52,6 +52,20 @@ KEEP_DAYS = 30
 STEPS = {"5m": None, "hour": "hour", "6h": "6 hours", "day": "day"}
 
 
+
+# Operator hudud cheklovi (users.access.allowed_areas): None — hammasi.
+def _ids(area_ids: list[int] | None) -> tuple:
+    return () if area_ids is None else (list(area_ids),)
+
+
+def _snap_area(area_ids: list[int] | None) -> str:
+    return "" if area_ids is None else " AND admin_area_id = ANY(%s)"
+
+
+def _chg_area(area_ids: list[int] | None) -> str:
+    return ("" if area_ids is None else
+            " AND camera_id IN (SELECT id FROM cameras WHERE admin_area_id = ANY(%s))")
+
 class StatsRepository:
     """Dashboard tarixi: hudud suratlari va holat o'zgarishlari.
 
@@ -78,7 +92,7 @@ class StatsRepository:
         db.execute("DELETE FROM availability_snapshots WHERE ts < %s", (cutoff,))
         db.execute("DELETE FROM status_changes WHERE ts < %s", (cutoff,))
 
-    def timeline_hourly(self, db, since: datetime) -> list:
+    def timeline_hourly(self, db, since: datetime, area_ids: list[int] | None = None) -> list:
         """Uzun davr uchun: har soatning o'rtacha onlayn/jami qiymati.
 
         Kuzatuv bo'lmagan soatlar qaytmaydi — grafik ularni bo'shliq sifatida
@@ -87,50 +101,59 @@ class StatsRepository:
         return db.execute(
             "SELECT h AS ts, AVG(online)::float AS online, AVG(total)::float AS total FROM ("
             "  SELECT date_trunc('hour', ts) AS h, ts, SUM(online) AS online, SUM(total) AS total"
-            "  FROM availability_snapshots WHERE ts >= %s GROUP BY ts) t "
-            "GROUP BY h ORDER BY h", (since,)).fetchall()
+            "  FROM availability_snapshots WHERE ts >= %s" + _snap_area(area_ids) + " GROUP BY ts) t "
+            "GROUP BY h ORDER BY h", (since, *_ids(area_ids))).fetchall()
 
-    def timeline(self, db, since: datetime) -> list:
+    def timeline(self, db, since: datetime, area_ids: list[int] | None = None) -> list:
         return db.execute(
             "SELECT ts, SUM(online) AS online, SUM(total) AS total FROM availability_snapshots "
-            "WHERE ts >= %s GROUP BY ts ORDER BY ts", (since,)).fetchall()
+            "WHERE ts >= %s" + _snap_area(area_ids) + " GROUP BY ts ORDER BY ts",
+            (since, *_ids(area_ids))).fetchall()
 
-    def daily_uptime(self, db, since: datetime) -> list:
+    def daily_uptime(self, db, since: datetime, area_ids: list[int] | None = None) -> list:
         """Mahalliy sana bo'yicha (ulanish zonasi — NIGOH_TZ)."""
         return db.execute(
             "SELECT to_char(ts, 'YYYY-MM-DD') AS d, SUM(online) AS online, SUM(total) AS total "
-            "FROM availability_snapshots WHERE ts >= %s GROUP BY d", (since,)).fetchall()
+            "FROM availability_snapshots WHERE ts >= %s" + _snap_area(area_ids) + " GROUP BY d",
+            (since, *_ids(area_ids))).fetchall()
 
-    def daily_outages(self, db, since: datetime) -> list:
+    def daily_outages(self, db, since: datetime, area_ids: list[int] | None = None) -> list:
         return db.execute(
             "SELECT to_char(ts, 'YYYY-MM-DD') AS d, COUNT(*) AS n FROM status_changes "
-            "WHERE kind = 'offline' AND ts >= %s GROUP BY d", (since,)).fetchall()
+            "WHERE kind = 'offline' AND ts >= %s" + _chg_area(area_ids) + " GROUP BY d",
+            (since, *_ids(area_ids))).fetchall()
 
     def today(self, db):
         return db.execute("SELECT CURRENT_DATE").fetchone()[0]
 
-    def outages_today_by_region(self, db) -> list:
+    def outages_today_by_region(self, db, area_ids: list[int] | None = None) -> list:
+        flt = "" if area_ids is None else " AND d.admin_area_id = ANY(%s)"
         return db.execute(
             "SELECT d.region, COUNT(*) AS n FROM status_changes s "
             "JOIN camera_details d ON d.id = s.camera_id "
-            "WHERE s.kind = 'offline' AND s.ts::date = CURRENT_DATE GROUP BY d.region").fetchall()
+            "WHERE s.kind = 'offline' AND s.ts::date = CURRENT_DATE" + flt + " GROUP BY d.region",
+            _ids(area_ids)).fetchall()
 
-    def uptime_by_region(self, db, since: datetime) -> list:
+    def uptime_by_region(self, db, since: datetime, area_ids: list[int] | None = None) -> list:
+        flt = "" if area_ids is None else " AND s.admin_area_id = ANY(%s)"
         return db.execute(
             "SELECT COALESCE(a.name, %s) AS region, SUM(s.online) AS online, SUM(s.total) AS total "
             "FROM availability_snapshots s LEFT JOIN admin_areas a ON a.id = s.admin_area_id "
-            "WHERE s.ts >= %s GROUP BY 1", (UNASSIGNED, since)).fetchall()
+            "WHERE s.ts >= %s" + flt + " GROUP BY 1",
+            (UNASSIGNED, since, *_ids(area_ids))).fetchall()
 
-    def outages_today_by_hour(self, db) -> list:
+    def outages_today_by_hour(self, db, area_ids: list[int] | None = None) -> list:
         return db.execute(
             "SELECT extract(hour FROM ts)::int AS h, COUNT(*) AS n FROM status_changes "
-            "WHERE kind = 'offline' AND ts::date = CURRENT_DATE GROUP BY h").fetchall()
+            "WHERE kind = 'offline' AND ts::date = CURRENT_DATE" + _chg_area(area_ids) + " GROUP BY h",
+            _ids(area_ids)).fetchall()
 
-    def recent_changes(self, db, limit: int = 40) -> list:
+    def recent_changes(self, db, limit: int = 40, area_ids: list[int] | None = None) -> list:
+        flt = "" if area_ids is None else " WHERE d.admin_area_id = ANY(%s)"
         return db.execute(
             "SELECT s.ts, s.camera_id, d.name, d.region, d.km, d.picket, s.kind FROM status_changes s "
-            "JOIN camera_details d ON d.id = s.camera_id ORDER BY s.id DESC LIMIT %s",
-            (limit,)).fetchall()
+            "JOIN camera_details d ON d.id = s.camera_id" + flt + " ORDER BY s.id DESC LIMIT %s",
+            (*_ids(area_ids), limit)).fetchall()
 
     def series(self, db, since: datetime, until: datetime, step: str,
                area_ids: list[int] | None) -> list:
